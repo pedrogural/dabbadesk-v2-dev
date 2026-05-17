@@ -61,7 +61,12 @@ Route::prefix('public/intake')
 
         Route::get('/fee-policy', [PublicIntakeSupportController::class, 'feePolicy'])
             ->name('fee-policy');
+
+        Route::post('/submit', [PublicIntakeSupportController::class, 'submit'])
+            ->name('submit');
     });
+
+
 
 
 require __DIR__ . '/auth.php';
