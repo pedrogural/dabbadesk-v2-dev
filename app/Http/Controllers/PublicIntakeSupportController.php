@@ -90,7 +90,7 @@ class PublicIntakeSupportController extends Controller
 
         $created = $creator->create($payload, $request);
 
-        $notifications->notifyStaff($payload);
+        $notifications->notifyStaff($payload, $created['request_ref']);
 
         return response()->json([
             'ok' => true,
