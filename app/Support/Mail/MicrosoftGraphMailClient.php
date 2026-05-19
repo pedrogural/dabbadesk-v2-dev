@@ -10,25 +10,38 @@ class MicrosoftGraphMailClient
         string $to,
         string $subject,
         string $htmlBody,
-        ?string $textBody = null
+        ?string $textBody = null,
+        ?string $replyTo = null
     ): void {
         $from = config('graphmail.from_address');
 
-        $payload = [
-            'message' => [
-                'subject' => $subject,
-                'body' => [
-                    'contentType' => 'HTML',
-                    'content' => $htmlBody,
-                ],
-                'toRecipients' => [
-                    [
-                        'emailAddress' => [
-                            'address' => $to,
-                        ],
+        $message = [
+            'subject' => $subject,
+            'body' => [
+                'contentType' => 'HTML',
+                'content' => $htmlBody,
+            ],
+            'toRecipients' => [
+                [
+                    'emailAddress' => [
+                        'address' => $to,
                     ],
                 ],
             ],
+        ];
+
+        if ($replyTo !== null && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) {
+            $message['replyTo'] = [
+                [
+                    'emailAddress' => [
+                        'address' => $replyTo,
+                    ],
+                ],
+            ];
+        }
+
+        $payload = [
+            'message' => $message,
             'saveToSentItems' => true,
         ];
 

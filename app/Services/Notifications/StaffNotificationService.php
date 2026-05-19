@@ -13,12 +13,15 @@ class StaffNotificationService
 
     public function send(
         string $subject,
-        string $html
+        string $html,
+        ?string $replyTo = null
     ): void {
         $this->mail->send(
             config('graphmail.internal_notification_email'),
             $subject,
-            $html
+            $html,
+            null,
+            $replyTo
         );
     }
 }

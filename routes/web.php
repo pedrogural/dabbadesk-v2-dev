@@ -64,6 +64,9 @@ Route::prefix('public/intake')
 
         Route::post('/submit', [PublicIntakeSupportController::class, 'submit'])
             ->name('submit');
+
+        Route::get('/countries', [PublicIntakeSupportController::class, 'countries'])
+            ->name('countries');
     });
 
 

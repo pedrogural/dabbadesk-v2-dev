@@ -1,35 +1,34 @@
 <?php
 
-namespace App\Services\Intake;
+namespace App\Services\Notifications;
 
-use App\Services\Notifications\StaffNotificationService;
+use App\Support\Mail\MicrosoftGraphMailClient;
 use Illuminate\Support\Facades\DB;
 
-class PublicOrderRequestNotificationService
+class CustomerNotificationService
 {
     public function __construct(
-        protected StaffNotificationService $notifications
+        protected MicrosoftGraphMailClient $mail
     ) {
     }
 
-    public function notifyStaff(array $payload, ?string $reference = null): void
-    {
+    public function sendOrderRequestConfirmation(
+        string $to,
+        string $reference,
+        array $payload
+    ): void {
         $summary = $this->buildSummary($payload);
 
-        $subject = $reference
-            ? "New web order request received ({$reference})"
-            : 'New web order request received';
-
-        $html = view('emails.staff.order-request-received', [
-            'reference' => $reference ?: 'Pending',
+        $html = view('emails.customer.order-request-confirmation', [
+            'reference' => $reference,
             ...$summary,
         ])->render();
 
-        $replyTo = filter_var($summary['customerEmail'], FILTER_VALIDATE_EMAIL)
-            ? $summary['customerEmail']
-            : null;
-
-        $this->notifications->send($subject, $html, $replyTo);
+        $this->mail->send(
+            $to,
+            "Dabba Direct: order request received ({$reference})",
+            $html
+        );
     }
 
     private function buildSummary(array $payload): array
@@ -74,19 +73,12 @@ class PublicOrderRequestNotificationService
             $dabbaFees += $fee;
         }
 
-        $attachments = is_array($payload['_attachments'] ?? null) ? $payload['_attachments'] : [];
-        $attachmentCount = (int) ($payload['_attachment_count'] ?? count($attachments));
+        $attachments = is_array($payload['_attachments'] ?? null)
+            ? $payload['_attachments']
+            : [];
 
         $addressCountry = $this->countryName((string) ($payload['address_country'] ?? ''));
         $phoneCountry = $this->countryName((string) ($payload['customer_phone_country'] ?? ''));
-
-        $addressParts = array_filter([
-            $payload['address_line1'] ?? null,
-            $payload['address_line2'] ?? null,
-            $payload['address_city'] ?? null,
-            $payload['address_postcode'] ?? null,
-            $addressCountry,
-        ]);
 
         return [
             'customerName' => trim((string) ($payload['customer_name'] ?? '')),
@@ -99,12 +91,11 @@ class PublicOrderRequestNotificationService
             'customerAddressCity' => (string) ($payload['address_city'] ?? ''),
             'customerAddressPostcode' => (string) ($payload['address_postcode'] ?? ''),
             'customerAddressCountry' => $addressCountry,
-            'customerAddress' => implode(', ', $addressParts),
             'groups' => array_values($groups),
             'retailSubtotal' => round($retailSubtotal, 2),
             'dabbaFees' => round($dabbaFees, 2),
             'grandTotal' => round($retailSubtotal + $dabbaFees, 2),
-            'attachmentCount' => $attachmentCount,
+            'attachmentCount' => (int) ($payload['_attachment_count'] ?? count($attachments)),
             'attachments' => $attachments,
         ];
     }

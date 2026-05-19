@@ -8,6 +8,8 @@ use App\Services\Intake\RetailerLookupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Services\Intake\CreateOrderRequestService;
+use Illuminate\Support\Facades\DB;
+
 
 class PublicIntakeSupportController extends Controller
 {
@@ -29,6 +31,27 @@ class PublicIntakeSupportController extends Controller
         ]);
     }
 
+    public function countries(): JsonResponse
+    {
+        $countries = \Illuminate\Support\Facades\DB::table('countries')
+            ->where('is_active', 1)
+            ->orderByRaw("FIELD(iso2, 'GI', 'ES', 'GB') DESC")
+            ->orderBy('name')
+            ->get(['name', 'iso2', 'iso3', 'phone_code'])
+            ->map(fn($country) => [
+                'name' => $country->name,
+                'iso2' => $country->iso2,
+                'iso3' => $country->iso3,
+                'phone_code' => $country->phone_code,
+            ])
+            ->values();
+
+        return response()->json([
+            'ok' => true,
+            'countries' => $countries,
+        ]);
+    }
+
     public function feePolicy(FeePolicyLookupService $fees): JsonResponse
     {
         return response()->json([
@@ -40,8 +63,11 @@ class PublicIntakeSupportController extends Controller
     public function submit(
         Request $request,
         PublicOrderRequestNotificationService $notifications,
-        CreateOrderRequestService $creator
+        CreateOrderRequestService $creator,
+        \App\Services\Notifications\CustomerNotificationService $customerNotifications
     ): JsonResponse {
+
+
         $wrapper = $request->validate([
             'hp_field' => ['nullable', 'string', 'max:255'],
             'payload' => ['required', 'string'],
@@ -90,7 +116,44 @@ class PublicIntakeSupportController extends Controller
 
         $created = $creator->create($payload, $request);
 
+        $storedAttachmentCount = 0;
+
+        if (! $created['existing']) {
+            $incomingAttachments = $request->file('attachments', []);
+
+            if ($incomingAttachments instanceof \Illuminate\Http\UploadedFile) {
+                $incomingAttachments = [$incomingAttachments];
+            }
+
+            $storedAttachmentCount = app(
+                \App\Services\Intake\OrderRequestAttachmentService::class
+            )->storeForRequest(
+                (int) $created['id'],
+                (string) $created['request_ref'],
+                array_filter($incomingAttachments)
+            );
+        }
+
+        $payload['_attachment_count'] = $storedAttachmentCount;
+        $payload['_attachments'] = DB::table('order_request_attachments')
+            ->where('order_request_id', $created['id'])
+            ->select('original_name', 'size')
+            ->get()
+            ->map(fn($row) => [
+                'original_name' => $row->original_name,
+                'size' => $row->size,
+            ])
+            ->all();
+
         $notifications->notifyStaff($payload, $created['request_ref']);
+        if (!empty($payload['customer_email'])) {
+            $customerNotifications->sendOrderRequestConfirmation(
+                (string) $payload['customer_email'],
+                (string) $created['request_ref'],
+                $payload
+            );
+        }
+
 
         return response()->json([
             'ok' => true,
@@ -99,6 +162,7 @@ class PublicIntakeSupportController extends Controller
             'order_request_ref' => $created['request_ref'],
             'order_request_id' => $created['id'],
             'existing' => $created['existing'],
+            'attachments_saved' => $storedAttachmentCount,
         ]);
     }
 }
