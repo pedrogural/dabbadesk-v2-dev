@@ -50,11 +50,10 @@
 
     <!-- Sidebar -->
     <aside
-        class="fixed inset-y-0 left-0 z-50 flex w-72 transform flex-col bg-slate-950 text-slate-200 transition-transform duration-300 lg:translate-x-0"
+        class="fixed inset-y-0 left-0 z-50 w-72 transform bg-slate-950 text-slate-200 transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
-        <!-- Sidebar header -->
-        <div class="flex h-20 shrink-0 items-center justify-between border-b border-slate-800 px-6">
+        <div class="flex h-20 items-center justify-between border-b border-slate-800 px-6">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight text-white">
                     DabbaDesk
@@ -74,14 +73,14 @@
             </button>
         </div>
 
-        <!-- Scrollable navigation -->
-        <nav class="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-6">
+        <nav class="space-y-2 px-4 py-6">
 
             @php
                 $navItems = [
                     ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => '🏠'],
                     ['label' => 'Orders', 'route' => 'orders.index', 'icon' => '📦'],
                     ['label' => 'Order Requests', 'route' => 'order-requests.index', 'icon' => '📝', 'counter' => true],
+                    ['label' => 'Draft Orders', 'route' => 'draft-orders.index', 'icon' => '🧩'],
                     ['label' => 'Customer Desk', 'route' => null, 'icon' => '👥'],
                     ['label' => 'Money Desk', 'route' => 'money-desk.index', 'icon' => '💷'],
                     ['label' => 'Purchase Desk', 'route' => null, 'icon' => '🛒'],
@@ -95,7 +94,7 @@
             @foreach ($navItems as $item)
 
                 @php
-                    $isActive = $item['route'] && request()->routeIs($item['route']);
+                    $isActive = $item['route'] && request()->routeIs($item['route'], str_replace('.index', '.*', $item['route']));
                     $href = $item['route'] ? route($item['route']) : '#';
                 @endphp
 
@@ -107,9 +106,6 @@
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30'
                             : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }}"
-                    @if (!$item['route'])
-                        aria-disabled="true"
-                    @endif
                 >
                     <span class="text-lg">
                         {{ $item['icon'] }}
@@ -140,11 +136,10 @@
 
         </nav>
 
-        <!-- Sidebar footer -->
-        <div class="shrink-0 border-t border-slate-800 p-4">
+        <div class="absolute bottom-0 left-0 right-0 border-t border-slate-800 p-4">
 
             <div class="mb-4 rounded-2xl bg-slate-900 p-4">
-                <p class="truncate text-sm font-semibold text-white">
+                <p class="text-sm font-semibold text-white">
                     {{ Auth::user()->name }}
                 </p>
 

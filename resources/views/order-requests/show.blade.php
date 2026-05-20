@@ -1,364 +1,283 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex items-center justify-between gap-4">
             <div>
-                <div class="flex items-center gap-3">
-                    <a href="{{ route('order-requests.index') }}" class="text-sm font-bold text-indigo-600 hover:text-indigo-800">
-                        ← Back
-                    </a>
-                    <span class="text-sm text-gray-400">/</span>
-                    <span class="text-sm font-bold text-gray-500">Request {{ $orderRequest->request_ref }}</span>
-                </div>
-                <h2 class="mt-1 text-xl font-semibold leading-tight text-gray-800">
-                    Review Order Request
-                </h2>
+                <h2 class="text-xl font-semibold leading-tight text-gray-800">Order Request {{ $requestRow->request_ref }}</h2>
+                <p class="mt-1 text-sm text-gray-500">Confirm the customer, tidy details, then convert to draft.</p>
             </div>
-
-            @php
-                $badgeClasses = [
-                    'received' => 'bg-amber-100 text-amber-800',
-                    'in_review' => 'bg-blue-100 text-blue-800',
-                    'needs_clarification' => 'bg-orange-100 text-orange-800',
-                    'approved' => 'bg-emerald-100 text-emerald-800',
-                    'rejected' => 'bg-rose-100 text-rose-800',
-                    'converted' => 'bg-purple-100 text-purple-800',
-                ];
-                $statusClass = $badgeClasses[$orderRequest->status] ?? 'bg-slate-100 text-slate-700';
-            @endphp
-
-            <span class="inline-flex w-fit rounded-full px-4 py-2 text-sm font-black {{ $statusClass }}">
-                {{ str($orderRequest->status)->replace('_', ' ')->title() }}
-            </span>
+            <a href="{{ route('order-requests.index') }}" class="rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">Back to requests</a>
         </div>
     </x-slot>
 
     @php
-        $customerName = trim(($orderRequest->customer_first_name ?? '') . ' ' . ($orderRequest->customer_last_name ?? ''));
-        if ($customerName === '') {
-            $customerName = $orderRequest->customer_company_name ?: 'Unknown customer';
-        }
-
-        $statusActions = [
-            'in_review' => [
-                'label' => 'Start review',
-                'description' => 'Use this when staff has started checking the request.',
-                'classes' => 'bg-blue-600 hover:bg-blue-700',
-                'placeholder' => 'Optional note, for example: checking links and prices now.',
-            ],
-            'needs_clarification' => [
-                'label' => 'Needs clarification',
-                'description' => 'Use this when customer input is unclear or missing.',
-                'classes' => 'bg-orange-500 hover:bg-orange-600',
-                'placeholder' => 'Explain what needs clarification, e.g. broken link, missing size, unclear quantity.',
-            ],
-            'approved' => [
-                'label' => 'Approve request',
-                'description' => 'Use this when the request is ready for conversion to draft order.',
-                'classes' => 'bg-emerald-600 hover:bg-emerald-700',
-                'placeholder' => 'Optional approval note, e.g. prices checked and attachments reviewed.',
-            ],
-            'rejected' => [
-                'label' => 'Reject request',
-                'description' => 'Use this when the request should not proceed.',
-                'classes' => 'bg-rose-600 hover:bg-rose-700',
-                'placeholder' => 'Reason for rejection, e.g. prohibited item, impossible supplier, duplicate request.',
-            ],
-        ];
+        $requestName = trim(($requestRow->customer_first_name ?? '') . ' ' . ($requestRow->customer_last_name ?? '')) ?: ($requestRow->customer_company_name ?: 'Unknown customer');
+        $defaultMode = old('customer_mode', $selectedCustomer ? 'existing' : 'create');
+        $existingFirst = old('first_name', $selectedCustomer->first_name ?? $requestRow->customer_first_name ?? '');
+        $existingLast = old('last_name', $selectedCustomer->last_name ?? $requestRow->customer_last_name ?? '');
+        $existingCompany = old('company_name', $selectedCustomer->company_name ?? $requestRow->customer_company_name ?? '');
+        $existingEmail = old('email', $selectedCustomer->email ?? $requestRow->customer_email ?? '');
+        $existingPhone = old('phone_digits', $selectedCustomer->phone_digits ?? $requestRow->customer_phone_digits ?? '');
+        $existingPhoneCountry = old('phone_country_id', $selectedCustomer->phone_country_id ?? $requestRow->customer_phone_country_id ?? '');
+        $existingAddress = old('address_line1', $selectedCustomer->address_line1 ?? $requestRow->customer_address_line1 ?? '');
+        $existingPostcode = old('address_postcode', $selectedCustomer->address_postcode ?? $requestRow->customer_address_postcode ?? '');
+        $existingAddressCountry = old('address_country_id', $selectedCustomer->address_country_id ?? $requestRow->customer_address_country_id ?? '');
     @endphp
 
-    <div class="space-y-6">
-        @if (session('success'))
-            <div class="rounded-2xl bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
-                {{ session('success') }}
-            </div>
-        @endif
-
-        @if (session('error'))
-            <div class="rounded-2xl bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800 ring-1 ring-rose-200">
-                {{ session('error') }}
-            </div>
+    <div class="space-y-5">
+        @if (session('status'))
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800">{{ session('status') }}</div>
         @endif
 
         @if ($errors->any())
-            <div class="rounded-2xl bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800 ring-1 ring-rose-200">
-                {{ $errors->first() }}
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800">
+                @foreach ($errors->all() as $error)
+                    <div>{{ $error }}</div>
+                @endforeach
             </div>
         @endif
 
-        <div class="grid gap-6 xl:grid-cols-3">
-            <div class="space-y-6 xl:col-span-2">
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
+            <section class="space-y-5">
+                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
-                            <p class="text-xs font-black uppercase tracking-wide text-gray-400">Customer</p>
-                            <h3 class="mt-1 text-2xl font-black text-gray-900">{{ $customerName }}</h3>
-                            @if ($orderRequest->customer_company_name)
-                                <p class="mt-1 text-sm font-semibold text-gray-600">{{ $orderRequest->customer_company_name }}</p>
-                            @endif
+                            <p class="text-xs font-black uppercase tracking-wide text-gray-400">Submitted by customer</p>
+                            <h3 class="mt-1 text-2xl font-black text-gray-900">{{ $requestName }}</h3>
+                            <p class="mt-1 text-sm text-gray-500">{{ $requestRow->customer_email ?: 'No email' }} · {{ $requestRow->customer_phone_digits ?: 'No phone' }}</p>
                         </div>
+                        <span class="rounded-full px-4 py-2 text-sm font-black {{ $requestRow->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">{{ ucfirst($requestRow->status) }}</span>
+                    </div>
 
-                        <div class="rounded-2xl bg-indigo-50 px-5 py-4 text-right">
-                            <p class="text-xs font-black uppercase tracking-wide text-indigo-500">Estimated item total</p>
-                            <p class="mt-1 text-2xl font-black text-indigo-800">£{{ number_format((float) $orderRequest->estimated_total, 2) }}</p>
+                    <div class="mt-5 grid gap-3 md:grid-cols-3">
+                        <div class="rounded-2xl bg-gray-50 p-4">
+                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Company</p>
+                            <p class="mt-1 text-sm font-semibold text-gray-900">{{ $requestRow->customer_company_name ?: '—' }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-gray-50 p-4">
+                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Phone</p>
+                            <p class="mt-1 text-sm font-semibold text-gray-900">{{ $requestRow->customer_phone_digits ? (($requestRow->phone_country_code ? '+' . $requestRow->phone_country_code . ' ' : '') . $requestRow->customer_phone_digits) : '—' }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-gray-50 p-4">
+                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Estimate</p>
+                            <p class="mt-1 text-sm font-black text-gray-900">£{{ number_format((float) $requestRow->estimated_total, 2) }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-gray-50 p-4 md:col-span-3">
+                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Address</p>
+                            <p class="mt-1 text-sm font-semibold text-gray-900">
+                                {{ $requestRow->customer_address_line1 ?: '—' }}
+                                @if ($requestRow->customer_address_postcode)<span class="text-gray-500">{{ $requestRow->customer_address_postcode }}</span>@endif
+                                @if ($requestRow->address_country_name)<span class="text-gray-500">{{ $requestRow->address_country_name }}</span>@endif
+                            </p>
                         </div>
                     </div>
 
-                    <dl class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <dt class="text-xs font-black uppercase tracking-wide text-slate-400">Email</dt>
-                            <dd class="mt-1 break-words text-sm font-semibold text-slate-800">{{ $orderRequest->customer_email ?: '—' }}</dd>
-                        </div>
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <dt class="text-xs font-black uppercase tracking-wide text-slate-400">Phone</dt>
-                            <dd class="mt-1 text-sm font-semibold text-slate-800">{{ $orderRequest->customer_phone_digits ?: '—' }}</dd>
-                        </div>
-                        <div class="rounded-2xl bg-slate-50 p-4">
-                            <dt class="text-xs font-black uppercase tracking-wide text-slate-400">Submitted</dt>
-                            <dd class="mt-1 text-sm font-semibold text-slate-800">
-                                {{ $orderRequest->submitted_at ? \Illuminate\Support\Carbon::parse($orderRequest->submitted_at)->format('d M Y H:i') : '—' }}
-                            </dd>
-                        </div>
-                        <div class="rounded-2xl bg-slate-50 p-4 sm:col-span-2 lg:col-span-3">
-                            <dt class="text-xs font-black uppercase tracking-wide text-slate-400">Address</dt>
-                            <dd class="mt-1 text-sm font-semibold text-slate-800">
-                                {{ $orderRequest->customer_address_line1 ?: '—' }}
-                                @if ($orderRequest->customer_address_postcode)
-                                    <span class="text-slate-500">· {{ $orderRequest->customer_address_postcode }}</span>
-                                @endif
-                            </dd>
-                        </div>
-                    </dl>
-
-                    @if ($orderRequest->notes)
-                        <div class="mt-6 rounded-2xl bg-amber-50 p-5 ring-1 ring-amber-100">
-                            <p class="text-xs font-black uppercase tracking-wide text-amber-600">Customer notes</p>
-                            <p class="mt-2 whitespace-pre-line text-sm leading-6 text-amber-950">{{ $orderRequest->notes }}</p>
+                    @if ($requestRow->notes)
+                        <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                            <p class="text-xs font-black uppercase tracking-wide text-amber-700">Customer notes</p>
+                            <p class="mt-2 whitespace-pre-wrap text-sm text-amber-900">{{ $requestRow->notes }}</p>
                         </div>
                     @endif
-                </section>
+                </div>
 
-                <section class="rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
-                    <div class="border-b border-gray-100 p-6">
-                        <h3 class="text-lg font-black text-gray-900">Requested items</h3>
-                        <p class="mt-1 text-sm text-gray-500">Check retailer, product details, quantities, prices and customer notes before approval.</p>
+                <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+                        <div>
+                            <h3 class="text-lg font-black text-gray-900">Submitted items</h3>
+                            <p class="text-sm text-gray-500">Compact review; detailed polishing still happens in the draft workbench.</p>
+                        </div>
+                        <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">{{ $items->count() }} item{{ $items->count() === 1 ? '' : 's' }}</span>
                     </div>
 
-                    <div class="divide-y divide-gray-100">
-                        @forelse ($items as $item)
-                            @php
-                                $lineTotal = (float) ($item->line_total ?? ((float) $item->unit_price * (int) $item->quantity));
-                            @endphp
-
-                            <article class="p-6">
-                                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                                    <div class="min-w-0 flex-1">
-                                        <div class="flex flex-wrap items-center gap-2">
-                                            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                                                Item {{ $loop->iteration }}
-                                            </span>
-                                            <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
-                                                {{ $item->retailer_name ?: $item->matched_retailer_name ?: 'Unknown retailer' }}
-                                            </span>
-                                        </div>
-
-                                        <h4 class="mt-3 text-base font-black text-gray-900">{{ $item->description }}</h4>
-
-                                        <div class="mt-3 grid gap-3 text-sm text-gray-600 sm:grid-cols-2">
-                                            <div>
-                                                <span class="font-bold text-gray-500">Product code:</span>
-                                                {{ $item->product_code ?: '—' }}
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Item</th>
+                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Retailer</th>
+                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Qty</th>
+                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Unit</th>
+                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Line</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                @foreach ($items as $item)
+                                    <tr>
+                                        <td class="px-4 py-3 align-top">
+                                            <div class="max-w-xl text-sm font-bold text-gray-900">{{ $item->description }}</div>
+                                            <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                                                @if ($item->product_code)<span>Code: {{ $item->product_code }}</span>@endif
+                                                @if ($item->retailer_url)<a href="{{ $item->retailer_url }}" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-800">Open link</a>@endif
                                             </div>
-                                            <div>
-                                                <span class="font-bold text-gray-500">Matched retailer:</span>
-                                                {{ $item->matched_retailer_name ?: 'Not matched' }}
-                                            </div>
-                                        </div>
-
-                                        @if ($item->retailer_url)
-                                            <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener" class="mt-3 inline-flex break-all text-sm font-bold text-indigo-600 hover:text-indigo-800">
-                                                Open product / retailer link ↗
-                                            </a>
-                                        @endif
-
-                                        @if ($item->notes)
-                                            <div class="mt-4 rounded-2xl bg-slate-50 p-4">
-                                                <p class="text-xs font-black uppercase tracking-wide text-slate-400">Item notes</p>
-                                                <p class="mt-1 whitespace-pre-line text-sm text-slate-700">{{ $item->notes }}</p>
-                                            </div>
-                                        @endif
-                                    </div>
-
-                                    <div class="grid min-w-56 grid-cols-3 gap-2 text-center lg:text-right">
-                                        <div class="rounded-2xl bg-slate-50 p-3">
-                                            <p class="text-xs font-black uppercase text-slate-400">Qty</p>
-                                            <p class="mt-1 text-lg font-black text-slate-900">{{ $item->quantity }}</p>
-                                        </div>
-                                        <div class="rounded-2xl bg-slate-50 p-3">
-                                            <p class="text-xs font-black uppercase text-slate-400">Unit</p>
-                                            <p class="mt-1 text-lg font-black text-slate-900">£{{ number_format((float) $item->unit_price, 2) }}</p>
-                                        </div>
-                                        <div class="rounded-2xl bg-slate-900 p-3 text-white">
-                                            <p class="text-xs font-black uppercase text-slate-300">Line</p>
-                                            <p class="mt-1 text-lg font-black">£{{ number_format($lineTotal, 2) }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </article>
-                        @empty
-                            <div class="p-10 text-center text-sm text-gray-500">
-                                No items found on this request.
-                            </div>
-                        @endforelse
+                                            @if ($item->notes)<div class="mt-2 rounded-xl bg-gray-50 p-2 text-xs text-gray-600">{{ $item->notes }}</div>@endif
+                                        </td>
+                                        <td class="px-4 py-3 align-top text-sm text-gray-700">
+                                            <div class="font-bold">{{ $item->matched_retailer_name ?: ($item->retailer_name ?: 'Needs review') }}</div>
+                                            @if (! $item->matched_retailer_name)<div class="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">Auto-create if needed</div>@endif
+                                        </td>
+                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-bold text-gray-900">{{ $item->quantity }}</td>
+                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm text-gray-700">£{{ number_format((float) $item->unit_price, 2) }}</td>
+                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-black text-gray-900">£{{ number_format((float) ($item->line_total ?? ($item->unit_price * $item->quantity)), 2) }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
                     </div>
-                </section>
-            </div>
+                </div>
+            </section>
 
-            <aside class="space-y-6">
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Review actions</h3>
-                    <p class="mt-1 text-sm text-gray-500">Move the request through the intake workflow and leave an audit note where useful.</p>
+            <aside class="space-y-5 xl:sticky xl:top-6 xl:self-start">
+                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-lg font-black text-gray-900">Customer & conversion</h3>
+                            <p class="mt-1 text-sm text-gray-500">Auto-match is retained, but staff can edit before draft creation.</p>
+                        </div>
+                    </div>
 
-                    @if ($orderRequest->converted_at)
-                        <div class="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-100">
-                            Converted by {{ $orderRequest->converted_by_name ?: 'staff' }} on {{ \Illuminate\Support\Carbon::parse($orderRequest->converted_at)->format('d M Y H:i') }}.
+                    @if ($requestRow->converted_at)
+                        <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                            <p class="font-black">Already converted</p>
+                            <p class="mt-1">Draft order ID: {{ $requestRow->converted_draft_order_id }}</p>
+                            <p class="mt-1 text-xs">Converted at {{ $requestRow->converted_at }}</p>
                         </div>
                     @else
-                        <div class="mt-5 space-y-4">
-                            @foreach ($statusActions as $targetStatus => $action)
-                                <form method="POST" action="{{ route('order-requests.update-status', $orderRequest->id) }}" class="rounded-2xl border border-gray-200 p-4">
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="status" value="{{ $targetStatus }}">
+                        @if (! $requestRow->reviewed_at)
+                            <form method="POST" action="{{ route('order-requests.review', $requestRow->id) }}" class="mt-4">
+                                @csrf
+                                <button type="submit" class="w-full rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 hover:bg-indigo-100">Mark as under review</button>
+                            </form>
+                        @endif
 
-                                    <div class="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p class="text-sm font-black text-gray-900">{{ $action['label'] }}</p>
-                                            <p class="mt-1 text-xs leading-5 text-gray-500">{{ $action['description'] }}</p>
-                                        </div>
+                        <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-gray-200 p-4">
+                            <label class="text-xs font-black uppercase tracking-wide text-gray-500">Search customer base</label>
+                            <div class="mt-2 flex gap-2">
+                                <input type="search" name="customer_q" value="{{ $customerSearch }}" placeholder="Name, email, phone, company…" class="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                <button type="submit" class="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-black text-white hover:bg-gray-800">Find</button>
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">{{ $customerSearch !== '' ? 'Search results shown below.' : 'Suggested matches are auto-selected from request details.' }}</p>
+                        </form>
 
-                                        @if ($orderRequest->status === $targetStatus)
-                                            <span class="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase text-slate-500">
-                                                Current
-                                            </span>
-                                        @endif
+                        <form method="POST" action="{{ route('order-requests.convert', $requestRow->id) }}" class="mt-4 space-y-4">
+                            @csrf
+
+                            <div class="rounded-2xl border border-gray-200 p-4">
+                                <label class="flex cursor-pointer items-start gap-3">
+                                    <input type="radio" name="customer_mode" value="existing" class="mt-1" @checked($defaultMode === 'existing')>
+                                    <span>
+                                        <span class="block text-sm font-black text-gray-900">Use existing customer</span>
+                                        <span class="block text-xs text-gray-500">Select, then edit the fields below if phone, email or address changed.</span>
+                                    </span>
+                                </label>
+
+                                <div class="mt-3 flex gap-2">
+                                    <select name="customer_id" class="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-indigo-500" onchange="const u=new URL(window.location.href); u.searchParams.set('customer_id', this.value); window.location.href=u.toString();">
+                                        <option value="">Select customer…</option>
+                                        @foreach ($customerOptions as $customer)
+                                            @php $customerName = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: ($customer->company_name ?: 'Customer #' . $customer->id); @endphp
+                                            <option value="{{ $customer->id }}" @selected((int) $selectedCustomerId === (int) $customer->id)>#{{ $customer->id }} — {{ $customerName }}{{ $customer->email ? ' — ' . $customer->email : '' }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                @if ($selectedCustomer)
+                                    <div class="mt-3 rounded-2xl bg-emerald-50 p-3 text-xs text-emerald-900">
+                                        <strong>Selected:</strong> #{{ $selectedCustomer->id }} — {{ trim(($selectedCustomer->first_name ?? '') . ' ' . ($selectedCustomer->last_name ?? '')) ?: $selectedCustomer->company_name }}
                                     </div>
+                                @elseif ($customerOptions->isEmpty())
+                                    <p class="mt-2 text-xs font-semibold text-amber-700">No match yet. Search again or use create new below.</p>
+                                @endif
+                            </div>
 
-                                    <textarea
-                                        name="status_note"
-                                        rows="2"
-                                        class="mt-3 w-full rounded-2xl border-gray-200 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                                        placeholder="{{ $action['placeholder'] }}"
-                                    ></textarea>
+                            <div class="rounded-2xl border border-gray-200 p-4">
+                                <label class="flex cursor-pointer items-start gap-3">
+                                    <input type="radio" name="customer_mode" value="create" class="mt-1" @checked($defaultMode === 'create')>
+                                    <span>
+                                        <span class="block text-sm font-black text-gray-900">Create new customer</span>
+                                        <span class="block text-xs text-gray-500">Editable before saving, useful for typos in request details.</span>
+                                    </span>
+                                </label>
+                            </div>
 
-                                    <button class="mt-3 w-full rounded-2xl px-4 py-3 text-sm font-black text-white shadow-sm {{ $action['classes'] }}">
-                                        {{ $action['label'] }}
-                                    </button>
-                                </form>
+                            <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                                <div class="flex items-center justify-between gap-2">
+                                    <h4 class="text-sm font-black text-blue-950">Customer details to save</h4>
+                                    <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide text-blue-700">editable</span>
+                                </div>
+
+                                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">First name</label>
+                                        <input name="first_name" value="{{ $existingFirst }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Last name</label>
+                                        <input name="last_name" value="{{ $existingLast }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Company</label>
+                                        <input name="company_name" value="{{ $existingCompany }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Email</label>
+                                        <input name="email" value="{{ $existingEmail }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Phone country</label>
+                                        <select name="phone_country_id" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                            <option value="">—</option>
+                                            @foreach ($countries as $country)
+                                                <option value="{{ $country->id }}" @selected((string) $existingPhoneCountry === (string) $country->id)>{{ $country->phone_code ? '+' . $country->phone_code . ' — ' : '' }}{{ $country->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Phone digits</label>
+                                        <input name="phone_digits" value="{{ $existingPhone }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div class="sm:col-span-2">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Address</label>
+                                        <input name="address_line1" value="{{ $existingAddress }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Postcode</label>
+                                        <input name="address_postcode" value="{{ $existingPostcode }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Address country</label>
+                                        <select name="address_country_id" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                            <option value="">—</option>
+                                            @foreach ($countries as $country)
+                                                <option value="{{ $country->id }}" @selected((string) $existingAddressCountry === (string) $country->id)>{{ $country->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. The draft will not convert unless a customer is selected or a new customer is created from these editable fields.
+                            </div>
+
+                            <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>
+                        </form>
+                    @endif
+                </div>
+
+                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+                    <h3 class="text-lg font-black text-gray-900">Attachments</h3>
+                    @if ($attachments->isEmpty())
+                        <p class="mt-2 text-sm text-gray-500">No attachments.</p>
+                    @else
+                        <div class="mt-3 space-y-2">
+                            @foreach ($attachments as $attachment)
+                                <div class="rounded-xl border border-gray-200 p-3 text-sm">
+                                    <div class="font-bold text-gray-900">{{ $attachment->original_name ?? $attachment->path ?? 'Attachment' }}</div>
+                                    <div class="mt-1 text-xs text-gray-500">{{ $attachment->mime_type ?? 'file' }}</div>
+                                </div>
                             @endforeach
                         </div>
                     @endif
-
-                    <dl class="mt-6 space-y-3 border-t border-gray-100 pt-5 text-sm">
-                        <div class="flex justify-between gap-4">
-                            <dt class="font-bold text-gray-500">Reviewed</dt>
-                            <dd class="text-right font-semibold text-gray-900">
-                                {{ $orderRequest->reviewed_at ? \Illuminate\Support\Carbon::parse($orderRequest->reviewed_at)->format('d M Y H:i') : 'Not yet' }}
-                            </dd>
-                        </div>
-                        <div class="flex justify-between gap-4">
-                            <dt class="font-bold text-gray-500">Reviewed by</dt>
-                            <dd class="text-right font-semibold text-gray-900">{{ $orderRequest->reviewed_by_name ?: '—' }}</dd>
-                        </div>
-                        <div class="flex justify-between gap-4">
-                            <dt class="font-bold text-gray-500">Source</dt>
-                            <dd class="text-right font-semibold text-gray-900">{{ $orderRequest->source }}</dd>
-                        </div>
-                    </dl>
-                </section>
-
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Internal review note</h3>
-                    <p class="mt-1 text-sm text-gray-500">Use this for staff-only comments before conversion.</p>
-
-                    <form method="POST" action="{{ route('order-requests.notes.store', $orderRequest->id) }}" class="mt-4">
-                        @csrf
-                        <textarea
-                            name="body"
-                            rows="4"
-                            required
-                            class="w-full rounded-2xl border-gray-200 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                            placeholder="Example: Customer forgot colour. Need confirmation before approving."
-                        >{{ old('body') }}</textarea>
-
-                        <button class="mt-3 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white transition hover:bg-slate-800">
-                            Save internal note
-                        </button>
-                    </form>
-                </section>
-
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Review timeline</h3>
-                    <div class="mt-4 space-y-3">
-                        @forelse ($reviewNotes as $note)
-                            <article class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <p class="text-sm font-black text-slate-900">{{ $note->title ?: 'Review note' }}</p>
-                                        <p class="mt-1 text-xs text-slate-500">
-                                            {{ $note->created_by_name ?: 'Staff' }} ·
-                                            {{ $note->occurred_at ? \Illuminate\Support\Carbon::parse($note->occurred_at)->format('d M Y H:i') : \Illuminate\Support\Carbon::parse($note->created_at)->format('d M Y H:i') }}
-                                        </p>
-                                    </div>
-                                    <span class="rounded-full {{ $note->type === 'review_status' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600' }} px-2 py-1 text-[10px] font-black uppercase">
-                                        {{ $note->type === 'review_status' ? 'Status' : 'Note' }}
-                                    </span>
-                                </div>
-                                <p class="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{{ $note->body }}</p>
-                            </article>
-                        @empty
-                            <p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">No internal review notes yet.</p>
-                        @endforelse
-                    </div>
-                </section>
-
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Retailer summary</h3>
-                    <div class="mt-4 space-y-3">
-                        @forelse ($retailerGroups as $group)
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <div class="font-black text-slate-900">{{ $group->name }}</div>
-                                <div class="mt-1 flex justify-between text-sm text-slate-500">
-                                    <span>{{ $group->item_count }} item{{ $group->item_count === 1 ? '' : 's' }}</span>
-                                    <span class="font-bold text-slate-700">£{{ number_format($group->subtotal, 2) }}</span>
-                                </div>
-                            </div>
-                        @empty
-                            <p class="text-sm text-gray-500">No retailer data yet.</p>
-                        @endforelse
-                    </div>
-                </section>
-
-                <section class="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Attachments</h3>
-                    <div class="mt-4 space-y-3">
-                        @forelse ($attachments as $attachment)
-                            <a
-                                href="{{ route('order-requests.attachments.show', [$orderRequest->id, $attachment->id]) }}"
-                                class="block rounded-2xl border border-gray-200 p-4 hover:border-indigo-300 hover:bg-indigo-50"
-                            >
-                                <div class="break-words text-sm font-black text-gray-900">{{ $attachment->original_name }}</div>
-                                <div class="mt-1 text-xs text-gray-500">
-                                    {{ $attachment->mime ?: 'file' }}
-                                    @if ($attachment->size)
-                                        · {{ number_format($attachment->size / 1024, 1) }} KB
-                                    @endif
-                                </div>
-                            </a>
-                        @empty
-                            <p class="text-sm text-gray-500">No attachments uploaded.</p>
-                        @endforelse
-                    </div>
-                </section>
+                </div>
             </aside>
         </div>
     </div>
