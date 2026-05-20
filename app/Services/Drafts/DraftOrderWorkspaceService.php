@@ -133,6 +133,58 @@ class DraftOrderWorkspaceService
             ->get();
     }
 
+    public function customerDetails(int $customerId): array
+    {
+        $email = null;
+        $phone = null;
+        $address = null;
+
+        if (Schema::hasTable('customer_emails') && Schema::hasTable('emails')) {
+            $row = DB::table('customer_emails as ce')
+                ->join('emails as e', 'e.id', '=', 'ce.email_id')
+                ->where('ce.customer_id', $customerId)
+                ->where('ce.is_active', 1)
+                ->orderByDesc('ce.is_primary')
+                ->select('e.email')
+                ->first();
+            $email = $row->email ?? null;
+        }
+
+        if (Schema::hasTable('customer_phones') && Schema::hasTable('phones')) {
+            $row = DB::table('customer_phones as cp')
+                ->join('phones as p', 'p.id', '=', 'cp.phone_id')
+                ->where('cp.customer_id', $customerId)
+                ->where('cp.is_active', 1)
+                ->orderByDesc('cp.is_primary')
+                ->select('p.phone')
+                ->first();
+            if ($row) {
+                $phone = trim((string) ($row->phone ?? ''));
+            }
+        }
+
+        if (Schema::hasTable('customer_addresses') && Schema::hasTable('addresses')) {
+            $row = DB::table('customer_addresses as ca')
+                ->join('addresses as a', 'a.id', '=', 'ca.address_id')
+                ->leftJoin('countries as c', 'c.id', '=', 'a.country_id')
+                ->where('ca.customer_id', $customerId)
+                ->where('ca.is_active', 1)
+                ->orderByDesc('ca.is_primary')
+                ->select('a.line1', 'a.line2', 'a.city', 'a.region', 'a.postcode', 'c.name as country_name')
+                ->first();
+            if ($row) {
+                $parts = array_filter([$row->line1, $row->line2, $row->city, $row->region, $row->postcode, $row->country_name]);
+                $address = implode("\n", $parts);
+            }
+        }
+
+        return [
+            'email' => $email,
+            'phone' => $phone,
+            'address' => $address,
+        ];
+    }
+
     public function updateDraft(int $draftId, array $data, int $userId): void
     {
         DB::table('draft_orders')->where('id', $draftId)->update([

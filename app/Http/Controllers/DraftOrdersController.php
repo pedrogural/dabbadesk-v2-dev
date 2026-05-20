@@ -32,6 +32,7 @@ class DraftOrdersController extends Controller
             'items' => $drafts->items($draftOrder),
             'retailerSummaries' => $drafts->retailerSummaries($draftOrder),
             'notes' => $drafts->notes($draftOrder),
+            'customerDetails' => $drafts->customerDetails((int) $draft->customer_id),
             'retailers' => $drafts->retailers(),
             'staffUsers' => $drafts->staffUsers(),
             'statusOptions' => $drafts->statusOptions(),
