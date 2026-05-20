@@ -9,7 +9,46 @@
         $activeTab = request('tab', 'products');
     @endphp
 
-    <div class="space-y-5" x-data="{ tab: '{{ $activeTab }}', itemFilter: '' }">
+    <div class="space-y-5" x-data="{
+        tab: '{{ $activeTab }}',
+        itemFilter: '',
+        detectingRetailer: false,
+        retailerDetectionMessage: '',
+        async detectRetailer(urlInputId, retailerSelectId) {
+            const input = document.getElementById(urlInputId);
+            const select = document.getElementById(retailerSelectId);
+            const url = input ? input.value.trim() : '';
+            if (!url || !select) return;
+            this.detectingRetailer = true;
+            this.retailerDetectionMessage = 'Checking retailer...';
+            try {
+                const response = await fetch('{{ route('draft-orders.detect-retailer') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({ url })
+                });
+                const data = await response.json();
+                const retailer = data.retailer || {};
+                if (retailer.final_url && input.value !== retailer.final_url) input.value = retailer.final_url;
+                if (retailer.retailer_id) {
+                    select.value = retailer.retailer_id;
+                    this.retailerDetectionMessage = 'Retailer detected: ' + (retailer.name || 'matched');
+                } else if (retailer.name) {
+                    this.retailerDetectionMessage = 'Possible retailer: ' + retailer.name + '. Please choose the matching retailer from the list.';
+                } else {
+                    this.retailerDetectionMessage = 'Retailer not recognised. Please choose manually.';
+                }
+            } catch (e) {
+                this.retailerDetectionMessage = 'Could not check retailer. Please choose manually.';
+            } finally {
+                this.detectingRetailer = false;
+            }
+        }
+    }">
         @if (session('success'))
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800">
                 {{ session('success') }}
@@ -76,11 +115,11 @@
                             @csrf
                             <div class="lg:col-span-4">
                                 <label class="text-xs font-black uppercase tracking-widest text-slate-500">Product URL</label>
-                                <input name="url" placeholder="https://..." class="mt-2 w-full rounded-2xl border-slate-300 text-sm shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                                <input id="add_product_url" name="url" placeholder="https://..." @blur="detectRetailer('add_product_url', 'add_retailer_id')" class="mt-2 w-full rounded-2xl border-slate-300 text-sm shadow-sm focus:border-purple-500 focus:ring-purple-500">
                             </div>
                             <div class="lg:col-span-3">
                                 <label class="text-xs font-black uppercase tracking-widest text-slate-500">Retailer</label>
-                                <select name="retailer_id" required class="mt-2 w-full rounded-2xl border-slate-300 text-sm shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                                <select id="add_retailer_id" name="retailer_id" required class="mt-2 w-full rounded-2xl border-slate-300 text-sm shadow-sm focus:border-purple-500 focus:ring-purple-500">
                                     <option value="">Choose retailer...</option>
                                     @foreach ($retailers as $retailer)
                                         <option value="{{ $retailer->id }}">{{ $retailer->name }}</option>
@@ -97,6 +136,12 @@
                             </div>
                             <div class="lg:col-span-1 lg:pt-7">
                                 <button type="submit" class="w-full rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white hover:bg-purple-700">Add</button>
+                            </div>
+                            <div class="lg:col-span-12 -mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                                <button type="button" @click="detectRetailer('add_product_url', 'add_retailer_id')" class="rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-purple-700 hover:bg-purple-100" :disabled="detectingRetailer">
+                                    Detect retailer
+                                </button>
+                                <span x-text="retailerDetectionMessage" class="text-slate-500"></span>
                             </div>
                             <div class="lg:col-span-7">
                                 <label class="text-xs font-black uppercase tracking-widest text-slate-500">Description / item notes</label>

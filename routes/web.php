@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
 
     Route::get('/draft-orders', [DraftOrdersController::class, 'index'])->name('draft-orders.index');
+    Route::post('/draft-orders/detect-retailer', [DraftOrdersController::class, 'detectRetailer'])->name('draft-orders.detect-retailer');
     Route::get('/draft-orders/{draftOrder}', [DraftOrdersController::class, 'show'])->name('draft-orders.show');
     Route::patch('/draft-orders/{draftOrder}', [DraftOrdersController::class, 'update'])->name('draft-orders.update');
     Route::post('/draft-orders/{draftOrder}/items', [DraftOrdersController::class, 'addItem'])->name('draft-orders.items.store');

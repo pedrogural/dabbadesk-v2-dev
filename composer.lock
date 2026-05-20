@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "095ab2ba1cb7ab569fd5b734ec0e18fd",
+    "content-hash": "7b9a172c9cb8732549734d8ad946c40f",
     "packages": [
         {
             "name": "brick/math",
@@ -134,6 +134,32 @@
                 }
             ],
             "time": "2024-02-09T16:56:22+00:00"
+        },
+        {
+            "name": "dabba-direct/intake-tools",
+            "version": "1.0.0",
+            "dist": {
+                "type": "path",
+                "url": "../dabba-shared/intake-tools",
+                "reference": "0291bdaaf4be78c5270d1a13bc78cfb44790d230"
+            },
+            "require": {
+                "php": "^8.4"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "DabbaDirect\\IntakeTools\\": "src/"
+                }
+            },
+            "license": [
+                "proprietary"
+            ],
+            "description": "Shared Dabba Direct intake and retailer detection tools.",
+            "transport-options": {
+                "symlink": true,
+                "relative": true
+            }
         },
         {
             "name": "dflydev/dot-access-data",
@@ -8462,7 +8488,7 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": "^8.3"
+        "php": "^8.4"
     },
     "platform-dev": {},
     "plugin-api-version": "2.9.0"

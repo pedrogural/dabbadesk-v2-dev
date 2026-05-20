@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Drafts\DraftOrderWorkspaceService;
+use App\Services\Drafts\DraftRetailerDetectionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -36,6 +37,21 @@ class DraftOrdersController extends Controller
             'retailers' => $drafts->retailers(),
             'staffUsers' => $drafts->staffUsers(),
             'statusOptions' => $drafts->statusOptions(),
+        ]);
+    }
+
+    public function detectRetailer(Request $request, DraftRetailerDetectionService $detector)
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'max:2048'],
+            'manual_retailer_name' => ['nullable', 'string', 'max:191'],
+        ]);
+
+        $result = $detector->detect($data['url'], $data['manual_retailer_name'] ?? null);
+
+        return response()->json([
+            'ok' => true,
+            'retailer' => $result->toArray(),
         ]);
     }
 
