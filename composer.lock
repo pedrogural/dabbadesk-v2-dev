@@ -137,14 +137,14 @@
         },
         {
             "name": "dabba-direct/intake-tools",
-            "version": "1.1.0",
+            "version": "1.2.0",
             "dist": {
                 "type": "path",
                 "url": "../dabba-shared/intake-tools",
-                "reference": "02b2475acb3e4767bcc5e7968bfc6ec64917d92d"
+                "reference": "9375c7b837061e0b01872a925c398807821fd026"
             },
             "require": {
-                "php": "^8.4"
+                "php": "^8.2|^8.3|^8.4"
             },
             "type": "library",
             "autoload": {
