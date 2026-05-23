@@ -12,15 +12,17 @@
     @php
         $requestName = trim(($requestRow->customer_first_name ?? '') . ' ' . ($requestRow->customer_last_name ?? '')) ?: ($requestRow->customer_company_name ?: 'Unknown customer');
         $defaultMode = old('customer_mode', $selectedCustomer ? 'existing' : 'create');
-        $existingFirst = old('first_name', $selectedCustomer->first_name ?? $requestRow->customer_first_name ?? '');
-        $existingLast = old('last_name', $selectedCustomer->last_name ?? $requestRow->customer_last_name ?? '');
-        $existingCompany = old('company_name', $selectedCustomer->company_name ?? $requestRow->customer_company_name ?? '');
-        $existingEmail = old('email', $selectedCustomer->email ?? $requestRow->customer_email ?? '');
-        $existingPhone = old('phone_digits', $selectedCustomer->phone_digits ?? $requestRow->customer_phone_digits ?? '');
-        $existingPhoneCountry = old('phone_country_id', $selectedCustomer->phone_country_id ?? $requestRow->customer_phone_country_id ?? '');
-        $existingAddress = old('address_line1', $selectedCustomer->address_line1 ?? $requestRow->customer_address_line1 ?? '');
-        $existingPostcode = old('address_postcode', $selectedCustomer->address_postcode ?? $requestRow->customer_address_postcode ?? '');
-        $existingAddressCountry = old('address_country_id', $selectedCustomer->address_country_id ?? $requestRow->customer_address_country_id ?? '');
+        $existingCustomerAction = old('existing_customer_action', 'keep');
+        $hasCustomerDifferences = ! empty($customerDifferences ?? []);
+        $existingFirst = old('first_name', $requestRow->customer_first_name ?? $selectedCustomer->first_name ?? '');
+        $existingLast = old('last_name', $requestRow->customer_last_name ?? $selectedCustomer->last_name ?? '');
+        $existingCompany = old('company_name', $requestRow->customer_company_name ?? $selectedCustomer->company_name ?? '');
+        $existingEmail = old('email', $requestRow->customer_email ?? $selectedCustomer->email ?? '');
+        $existingPhone = old('phone_digits', $requestRow->customer_phone_digits ?? $selectedCustomer->phone_digits ?? '');
+        $existingPhoneCountry = old('phone_country_id', $requestRow->customer_phone_country_id ?? $selectedCustomer->phone_country_id ?? '');
+        $existingAddress = old('address_line1', $requestRow->customer_address_line1 ?? $selectedCustomer->address_line1 ?? '');
+        $existingPostcode = old('address_postcode', $requestRow->customer_address_postcode ?? $selectedCustomer->address_postcode ?? '');
+        $existingAddressCountry = old('address_country_id', $requestRow->customer_address_country_id ?? $selectedCustomer->address_country_id ?? '');
     @endphp
 
     <div class="space-y-5">
@@ -186,6 +188,62 @@
                                 @elseif ($customerOptions->isEmpty())
                                     <p class="mt-2 text-xs font-semibold text-amber-700">No match yet. Search again or use create new below.</p>
                                 @endif
+
+
+                                @if ($selectedCustomer)
+                                    <div class="mt-4 rounded-2xl border {{ $hasCustomerDifferences ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }} p-4">
+                                        <div class="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h4 class="text-sm font-black {{ $hasCustomerDifferences ? 'text-amber-950' : 'text-emerald-950' }}">
+                                                    {{ $hasCustomerDifferences ? 'Customer details differ from stored record' : 'Submitted details match the selected customer' }}
+                                                </h4>
+                                                <p class="mt-1 text-xs {{ $hasCustomerDifferences ? 'text-amber-800' : 'text-emerald-800' }}">
+                                                    Existing customers are now kept unchanged unless you deliberately choose to update them.
+                                                </p>
+                                            </div>
+                                            <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide {{ $hasCustomerDifferences ? 'text-amber-700' : 'text-emerald-700' }}">
+                                                {{ $hasCustomerDifferences ? count($customerDifferences) . ' difference' . (count($customerDifferences) === 1 ? '' : 's') : 'safe' }}
+                                            </span>
+                                        </div>
+
+                                        @if ($hasCustomerDifferences)
+                                            <div class="mt-3 space-y-2">
+                                                @foreach ($customerDifferences as $difference)
+                                                    <div class="rounded-xl bg-white p-3 ring-1 ring-amber-200">
+                                                        <p class="text-xs font-black uppercase tracking-wide text-amber-700">{{ $difference['label'] }}</p>
+                                                        <div class="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+                                                            <div>
+                                                                <p class="font-bold text-gray-500">Stored customer record</p>
+                                                                <p class="mt-1 whitespace-pre-wrap font-semibold text-gray-900">{{ $difference['stored'] }}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p class="font-bold text-gray-500">Submitted in request</p>
+                                                                <p class="mt-1 whitespace-pre-wrap font-semibold text-gray-900">{{ $difference['submitted'] }}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        @endif
+
+                                        <div class="mt-4 grid gap-2">
+                                            <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 ring-1 ring-gray-200">
+                                                <input type="radio" name="existing_customer_action" value="keep" class="mt-1" @checked($existingCustomerAction !== 'update')>
+                                                <span>
+                                                    <span class="block text-sm font-black text-gray-900">Use existing customer without changing their saved details</span>
+                                                    <span class="block text-xs text-gray-500">Safest default. The request can still be converted to a draft for this customer.</span>
+                                                </span>
+                                            </label>
+                                            <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 ring-1 ring-gray-200">
+                                                <input type="radio" name="existing_customer_action" value="update" class="mt-1" @checked($existingCustomerAction === 'update')>
+                                                <span>
+                                                    <span class="block text-sm font-black text-gray-900">Update existing customer using the editable details below</span>
+                                                    <span class="block text-xs text-gray-500">Use when the customer has changed address, phone or email, or the saved record needs correction.</span>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
 
                             <div class="rounded-2xl border border-gray-200 p-4">
@@ -200,7 +258,7 @@
 
                             <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4">
                                 <div class="flex items-center justify-between gap-2">
-                                    <h4 class="text-sm font-black text-blue-950">Customer details to save</h4>
+                                    <h4 class="text-sm font-black text-blue-950">Submitted/editable customer details</h4>
                                     <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide text-blue-700">editable</span>
                                 </div>
 
@@ -255,7 +313,7 @@
                             </div>
 
                             <div class="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                                Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. The draft will not convert unless a customer is selected or a new customer is created from these editable fields.
+                                Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. For existing customers, saved customer details are only changed when you choose the update option above.
                             </div>
 
                             <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>

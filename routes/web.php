@@ -24,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
     // Backward-compatible alias used by earlier conversion/review packs.
     Route::get('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'show'])->name('order-requests.review');
+    Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed']);
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
 
     Route::get('/draft-orders', [DraftOrdersController::class, 'index'])->name('draft-orders.index');

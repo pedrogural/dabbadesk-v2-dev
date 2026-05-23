@@ -8,9 +8,9 @@ use RuntimeException;
 
 class ConvertOrderRequestService
 {
-    public function convert(int $orderRequestId, string $customerMode, ?int $selectedCustomerId, array $customerPayload, int $userId): int
+    public function convert(int $orderRequestId, string $customerMode, ?int $selectedCustomerId, array $customerPayload, int $userId, string $existingCustomerAction = 'keep'): int
     {
-        return DB::transaction(function () use ($orderRequestId, $customerMode, $selectedCustomerId, $customerPayload, $userId): int {
+        return DB::transaction(function () use ($orderRequestId, $customerMode, $selectedCustomerId, $customerPayload, $userId, $existingCustomerAction): int {
             $request = DB::table('order_requests')
                 ->where('id', $orderRequestId)
                 ->lockForUpdate()
@@ -36,7 +36,7 @@ class ConvertOrderRequestService
             }
 
             $customerId = $customerMode === 'existing'
-                ? $this->updateExistingCustomerForConversion((int) $selectedCustomerId, $customerPayload, $userId)
+                ? $this->updateExistingCustomerForConversion((int) $selectedCustomerId, $customerPayload, $userId, $existingCustomerAction)
                 : $this->createCustomerFromPayload($customerPayload, $userId);
 
             if (! DB::table('customers')->where('id', $customerId)->exists()) {
@@ -114,7 +114,7 @@ class ConvertOrderRequestService
         });
     }
 
-    private function updateExistingCustomerForConversion(int $customerId, array $payload, int $userId): int
+    private function updateExistingCustomerForConversion(int $customerId, array $payload, int $userId, string $existingCustomerAction = 'keep'): int
     {
         if ($customerId <= 0) {
             throw new RuntimeException('Choose an existing customer before converting.');
@@ -122,6 +122,10 @@ class ConvertOrderRequestService
 
         if (! DB::table('customers')->where('id', $customerId)->exists()) {
             throw new RuntimeException('Selected customer could not be found.');
+        }
+
+        if ($existingCustomerAction !== 'update') {
+            return $customerId;
         }
 
         $normal = $this->normaliseCustomerPayload($payload);

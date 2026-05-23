@@ -20,12 +20,21 @@ class OrderRequestsController extends Controller
 
         $requests = DB::table('order_requests')
             ->select([
-                'id', 'request_ref', 'customer_first_name', 'customer_last_name', 'customer_company_name',
-                'customer_email', 'status', 'estimated_total', 'submitted_at', 'created_at',
-                'converted_at', 'converted_draft_order_id',
+                'id',
+                'request_ref',
+                'customer_first_name',
+                'customer_last_name',
+                'customer_company_name',
+                'customer_email',
+                'status',
+                'estimated_total',
+                'submitted_at',
+                'created_at',
+                'converted_at',
+                'converted_draft_order_id',
             ])
-            ->when($status === 'open', fn ($query) => $query->whereNull('converted_at'))
-            ->when($status !== '' && $status !== 'all' && $status !== 'open', fn ($query) => $query->where('status', $status))
+            ->when($status === 'open', fn($query) => $query->whereNull('converted_at'))
+            ->when($status !== '' && $status !== 'all' && $status !== 'open', fn($query) => $query->where('status', $status))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($inner) use ($search) {
                     $inner
@@ -90,6 +99,7 @@ class OrderRequestsController extends Controller
 
         $selectedCustomerId = (int) old('customer_id', $request->query('customer_id', $customerOptions->first()->id ?? 0));
         $selectedCustomer = $selectedCustomerId > 0 ? $this->customerProfile($selectedCustomerId) : null;
+        $customerDifferences = $selectedCustomer ? $this->customerDifferences($requestRow, $selectedCustomer) : [];
 
         return view('order-requests.show', [
             'requestRow' => $requestRow,
@@ -101,6 +111,7 @@ class OrderRequestsController extends Controller
             'customerOptions' => $customerOptions,
             'selectedCustomerId' => $selectedCustomerId,
             'selectedCustomer' => $selectedCustomer,
+            'customerDifferences' => $customerDifferences,
             'countries' => $this->countryOptions(),
             'newRequestCount' => $this->newRequestCount(),
         ]);
@@ -135,6 +146,7 @@ class OrderRequestsController extends Controller
             'address_line1' => ['nullable', 'string', 'max:191'],
             'address_postcode' => ['nullable', 'string', 'max:32'],
             'address_country_id' => ['nullable', 'integer', 'exists:countries,id'],
+            'existing_customer_action' => ['nullable', Rule::in(['keep', 'update'])],
         ]);
 
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
@@ -147,15 +159,22 @@ class OrderRequestsController extends Controller
                 (string) $validated['customer_mode'],
                 ! empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
                 $validated,
-                (int) auth()->id()
+                (int) auth()->id(),
+                (string) ($validated['existing_customer_action'] ?? 'keep')
             );
         } catch (Throwable $exception) {
             report($exception);
 
-            return back()->withInput()->withErrors(['convert' => $exception->getMessage() ?: 'Conversion failed.']);
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'convert' => 'Failed to convert order request.',
+                ]);
         }
 
-        return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Converted to draft order #' . $draftId . '.');
+        return redirect()
+            ->route('draft-orders.show', $draftId)
+            ->with('success', 'Order request converted successfully.');
     }
 
     public function counter(): JsonResponse
@@ -202,8 +221,12 @@ class OrderRequestsController extends Controller
             })
             ->groupBy('customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name')
             ->select([
-                'customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name',
-                DB::raw('MIN(emails.email) as email'), DB::raw('MIN(phones.phone) as phone'),
+                'customers.id',
+                'customers.first_name',
+                'customers.last_name',
+                'customers.company_name',
+                DB::raw('MIN(emails.email) as email'),
+                DB::raw('MIN(phones.phone) as phone'),
             ])
             ->limit(8)
             ->get();
@@ -238,8 +261,12 @@ class OrderRequestsController extends Controller
             })
             ->groupBy('customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name')
             ->select([
-                'customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name',
-                DB::raw('MIN(emails.email) as email'), DB::raw('MIN(phones.phone) as phone'),
+                'customers.id',
+                'customers.first_name',
+                'customers.last_name',
+                'customers.company_name',
+                DB::raw('MIN(emails.email) as email'),
+                DB::raw('MIN(phones.phone) as phone'),
             ])
             ->orderBy('customers.first_name')
             ->limit(20)
@@ -269,11 +296,89 @@ class OrderRequestsController extends Controller
             ->leftJoin('addresses', 'addresses.id', '=', 'customer_addresses.address_id')
             ->where('customers.id', $customerId)
             ->select([
-                'customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name',
-                'emails.email', 'phones.phone as phone_digits', 'phones.country_id as phone_country_id',
-                'addresses.line1 as address_line1', 'addresses.postcode as address_postcode', 'addresses.country_id as address_country_id',
+                'customers.id',
+                'customers.first_name',
+                'customers.last_name',
+                'customers.company_name',
+                'emails.email',
+                'phones.phone as phone_digits',
+                'phones.country_id as phone_country_id',
+                'addresses.line1 as address_line1',
+                'addresses.postcode as address_postcode',
+                'addresses.country_id as address_country_id',
             ])
             ->first();
+    }
+
+
+    private function customerDifferences(object $requestRow, object $selectedCustomer): array
+    {
+        $checks = [
+            'name' => [
+                'label' => 'Name',
+                'stored' => trim((string) ($selectedCustomer->first_name ?? '') . ' ' . (string) ($selectedCustomer->last_name ?? '')),
+                'submitted' => trim((string) ($requestRow->customer_first_name ?? '') . ' ' . (string) ($requestRow->customer_last_name ?? '')),
+            ],
+            'company' => [
+                'label' => 'Company',
+                'stored' => (string) ($selectedCustomer->company_name ?? ''),
+                'submitted' => (string) ($requestRow->customer_company_name ?? ''),
+            ],
+            'email' => [
+                'label' => 'Email',
+                'stored' => (string) ($selectedCustomer->email ?? ''),
+                'submitted' => (string) ($requestRow->customer_email ?? ''),
+            ],
+            'phone' => [
+                'label' => 'Phone',
+                'stored' => (string) ($selectedCustomer->phone_digits ?? ''),
+                'submitted' => (string) ($requestRow->customer_phone_digits ?? ''),
+            ],
+            'address' => [
+                'label' => 'Address',
+                'stored' => (string) ($selectedCustomer->address_line1 ?? ''),
+                'submitted' => (string) ($requestRow->customer_address_line1 ?? ''),
+            ],
+            'postcode' => [
+                'label' => 'Postcode',
+                'stored' => (string) ($selectedCustomer->address_postcode ?? ''),
+                'submitted' => (string) ($requestRow->customer_address_postcode ?? ''),
+            ],
+            'country' => [
+                'label' => 'Address country',
+                'stored' => (string) ($selectedCustomer->address_country_id ?? ''),
+                'submitted' => (string) ($requestRow->customer_address_country_id ?? ''),
+            ],
+        ];
+
+        $differences = [];
+        foreach ($checks as $key => $check) {
+            $stored = trim((string) $check['stored']);
+            $submitted = trim((string) $check['submitted']);
+
+            if ($submitted === '') {
+                continue;
+            }
+
+            if ($this->normaliseComparable($stored) !== $this->normaliseComparable($submitted)) {
+                $differences[$key] = [
+                    'label' => $check['label'],
+                    'stored' => $stored !== '' ? $stored : '—',
+                    'submitted' => $submitted !== '' ? $submitted : '—',
+                ];
+            }
+        }
+
+        return $differences;
+    }
+
+    private function normaliseComparable(string $value): string
+    {
+        $value = strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value) ?: '';
+        $value = preg_replace('/[^a-z0-9@.\-\s]/', '', $value) ?: $value;
+
+        return trim($value);
     }
 
     private function countryOptions()
