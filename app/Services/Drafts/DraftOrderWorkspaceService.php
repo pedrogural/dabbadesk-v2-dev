@@ -82,9 +82,8 @@ class DraftOrderWorkspaceService
             ->leftJoin('retailers as r', 'r.id', '=', 'i.retailer_id')
             ->where('i.draft_order_id', $draftId)
             ->select('i.*', 'r.name as retailer_name', 'r.base_url as retailer_base_url')
-            ->orderBy('r.name')
-            ->orderBy('i.sort_order')
-            ->orderBy('i.id')
+            ->orderByDesc('i.created_at')
+            ->orderByDesc('i.id')
             ->get();
     }
 
