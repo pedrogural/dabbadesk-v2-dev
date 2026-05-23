@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use DabbaDirect\IntakeTools\ProductUrlResolver;
+use DabbaDirect\IntakeTools\UrlTools;
 
 class DraftOrdersController extends Controller
 {
@@ -125,7 +127,7 @@ class DraftOrdersController extends Controller
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft settings updated.');
     }
 
-    public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts)
+    public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, ProductUrlResolver $urlResolver)
     {
         $data = $request->validate([
             'retailer_id' => ['required', 'integer', 'exists:retailers,id'],
@@ -137,6 +139,13 @@ class DraftOrdersController extends Controller
             'unit_price' => ['required', 'numeric', 'min:0'],
             'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (! empty($data['url'])) {
+            $normal = $urlResolver->resolve((string) $data['url']);
+            if ($normal !== null && trim($normal->finalUrl) !== '') {
+                $data['url'] = $normal->finalUrl;
+            }
+        }
 
         $drafts->updateItem($draftOrder, $item, $data, Auth::id());
 

@@ -7,6 +7,7 @@ use DabbaDirect\IntakeTools\ProductUrlResolver;
 use DabbaDirect\IntakeTools\RetailerDetectionResult;
 use DabbaDirect\IntakeTools\UrlTools;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DraftRetailerDetectionService
 {
@@ -42,6 +43,8 @@ class DraftRetailerDetectionService
                 warning: $resolved->warning,
                 retailerId: (int) $matched->id,
                 baseUrl: (string) $matched->base_url,
+                productId: $resolved->productId,
+                productIdType: $resolved->productIdType,
             );
         }
 
@@ -54,6 +57,8 @@ class DraftRetailerDetectionService
                 confidence: 0.75,
                 source: 'host_fallback',
                 warning: $resolved->warning,
+                productId: $resolved->productId,
+                productIdType: $resolved->productIdType,
             );
         }
 
@@ -65,6 +70,8 @@ class DraftRetailerDetectionService
                 confidence: 1.0,
                 source: 'manual',
                 warning: $resolved->warning,
+                productId: $resolved->productId,
+                productIdType: $resolved->productIdType,
             );
         }
 
@@ -75,6 +82,8 @@ class DraftRetailerDetectionService
             confidence: 0.0,
             source: 'unknown',
             warning: $resolved->warning,
+            productId: $resolved->productId,
+            productIdType: $resolved->productIdType,
         );
     }
 
@@ -82,12 +91,20 @@ class DraftRetailerDetectionService
     {
         if ($host === '') return null;
 
-        $retailers = DB::table('retailers')
-            ->where('is_active', 1)
-            ->whereNull('deleted_at')
-            ->select('id', 'name', 'base_url')
-            ->get();
+        $query = DB::table('retailers')
+            ->select('id', 'name', 'base_url');
 
+        if (Schema::hasColumn('retailers', 'is_active')) {
+            $query->where('is_active', 1);
+        } elseif (Schema::hasColumn('retailers', 'active')) {
+            $query->where('active', 1);
+        }
+
+        if (Schema::hasColumn('retailers', 'deleted_at')) {
+            $query->whereNull('deleted_at');
+        }
+
+        $retailers = $query->get();
         $best = null;
         $bestLength = 0;
 

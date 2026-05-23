@@ -137,11 +137,11 @@
         },
         {
             "name": "dabba-direct/intake-tools",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "dist": {
                 "type": "path",
                 "url": "../dabba-shared/intake-tools",
-                "reference": "0291bdaaf4be78c5270d1a13bc78cfb44790d230"
+                "reference": "02b2475acb3e4767bcc5e7968bfc6ec64917d92d"
             },
             "require": {
                 "php": "^8.4"
@@ -149,13 +149,14 @@
             "type": "library",
             "autoload": {
                 "psr-4": {
-                    "DabbaDirect\\IntakeTools\\": "src/"
+                    "DabbaDirect\\CommerceTools\\": "src/CommerceTools/",
+                    "DabbaDirect\\IntakeTools\\": "src/IntakeTools/"
                 }
             },
             "license": [
                 "proprietary"
             ],
-            "description": "Shared Dabba Direct intake and retailer detection tools.",
+            "description": "Shared Dabba Direct commerce tools: URL resolution, URL cleaning and retailer intelligence.",
             "transport-options": {
                 "symlink": true,
                 "relative": true

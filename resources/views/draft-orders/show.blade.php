@@ -119,12 +119,12 @@
 
                         <form method="POST" action="{{ route('draft-orders.items.store', $draft->id) }}" class="space-y-4">
                             @csrf
-                            <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_300px_110px_150px_150px] 2xl:items-end">
+                            <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_260px_110px_150px] 2xl:items-end">
                                 <div>
                                     <label class="field-label">Product URL / code</label>
                                     <div class="flex gap-2">
-                                        <input name="url" x-model="newItem.url" @blur.debounce.300ms="detectRetailer()" placeholder="Paste product URL or product code" class="input-clean min-w-0 flex-1 text-sm">
-                                        <button type="button" @click="detectRetailer()" class="row-action" title="Detect retailer">Detect</button>
+                                        <input name="url" x-model="newItem.url" @blur.debounce.300ms="detectRetailer()" placeholder="Paste full product URL, Amazon short link, or product code" class="input-clean min-w-0 flex-1 text-sm">
+                                        <button type="button" @click="detectRetailer()" class="row-action shrink-0" title="Detect retailer">Detect</button>
                                     </div>
                                 </div>
                                 <div>
@@ -144,19 +144,19 @@
                                     <label class="field-label">Unit price £</label>
                                     <input name="unit_price" x-model="newItem.unitPrice" @focus="if (String(newItem.unitPrice) === '0' || String(newItem.unitPrice) === '0.00') newItem.unitPrice = ''" @blur="if (String(newItem.unitPrice).trim() === '') newItem.unitPrice = '0.00'" type="number" min="0" step="0.01" class="input-clean text-sm">
                                 </div>
-                                <button type="submit" class="rounded-2xl bg-purple-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700 whitespace-nowrap">Add item</button>
                             </div>
 
-                            <div class="grid gap-4 xl:grid-cols-[minmax(420px,1fr)_260px]">
+                            <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_240px_170px] xl:items-end">
                                 <div>
                                     <label class="field-label">Description / item notes</label>
-                                    <textarea name="description" rows="2" placeholder="Item details..." class="input-clean text-sm"></textarea>
+                                    <textarea name="description" rows="2" placeholder="Item details, colour, size, customer notes..." class="input-clean text-sm"></textarea>
                                 </div>
                                 <div>
                                     <label class="field-label">Product code / SKU</label>
                                     <input name="product_code" placeholder="Optional SKU" class="input-clean text-sm">
                                     <input type="hidden" name="sku" value="">
                                 </div>
+                                <button type="submit" class="rounded-2xl bg-purple-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700 whitespace-nowrap min-h-[46px]">Add item</button>
                             </div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600" x-text="detectMessage || 'Retailer detection is automatic. If a short URL resolves, the full product URL will be saved.'"></div>
                         </form>
