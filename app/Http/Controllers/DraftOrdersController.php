@@ -8,7 +8,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+use Throwable;
 use DabbaDirect\IntakeTools\ProductUrlResolver;
 use DabbaDirect\IntakeTools\UrlTools;
 
@@ -127,27 +130,126 @@ class DraftOrdersController extends Controller
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft settings updated.');
     }
 
-    public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, ProductUrlResolver $urlResolver)
+    public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)
     {
-        $data = $request->validate([
-            'retailer_id' => ['required', 'integer', 'exists:retailers,id'],
-            'description' => ['nullable', 'string'],
-            'url' => ['nullable', 'string'],
-            'product_code' => ['nullable', 'string', 'max:50'],
-            'sku' => ['nullable', 'string', 'max:100'],
-            'qty' => ['required', 'integer', 'min:1', 'max:999'],
-            'unit_price' => ['required', 'numeric', 'min:0'],
-            'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
+        Log::info('Draft item autosave reached controller', [
+            'draft_order_id' => $draftOrder,
+            'item_id' => $item,
+            'method' => $request->method(),
+            'is_ajax' => $request->ajax(),
+            'expects_json' => $request->expectsJson(),
+            'payload_keys' => array_keys($request->all()),
+            'payload' => $request->except(['_token']),
         ]);
 
+        try {
+            $data = $request->validate([
+                'retailer_id' => ['required', 'integer', 'exists:retailers,id'],
+                'description' => ['nullable', 'string'],
+                'url' => ['nullable', 'string', 'max:2048'],
+                'product_code' => ['nullable', 'string', 'max:191'],
+                'sku' => ['nullable', 'string', 'max:191'],
+                'qty' => ['required', 'integer', 'min:1', 'max:999'],
+                'unit_price' => ['required', 'numeric', 'min:0'],
+                'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
+            ]);
+        } catch (ValidationException $exception) {
+            Log::warning('Draft item autosave validation failed', [
+                'draft_order_id' => $draftOrder,
+                'item_id' => $item,
+                'errors' => $exception->errors(),
+                'payload' => $request->except(['_token']),
+            ]);
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Validation failed: ' . collect($exception->errors())->flatten()->first(),
+                    'errors' => $exception->errors(),
+                ], 422);
+            }
+
+            throw $exception;
+        }
+
+        $retailerChanged = false;
+        $urlResolveWarning = null;
+
+        $data['item_retailer_delivery_fee'] = $data['item_retailer_delivery_fee'] ?? 0;
+        $data['product_code'] = $data['product_code'] ?? null;
+        $data['sku'] = $data['sku'] ?? null;
+
         if (! empty($data['url'])) {
-            $normal = $urlResolver->resolve((string) $data['url']);
-            if ($normal !== null && trim($normal->finalUrl) !== '') {
-                $data['url'] = $normal->finalUrl;
+            try {
+                $detected = $detector->detect((string) $data['url'])->toArray();
+                $expandedUrl = $detected['final_url'] ?? $detected['finalUrl'] ?? null;
+                $detectedRetailerId = $detected['retailer_id'] ?? $detected['retailerId'] ?? null;
+                $productId = $detected['product_id'] ?? $detected['productId'] ?? null;
+
+                Log::info('Draft item autosave URL detector result', [
+                    'draft_order_id' => $draftOrder,
+                    'item_id' => $item,
+                    'detected' => $detected,
+                ]);
+
+                if (is_string($expandedUrl) && trim($expandedUrl) !== '') {
+                    $data['url'] = trim($expandedUrl);
+                }
+
+                if (! empty($detectedRetailerId) && (int) $detectedRetailerId !== (int) $data['retailer_id']) {
+                    $data['retailer_id'] = (int) $detectedRetailerId;
+                    $retailerChanged = true;
+                }
+
+                if (is_string($productId) && trim($productId) !== '' && trim((string) ($data['product_code'] ?? '')) === '') {
+                    $data['product_code'] = trim($productId);
+                }
+            } catch (Throwable $exception) {
+                Log::error('Draft item autosave URL resolving failed', [
+                    'draft_order_id' => $draftOrder,
+                    'item_id' => $item,
+                    'message' => $exception->getMessage(),
+                    'trace' => $exception->getTraceAsString(),
+                ]);
+                $urlResolveWarning = 'Saved without URL resolving. The product URL resolver failed for this link.';
             }
         }
 
-        $drafts->updateItem($draftOrder, $item, $data, Auth::id());
+        try {
+            $drafts->updateItem($draftOrder, $item, $data, Auth::id());
+        } catch (Throwable $exception) {
+            Log::error('Draft item autosave database update failed', [
+                'draft_order_id' => $draftOrder,
+                'item_id' => $item,
+                'data' => $data,
+                'message' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString(),
+            ]);
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'message' => 'Database update failed: ' . $exception->getMessage(),
+                ], 500);
+            }
+
+            throw $exception;
+        }
+
+        Log::info('Draft item autosave completed', [
+            'draft_order_id' => $draftOrder,
+            'item_id' => $item,
+            'retailer_changed' => $retailerChanged,
+            'warning' => $urlResolveWarning,
+        ]);
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'ok' => true,
+                'message' => $urlResolveWarning ?: ($retailerChanged ? 'Saved. Retailer changed after URL resolving.' : 'Saved.'),
+                'reload' => $retailerChanged,
+            ]);
+        }
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft item updated.');
     }
@@ -158,8 +260,8 @@ class DraftOrdersController extends Controller
             'retailer_id' => ['required', 'integer', 'exists:retailers,id'],
             'description' => ['nullable', 'string'],
             'url' => ['nullable', 'string'],
-            'product_code' => ['nullable', 'string', 'max:50'],
-            'sku' => ['nullable', 'string', 'max:100'],
+            'product_code' => ['nullable', 'string', 'max:191'],
+            'sku' => ['nullable', 'string', 'max:191'],
             'qty' => ['required', 'integer', 'min:1', 'max:999'],
             'unit_price' => ['required', 'numeric', 'min:0'],
             'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
@@ -183,9 +285,34 @@ class DraftOrdersController extends Controller
             ->with('last_added_item_id', $itemId);
     }
 
+
+    public function updateRetailerDelivery(int $draftOrder, int $retailer, Request $request, DraftOrderWorkspaceService $drafts)
+    {
+        $data = $request->validate([
+            'retailer_delivery_fee_total' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $drafts->updateRetailerDeliveryFee(
+            $draftOrder,
+            $retailer,
+            (float) ($data['retailer_delivery_fee_total'] ?? 0),
+            Auth::id()
+        );
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json(['ok' => true, 'message' => 'Retailer delivery fee updated.', 'reload' => true]);
+        }
+
+        return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Retailer delivery fee updated.');
+    }
+
     public function deleteItem(int $draftOrder, int $item, DraftOrderWorkspaceService $drafts)
     {
         $drafts->deleteItem($draftOrder, $item, Auth::id());
+
+        if (request()->expectsJson() || request()->ajax()) {
+            return response()->json(['ok' => true, 'message' => 'Draft item removed.']);
+        }
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft item removed.');
     }

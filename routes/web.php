@@ -24,7 +24,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
     // Backward-compatible alias used by earlier conversion/review packs.
     Route::get('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'show'])->name('order-requests.review');
-    Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed']);
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
 
     Route::get('/draft-orders', [DraftOrdersController::class, 'index'])->name('draft-orders.index');
@@ -35,6 +34,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/draft-orders/{draftOrder}', [DraftOrdersController::class, 'update'])->name('draft-orders.update');
     Route::post('/draft-orders/{draftOrder}/items', [DraftOrdersController::class, 'addItem'])->name('draft-orders.items.store');
     Route::patch('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'updateItem'])->name('draft-orders.items.update');
+    Route::patch('/draft-orders/{draftOrder}/retailers/{retailer}/delivery', [DraftOrdersController::class, 'updateRetailerDelivery'])->name('draft-orders.retailers.delivery.update');
     Route::delete('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'deleteItem'])->name('draft-orders.items.destroy');
     Route::post('/draft-orders/{draftOrder}/notes', [DraftOrdersController::class, 'addNote'])->name('draft-orders.notes.store');
 

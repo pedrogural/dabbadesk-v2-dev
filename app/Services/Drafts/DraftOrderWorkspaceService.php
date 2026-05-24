@@ -81,7 +81,7 @@ class DraftOrderWorkspaceService
         return DB::table('draft_order_items as i')
             ->leftJoin('retailers as r', 'r.id', '=', 'i.retailer_id')
             ->where('i.draft_order_id', $draftId)
-            ->select('i.*', 'r.name as retailer_name', 'r.base_url as retailer_base_url')
+            ->select('i.*', 'r.name as retailer_name', 'r.base_url as retailer_base_url', 'r.logo_path as retailer_logo_path')
             ->orderByDesc('i.created_at')
             ->orderByDesc('i.id')
             ->get();
@@ -92,7 +92,7 @@ class DraftOrderWorkspaceService
         return DB::table('draft_order_retailers as dr')
             ->leftJoin('retailers as r', 'r.id', '=', 'dr.retailer_id')
             ->where('dr.draft_order_id', $draftId)
-            ->select('dr.*', 'r.name as retailer_name')
+            ->select('dr.*', 'r.name as retailer_name', 'r.logo_path as retailer_logo_path')
             ->orderBy('r.name')
             ->get();
     }
@@ -291,14 +291,34 @@ class DraftOrderWorkspaceService
         ]);
     }
 
+    public function updateRetailerDeliveryFee(int $draftId, int $retailerId, float $fee, int $userId): void
+    {
+        $fee = round(max(0, $fee), 2);
+
+        DB::table('draft_order_retailers')
+            ->where('draft_order_id', $draftId)
+            ->where('retailer_id', $retailerId)
+            ->update([
+                'retailer_delivery_fee_total' => $fee,
+                'updated_by_user_id' => $userId,
+                'updated_at' => now(),
+            ]);
+
+        $this->recalculate($draftId, $userId);
+    }
+
     public function recalculate(int $draftId, ?int $userId = null): void
     {
         DB::transaction(function () use ($draftId, $userId) {
+            $existingRetailerDeliveryFees = DB::table('draft_order_retailers')
+                ->where('draft_order_id', $draftId)
+                ->pluck('retailer_delivery_fee_total', 'retailer_id');
+
             $items = DB::table('draft_order_items')
                 ->where('draft_order_id', $draftId)
                 ->select('retailer_id')
-                ->selectRaw('sum(line_subtotal) as subtotal')
-                ->selectRaw('sum(coalesce(item_retailer_delivery_fee, item_delivery_fee, 0)) as delivery')
+                ->selectRaw('sum(coalesce(qty, 1) * coalesce(unit_price, 0)) as subtotal')
+                ->selectRaw('sum(coalesce(item_retailer_delivery_fee, item_delivery_fee, 0)) as seller_delivery')
                 ->groupBy('retailer_id')
                 ->get();
 
@@ -314,19 +334,20 @@ class DraftOrderWorkspaceService
 
             foreach ($items as $row) {
                 $subtotal = round((float) $row->subtotal, 2);
-                $delivery = round((float) $row->delivery, 2);
+                $sellerDelivery = round((float) $row->seller_delivery, 2);
+                $retailerDelivery = round((float) ($existingRetailerDeliveryFees[$row->retailer_id] ?? 0), 2);
                 $fee = $draft && $draft->fee_mode === 'fee_disabled' ? 0.0 : max($min, round($subtotal * ($rate / 100), 2));
-                $grand = round($subtotal + $delivery + $fee, 2);
+                $grand = round($subtotal + $sellerDelivery + $retailerDelivery + $fee, 2);
 
                 $itemsSubtotal += $subtotal;
-                $deliveryTotal += $delivery;
+                $deliveryTotal += ($sellerDelivery + $retailerDelivery);
                 $feeTotal += $fee;
 
                 DB::table('draft_order_retailers')->insert([
                     'draft_order_id' => $draftId,
                     'retailer_id' => $row->retailer_id,
                     'retailer_subtotal' => $subtotal,
-                    'retailer_delivery_fee_total' => $delivery,
+                    'retailer_delivery_fee_total' => $retailerDelivery,
                     'dabba_fee_rate' => $rate,
                     'dabba_fee_min' => $min,
                     'dabba_fee_is_disabled' => $fee <= 0 ? 1 : 0,
