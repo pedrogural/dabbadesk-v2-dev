@@ -3,6 +3,12 @@
         Order Detail
     </x-slot>
 
+    @php
+        $customerRequestNotes = collect($notes ?? [])->filter(function ($note) {
+            return ($note->type ?? '') === 'order_request_note' || ($note->title ?? '') === 'Customer order request notes';
+        })->values();
+    @endphp
+
     <div class="space-y-6">
 
         <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
@@ -51,6 +57,29 @@
                 </div>
             </div>
         </div>
+
+        @if ($customerRequestNotes->isNotEmpty())
+            <div class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Customer order request notes</p>
+                        <h2 class="mt-1 text-lg font-black text-amber-950">Original customer notes carried through from request</h2>
+                    </div>
+                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">Pinned lifecycle note</span>
+                </div>
+
+                <div class="mt-4 space-y-3">
+                    @foreach ($customerRequestNotes as $requestNote)
+                        <div class="rounded-2xl bg-white/80 px-4 py-3 text-sm leading-6 text-amber-950 ring-1 ring-amber-100">
+                            <p class="whitespace-pre-line">{{ $requestNote->body }}</p>
+                            <p class="mt-2 text-xs font-semibold text-amber-700">
+                                {{ ($requestNote->occurred_at ?: $requestNote->created_at) ? \Carbon\Carbon::parse($requestNote->occurred_at ?: $requestNote->created_at)->format('d M Y H:i') : 'Date unknown' }}
+                            </p>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
             <div class="xl:col-span-4 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">

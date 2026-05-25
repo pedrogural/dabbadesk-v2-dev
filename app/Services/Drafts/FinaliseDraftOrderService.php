@@ -131,8 +131,57 @@ class FinaliseDraftOrderService
                 'updated_at' => now(),
             ]);
 
+            $this->copyCustomerRequestNotesToOrder($draftId, $orderId, $userId);
+
             return $orderId;
         });
+    }
+
+    private function copyCustomerRequestNotesToOrder(int $draftId, int $orderId, int $userId): void
+    {
+        $notes = DB::table('activity_logs')
+            ->where('subject_type', 'draft_order')
+            ->where('subject_id', $draftId)
+            ->whereNull('deleted_at')
+            ->where(function ($query) {
+                $query
+                    ->where('type', 'order_request_note')
+                    ->orWhere('title', 'Customer order request notes');
+            })
+            ->orderBy('id')
+            ->get();
+
+        foreach ($notes as $note) {
+            $body = trim((string) ($note->body ?? ''));
+            if ($body === '') {
+                continue;
+            }
+
+            $alreadyCopied = DB::table('activity_logs')
+                ->where('subject_type', 'order')
+                ->where('subject_id', $orderId)
+                ->where('type', 'order_request_note')
+                ->where('body', $body)
+                ->exists();
+
+            if ($alreadyCopied) {
+                continue;
+            }
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => $orderId,
+                'type' => 'order_request_note',
+                'is_pinned' => 1,
+                'title' => 'Customer order request notes',
+                'body' => $body,
+                'occurred_at' => $note->occurred_at ?: now(),
+                'created_by_user_id' => $note->created_by_user_id ?: $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function createOrderRetailers(int $orderId, Collection $retailerSummaries, int $userId): array

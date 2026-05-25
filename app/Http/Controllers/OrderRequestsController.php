@@ -26,6 +26,7 @@ class OrderRequestsController extends Controller
                 'customer_last_name',
                 'customer_company_name',
                 'customer_email',
+                'notes',
                 'status',
                 'estimated_total',
                 'submitted_at',

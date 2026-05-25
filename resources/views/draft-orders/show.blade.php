@@ -1308,31 +1308,122 @@
                             >Clear all items soon</button>
                         </div>
                     </section>
+                </section>
 
                     <section
                         x-show="tab === 'customer'"
                         x-cloak
                         class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
                     >
-                        <h2 class="text-xl font-black text-slate-950">Customer</h2>
-                        <div class="mt-5 grid gap-4 md:grid-cols-2">
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <p class="text-xs font-black uppercase tracking-widest text-slate-500">Name</p>
-                                <p class="mt-1 font-bold text-slate-900">{{ $customerName }}</p>
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h2 class="text-xl font-black text-slate-950">Customer details</h2>
+                                <p class="mt-1 text-sm text-slate-500">Update the linked customer record before finalising the draft. These details will feed the order snapshot later.</p>
                             </div>
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <p class="text-xs font-black uppercase tracking-widest text-slate-500">Customer ID</p>
-                                <p class="mt-1 font-bold text-slate-900">{{ $draft->customer_id }}</p>
-                            </div>
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <p class="text-xs font-black uppercase tracking-widest text-slate-500">Phone</p>
-                                <p class="mt-1 font-bold text-slate-900">{{ $customerDetails['phone'] ?? '—' }}</p>
-                            </div>
-                            <div class="rounded-2xl bg-slate-50 p-4">
-                                <p class="text-xs font-black uppercase tracking-widest text-slate-500">Email</p>
-                                <p class="mt-1 font-bold text-slate-900">{{ $customerDetails['email'] ?? '—' }}</p>
-                            </div>
+                            <span class="rounded-full bg-purple-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-700">Customer #{{ $draft->customer_id }}</span>
                         </div>
+
+                        @if (!empty($requestNotes['has_notes']))
+                            <div class="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-xs font-black uppercase tracking-widest text-amber-700">Customer order request notes</p>
+                                    @if (!empty($requestNotes['request_ref']))
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #{{ $requestNotes['request_ref'] }}</span>
+                                    @endif
+                                </div>
+                                @if (!empty($requestNotes['notes']))
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['notes'] }}</p>
+                                @elseif (!empty($requestNotes['converted_note_body']))
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['converted_note_body'] }}</p>
+                                @endif
+                                <p class="mt-3 text-xs font-bold text-amber-700">This note stays visible throughout the draft and order lifecycle.</p>
+                            </div>
+                        @endif
+
+                        @php
+                            $addressRow = $customerDetails['address_row'] ?? [];
+                            $selectedCountryId = old('country_id', $addressRow['country_id'] ?? null);
+                            $selectedPhoneCountryId = old('phone_country_id', $customerDetails['phone_country_id'] ?? $selectedCountryId);
+                        @endphp
+
+                        <form method="POST" action="{{ route('draft-orders.customer.update', $draft->id) }}" class="mt-5 space-y-5">
+                            @csrf
+                            @method('PATCH')
+
+                            <div class="grid gap-4 md:grid-cols-3">
+                                <div>
+                                    <label class="field-label">First name</label>
+                                    <input name="first_name" value="{{ old('first_name', $draft->first_name) }}" class="input-clean text-sm">
+                                </div>
+                                <div>
+                                    <label class="field-label">Last name</label>
+                                    <input name="last_name" value="{{ old('last_name', $draft->last_name) }}" class="input-clean text-sm">
+                                </div>
+                                <div>
+                                    <label class="field-label">Company</label>
+                                    <input name="company_name" value="{{ old('company_name', $draft->company_name) }}" class="input-clean text-sm">
+                                </div>
+                            </div>
+
+                            <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)]">
+                                <div>
+                                    <label class="field-label">Email</label>
+                                    <input name="email" type="email" value="{{ old('email', $customerDetails['email'] ?? '') }}" class="input-clean text-sm">
+                                </div>
+                                <div>
+                                    <label class="field-label">Phone country</label>
+                                    <select name="phone_country_id" class="input-clean text-sm">
+                                        <option value="">—</option>
+                                        @foreach ($countries as $country)
+                                            <option value="{{ $country->id }}" @selected((int) $selectedPhoneCountryId === (int) $country->id)>{{ $country->iso2 ? strtoupper($country->iso2) . ' · ' : '' }}{{ $country->phone_code ? '+' . ltrim($country->phone_code, '+') : '' }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="field-label">Phone</label>
+                                    <input name="phone" value="{{ old('phone', $customerDetails['phone'] ?? '') }}" class="input-clean text-sm">
+                                </div>
+                            </div>
+
+                            <div class="rounded-3xl bg-slate-50 p-4">
+                                <h3 class="font-black text-slate-950">Primary address</h3>
+                                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                                    <div class="md:col-span-2">
+                                        <label class="field-label">Address line 1</label>
+                                        <input name="line1" value="{{ old('line1', $addressRow['line1'] ?? '') }}" class="input-clean text-sm">
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="field-label">Address line 2</label>
+                                        <input name="line2" value="{{ old('line2', $addressRow['line2'] ?? '') }}" class="input-clean text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="field-label">City</label>
+                                        <input name="city" value="{{ old('city', $addressRow['city'] ?? '') }}" class="input-clean text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="field-label">Region</label>
+                                        <input name="region" value="{{ old('region', $addressRow['region'] ?? '') }}" class="input-clean text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="field-label">Postcode</label>
+                                        <input name="postcode" value="{{ old('postcode', $addressRow['postcode'] ?? '') }}" class="input-clean text-sm">
+                                    </div>
+                                    <div>
+                                        <label class="field-label">Country</label>
+                                        <select name="country_id" class="input-clean text-sm">
+                                            <option value="">Choose country</option>
+                                            @foreach ($countries as $country)
+                                                <option value="{{ $country->id }}" @selected((int) $selectedCountryId === (int) $country->id)>{{ $country->name }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end">
+                                <button type="submit" class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700">Save customer details</button>
+                            </div>
+                        </form>
                     </section>
 
                     <section
@@ -1340,7 +1431,25 @@
                         x-cloak
                         class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
                     >
-                        <h2 class="text-xl font-black text-slate-950">Internal notes</h2>
+                        <h2 class="text-xl font-black text-slate-950">Notes</h2>
+                        <p class="mt-1 text-sm text-slate-500">Customer request notes are shown first. Internal staff notes are below.</p>
+
+                        @if (!empty($requestNotes['has_notes']))
+                            <div class="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-xs font-black uppercase tracking-widest text-amber-700">Customer order request notes</p>
+                                    @if (!empty($requestNotes['request_ref']))
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #{{ $requestNotes['request_ref'] }}</span>
+                                    @endif
+                                </div>
+                                @if (!empty($requestNotes['notes']))
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['notes'] }}</p>
+                                @elseif (!empty($requestNotes['converted_note_body']))
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['converted_note_body'] }}</p>
+                                @endif
+                            </div>
+                        @endif
+
                         <form
                             method="POST"
                             action="{{ route('draft-orders.notes.store', $draft->id) }}"
@@ -1381,22 +1490,65 @@
                         x-cloak
                         class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
                     >
-                        <h2 class="text-xl font-black text-slate-950">Dabba fees</h2>
+                        @php
+                            $displayRate = (float) ($draft->dabba_fee_rate ?? 0.20);
+                            if ($displayRate <= 1) { $displayRate = $displayRate * 100; }
+                        @endphp
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <h2 class="text-xl font-black text-slate-950">Dabba fees</h2>
+                                <p class="mt-1 text-sm text-slate-500">Adjust the draft-level fee policy before finalising. Current rule is max(minimum fee, rate × retailer goods subtotal).</p>
+                            </div>
+                            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">Draft-only policy</span>
+                        </div>
+
+                        <form method="POST" action="{{ route('draft-orders.fees.update', $draft->id) }}" class="mt-5 rounded-3xl bg-slate-50 p-4">
+                            @csrf
+                            @method('PATCH')
+                            <div class="grid gap-4 md:grid-cols-[220px_180px_180px_minmax(0,1fr)] md:items-end">
+                                <div>
+                                    <label class="field-label">Fee mode</label>
+                                    <select name="fee_mode" class="input-clean text-sm">
+                                        <option value="standard" @selected(($draft->fee_mode ?? 'standard') === 'standard')>Standard fee</option>
+                                        <option value="fee_disabled" @selected(($draft->fee_mode ?? '') === 'fee_disabled')>Fee disabled</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="field-label">Rate %</label>
+                                    <input name="dabba_fee_rate" type="number" step="0.01" min="0" max="100" value="{{ old('dabba_fee_rate', number_format($displayRate, 2, '.', '')) }}" class="input-clean text-sm">
+                                </div>
+                                <div>
+                                    <label class="field-label">Minimum £</label>
+                                    <input name="dabba_fee_min" type="number" step="0.01" min="0" value="{{ old('dabba_fee_min', number_format((float) ($draft->dabba_fee_min ?? 10), 2, '.', '')) }}" class="input-clean text-sm">
+                                </div>
+                                <div class="flex md:justify-end">
+                                    <button type="submit" class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700">Save fee policy</button>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-xs font-bold text-slate-500">Changing this recalculates all retailer groups on this draft only. It does not alter historic orders.</p>
+                        </form>
+
                         <div class="mt-5 grid gap-3 md:grid-cols-2">
                             @forelse ($retailerSummaries as $summary)
+                                @php
+                                    $summaryRate = (float) ($summary->dabba_fee_rate ?? $draft->dabba_fee_rate ?? 0.20);
+                                    if ($summaryRate <= 1) { $summaryRate = $summaryRate * 100; }
+                                @endphp
                                 <div class="rounded-2xl border border-slate-200 p-4">
-                                    <p class="font-black text-slate-900">
-                                        {{ $summary->retailer_name ?: 'Unknown retailer' }}</p>
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p class="font-black text-slate-900">{{ $summary->retailer_name ?: 'Unknown retailer' }}</p>
+                                            <p class="mt-1 text-xs font-bold text-slate-500">Rate {{ number_format($summaryRate, 2) }}% · Min {{ $money($summary->dabba_fee_min ?? $draft->dabba_fee_min ?? 10) }}</p>
+                                        </div>
+                                        @if (!empty($summary->dabba_fee_is_disabled))
+                                            <span class="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-700">Disabled</span>
+                                        @endif
+                                    </div>
                                     <div class="mt-3 space-y-1 text-sm">
-                                        <div class="flex justify-between">
-                                            <span>Subtotal</span><strong>{{ $money($summary->retailer_subtotal) }}</strong>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span>Delivery</span><strong>{{ $money($summary->retailer_delivery_fee_total) }}</strong>
-                                        </div>
-                                        <div class="flex justify-between border-t pt-2">
-                                            <span>Fee</span><strong>{{ $money($summary->dabba_fee) }}</strong>
-                                        </div>
+                                        <div class="flex justify-between"><span>Goods subtotal</span><strong>{{ $money($summary->retailer_subtotal) }}</strong></div>
+                                        <div class="flex justify-between"><span>Retailer delivery</span><strong>{{ $money($summary->retailer_delivery_fee_total) }}</strong></div>
+                                        <div class="flex justify-between border-t pt-2"><span>Dabba fee</span><strong>{{ $money($summary->dabba_fee) }}</strong></div>
+                                        <div class="flex justify-between text-purple-700"><span>Retailer total</span><strong>{{ $money($summary->retailer_grand_total) }}</strong></div>
                                     </div>
                                 </div>
                             @empty
@@ -1449,15 +1601,22 @@
                     <div class="flex items-center justify-between">
                         <h2 class="text-lg font-black text-slate-950">Customer</h2><button
                             type="button"
-                            disabled
-                            class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-400"
-                        >Edit soon</button>
+                            @click="tab='customer'"
+                            class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+                        >Edit</button>
                     </div>
                     <div class="mt-4 space-y-2 text-sm text-slate-600">
                         <p class="font-black text-slate-950">{{ $customerName }}</p>
                         <p>{{ $customerDetails['phone'] ?? '—' }}</p>
                         <p>{{ $customerDetails['email'] ?? '—' }}</p>
                         <p class="whitespace-pre-line">{{ $customerDetails['address'] ?? '—' }}</p>
+                        @if (!empty($requestNotes['has_notes']))
+                            <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                                <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Customer request note</p>
+                                <p class="mt-1 line-clamp-4 whitespace-pre-line text-xs font-semibold leading-5 text-amber-900">{{ $requestNotes['notes'] ?: $requestNotes['converted_note_body'] }}</p>
+                                <button type="button" @click="tab='notes'; window.scrollTo({top: 0, behavior: 'smooth'});" class="mt-2 text-xs font-black text-amber-800 hover:text-amber-950">View notes →</button>
+                            </div>
+                        @endif
                     </div>
                 </section>
 
@@ -1523,9 +1682,9 @@
                     <div class="mt-4 grid grid-cols-2 gap-3">
                         <button
                             type="button"
-                            disabled
-                            class="rounded-2xl border border-purple-200 px-4 py-3 text-sm font-black text-purple-400"
-                        >Save draft</button>
+                            @click="tab='customer'; window.scrollTo({top: 0, behavior: 'smooth'});"
+                            class="rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-black text-purple-700 hover:bg-purple-100"
+                        >Edit customer</button>
                         @if ($draft->finalized_order_id)
                             <a
                                 href="{{ route('orders.show', $draft->finalized_order_id) }}"

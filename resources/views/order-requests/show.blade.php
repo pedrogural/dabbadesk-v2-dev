@@ -73,12 +73,20 @@
                         </div>
                     </div>
 
-                    @if ($requestRow->notes)
-                        <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                            <p class="text-xs font-black uppercase tracking-wide text-amber-700">Customer notes</p>
-                            <p class="mt-2 whitespace-pre-wrap text-sm text-amber-900">{{ $requestRow->notes }}</p>
+                    <div class="mt-4 rounded-2xl border {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50' }} p-4">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <p class="text-xs font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700' : 'text-gray-500' }}">Customer order request notes</p>
+                            <span class="rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700 ring-1 ring-amber-200' : 'text-gray-400 ring-1 ring-gray-200' }}">
+                                {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'carried through lifecycle' : 'none supplied' }}
+                            </span>
                         </div>
-                    @endif
+                        @if (trim((string) ($requestRow->notes ?? '')) !== '')
+                            <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{{ $requestRow->notes }}</p>
+                            <p class="mt-3 text-xs font-semibold text-amber-800">These notes are copied into the draft notes and remain visible on the final order timeline.</p>
+                        @else
+                            <p class="mt-2 text-sm text-gray-500">The customer did not add order-level notes to this request.</p>
+                        @endif
+                    </div>
                 </div>
 
                 <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">

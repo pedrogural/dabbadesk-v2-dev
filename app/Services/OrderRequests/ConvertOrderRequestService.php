@@ -362,19 +362,31 @@ class ConvertOrderRequestService
 
     private function copyRequestNoteToDraft(object $request, int $draftId, int $userId): void
     {
-        $bodyParts = [];
-        if (trim((string) $request->notes) !== '') {
-            $bodyParts[] = trim((string) $request->notes);
+        $customerNotes = trim((string) ($request->notes ?? ''));
+
+        if ($customerNotes !== '') {
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'draft_order',
+                'subject_id' => $draftId,
+                'type' => 'order_request_note',
+                'is_pinned' => 1,
+                'title' => 'Customer order request notes',
+                'body' => $customerNotes,
+                'occurred_at' => $request->submitted_at ?: now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
-        $bodyParts[] = 'Converted from order request ' . $request->request_ref . '.';
 
         DB::table('activity_logs')->insert([
             'subject_type' => 'draft_order',
             'subject_id' => $draftId,
-            'type' => 'note',
+            'type' => 'system_note',
             'is_pinned' => 0,
             'title' => 'Order request converted',
-            'body' => implode("\n\n", $bodyParts),
+            'body' => 'Converted from order request ' . $request->request_ref . '.',
             'occurred_at' => now(),
             'created_by_user_id' => $userId,
             'updated_by_user_id' => $userId,

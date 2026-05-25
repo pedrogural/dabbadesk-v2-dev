@@ -42,7 +42,9 @@ class DraftOrdersController extends Controller
             'items' => $drafts->items($draftOrder),
             'retailerSummaries' => $drafts->retailerSummaries($draftOrder),
             'notes' => $drafts->notes($draftOrder),
+            'requestNotes' => $drafts->requestNotes($draftOrder),
             'customerDetails' => $drafts->customerDetails((int) $draft->customer_id),
+            'countries' => $drafts->countries(),
             'retailers' => $drafts->retailers(),
             'staffUsers' => $drafts->staffUsers(),
             'statusOptions' => $drafts->statusOptions(),
@@ -129,6 +131,49 @@ class DraftOrdersController extends Controller
         $drafts->updateDraft($draftOrder, $request->only(['status', 'fee_mode', 'home_delivery_requested']), Auth::id());
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft settings updated.');
+    }
+
+
+    public function updateCustomer(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
+    {
+        $draft = $drafts->find($draftOrder);
+        abort_if(! $draft, 404);
+
+        $data = $request->validate([
+            'first_name' => ['nullable', 'string', 'max:191'],
+            'last_name' => ['nullable', 'string', 'max:191'],
+            'company_name' => ['nullable', 'string', 'max:191'],
+            'email' => ['nullable', 'email', 'max:191'],
+            'phone' => ['nullable', 'string', 'max:64'],
+            'phone_country_id' => ['nullable', 'integer'],
+            'line1' => ['nullable', 'string', 'max:191'],
+            'line2' => ['nullable', 'string', 'max:191'],
+            'city' => ['nullable', 'string', 'max:191'],
+            'region' => ['nullable', 'string', 'max:191'],
+            'postcode' => ['nullable', 'string', 'max:32'],
+            'country_id' => ['nullable', 'integer'],
+        ]);
+
+        $drafts->updateCustomer((int) $draft->customer_id, $draftOrder, $data, Auth::id());
+
+        return redirect()
+            ->route('draft-orders.show', [$draftOrder, 'tab' => 'customer'])
+            ->with('success', 'Customer details updated.');
+    }
+
+    public function updateFees(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
+    {
+        $data = $request->validate([
+            'fee_mode' => ['required', 'string', 'in:standard,fee_disabled'],
+            'dabba_fee_rate' => ['required', 'numeric', 'min:0', 'max:100'],
+            'dabba_fee_min' => ['required', 'numeric', 'min:0', 'max:999999'],
+        ]);
+
+        $drafts->updateFees($draftOrder, $data, Auth::id());
+
+        return redirect()
+            ->route('draft-orders.show', [$draftOrder, 'tab' => 'fees'])
+            ->with('success', 'Dabba fee policy updated.');
     }
 
     public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)

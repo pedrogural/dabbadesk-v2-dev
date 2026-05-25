@@ -32,6 +32,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/draft-orders/detect-retailer', [DraftOrdersController::class, 'detectRetailer'])->name('draft-orders.detect-retailer');
     Route::post('/draft-orders/retailers/quick-store', [DraftOrdersController::class, 'quickStoreRetailer'])->name('draft-orders.retailers.quick-store');
     Route::patch('/draft-orders/{draftOrder}', [DraftOrdersController::class, 'update'])->name('draft-orders.update');
+    Route::patch('/draft-orders/{draftOrder}/customer', [DraftOrdersController::class, 'updateCustomer'])->name('draft-orders.customer.update');
+    Route::patch('/draft-orders/{draftOrder}/fees', [DraftOrdersController::class, 'updateFees'])->name('draft-orders.fees.update');
     Route::post('/draft-orders/{draftOrder}/items', [DraftOrdersController::class, 'addItem'])->name('draft-orders.items.store');
     Route::patch('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'updateItem'])->name('draft-orders.items.update');
     Route::patch('/draft-orders/{draftOrder}/retailers/{retailer}/delivery', [DraftOrdersController::class, 'updateRetailerDelivery'])->name('draft-orders.retailers.delivery.update');

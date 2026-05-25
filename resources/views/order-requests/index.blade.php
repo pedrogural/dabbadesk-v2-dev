@@ -99,6 +99,8 @@
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                                 Email</th>
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
+                                Notes</th>
+                            <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                                 Status</th>
                             <th class="px-5 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">
                                 Estimate</th>
@@ -130,6 +132,16 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4 text-sm text-gray-600">{{ $request->customer_email ?: '—' }}</td>
+                                <td class="max-w-xs px-5 py-4 text-sm text-gray-600">
+                                    @if (trim((string) ($request->notes ?? '')) !== '')
+                                        <div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
+                                            <span class="mb-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">Customer note</span>
+                                            <div class="line-clamp-2">{{ \Illuminate\Support\Str::limit($request->notes, 120) }}</div>
+                                        </div>
+                                    @else
+                                        <span class="text-gray-400">—</span>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-4">
                                     <span
                                         class="{{ $request->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }} rounded-full px-3 py-1 text-xs font-bold"
@@ -154,7 +166,7 @@
                         @empty
                             <tr>
                                 <td
-                                    colspan="7"
+                                    colspan="8"
                                     class="px-5 py-10 text-center text-sm text-gray-500"
                                 >No order requests found.</td>
                             </tr>
