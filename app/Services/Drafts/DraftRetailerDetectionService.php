@@ -5,6 +5,7 @@ namespace App\Services\Drafts;
 use DabbaDirect\IntakeTools\HostRetailerGuesser;
 use DabbaDirect\IntakeTools\ProductUrlResolver;
 use DabbaDirect\IntakeTools\RetailerDetectionResult;
+use DabbaDirect\IntakeTools\RetailerTableMatcher;
 use DabbaDirect\IntakeTools\UrlTools;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -15,6 +16,7 @@ class DraftRetailerDetectionService
         protected ProductUrlResolver $resolver,
         protected UrlTools $urlTools,
         protected HostRetailerGuesser $hostGuesser,
+        protected RetailerTableMatcher $matcher,
     ) {}
 
     public function detect(?string $url, ?string $manualRetailerName = null): RetailerDetectionResult
@@ -30,21 +32,25 @@ class DraftRetailerDetectionService
             );
         }
 
-        $host = $this->urlTools->normaliseHost($resolved->finalHost ?: $this->urlTools->hostFromUrl($resolved->finalUrl));
+        $host = $this->urlTools->normaliseHost($resolved->host ?: $this->urlTools->hostFromUrl($resolved->finalUrl()));
         $matched = $this->matchRetailerFromHost($host);
 
         if ($matched !== null) {
             return new RetailerDetectionResult(
                 name: (string) $matched->name,
-                host: $host,
-                finalUrl: $resolved->finalUrl,
+                host: $host ?: null,
+                finalUrl: $resolved->finalUrl(),
                 confidence: 1.0,
                 source: 'cms_retailer_table',
                 warning: $resolved->warning,
                 retailerId: (int) $matched->id,
-                baseUrl: (string) $matched->base_url,
+                baseUrl: (string) ($matched->base_url ?? ''),
+                logoPath: $matched->logo_path ?? null,
                 productId: $resolved->productId,
                 productIdType: $resolved->productIdType,
+                requiresManualReview: false,
+                cleanUrl: $resolved->cleanUrl,
+                message: 'Retailer matched from DabbaDesk retailer table.',
             );
         }
 
@@ -52,38 +58,45 @@ class DraftRetailerDetectionService
         if ($guessedName !== null) {
             return new RetailerDetectionResult(
                 name: $guessedName,
-                host: $host,
-                finalUrl: $resolved->finalUrl,
+                host: $host ?: null,
+                finalUrl: $resolved->finalUrl(),
                 confidence: 0.75,
                 source: 'host_fallback',
                 warning: $resolved->warning,
                 productId: $resolved->productId,
                 productIdType: $resolved->productIdType,
+                requiresManualReview: true,
+                cleanUrl: $resolved->cleanUrl,
+                message: 'Retailer was guessed from the URL but was not found in the retailer table.',
             );
         }
 
         if ($manualRetailerName !== '') {
             return new RetailerDetectionResult(
                 name: $manualRetailerName,
-                host: $host,
-                finalUrl: $resolved->finalUrl,
+                host: $host ?: null,
+                finalUrl: $resolved->finalUrl(),
                 confidence: 1.0,
                 source: 'manual',
                 warning: $resolved->warning,
                 productId: $resolved->productId,
                 productIdType: $resolved->productIdType,
+                cleanUrl: $resolved->cleanUrl,
             );
         }
 
         return new RetailerDetectionResult(
             name: null,
             host: $host ?: null,
-            finalUrl: $resolved->finalUrl,
+            finalUrl: $resolved->finalUrl(),
             confidence: 0.0,
             source: 'unknown',
             warning: $resolved->warning,
             productId: $resolved->productId,
             productIdType: $resolved->productIdType,
+            requiresManualReview: true,
+            message: 'No retailer could be detected.',
+            cleanUrl: $resolved->cleanUrl,
         );
     }
 
@@ -92,7 +105,12 @@ class DraftRetailerDetectionService
         if ($host === '') return null;
 
         $query = DB::table('retailers')
-            ->select('id', 'name', 'base_url');
+            ->select(array_values(array_filter([
+                'id',
+                'name',
+                'base_url',
+                Schema::hasColumn('retailers', 'logo_path') ? 'logo_path' : null,
+            ])));
 
         if (Schema::hasColumn('retailers', 'is_active')) {
             $query->where('is_active', 1);
@@ -104,23 +122,6 @@ class DraftRetailerDetectionService
             $query->whereNull('deleted_at');
         }
 
-        $retailers = $query->get();
-        $best = null;
-        $bestLength = 0;
-
-        foreach ($retailers as $retailer) {
-            $retailerHost = $this->urlTools->hostFromUrl((string) $retailer->base_url)
-                ?: $this->urlTools->normaliseHost((string) $retailer->base_url);
-
-            if ($retailerHost === '') continue;
-
-            $matches = $host === $retailerHost || str_ends_with($host, '.' . $retailerHost);
-            if ($matches && strlen($retailerHost) > $bestLength) {
-                $best = $retailer;
-                $bestLength = strlen($retailerHost);
-            }
-        }
-
-        return $best;
+        return $this->matcher->bestHostMatch($query->get(), $host);
     }
 }

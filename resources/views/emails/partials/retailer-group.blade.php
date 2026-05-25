@@ -40,6 +40,13 @@
                         <a href="{{ $item['retailer_url'] }}" style="color:#1d4ed8;font-size:12px;font-weight:700;">View product</a>
                     </div>
                 @endif
+
+                @if (!empty($item['notes'] ?? ''))
+                    <div style="margin-top:10px;padding:10px;border-radius:10px;background:#f8fafc;border:1px solid #e2e8f0;">
+                        <div style="font-size:11px;font-weight:800;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Customer item notes</div>
+                        <div style="white-space:pre-wrap;font-size:12px;line-height:1.55;color:#334155;">{{ $item['notes'] }}</div>
+                    </div>
+                @endif
             </td>
         </tr>
     @endforeach

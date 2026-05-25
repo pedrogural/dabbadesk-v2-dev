@@ -36,6 +36,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'updateItem'])->name('draft-orders.items.update');
     Route::patch('/draft-orders/{draftOrder}/retailers/{retailer}/delivery', [DraftOrdersController::class, 'updateRetailerDelivery'])->name('draft-orders.retailers.delivery.update');
     Route::delete('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'deleteItem'])->name('draft-orders.items.destroy');
+    Route::post('/draft-orders/{draftOrder}/finalise', [DraftOrdersController::class, 'finalise'])->name('draft-orders.finalise');
     Route::post('/draft-orders/{draftOrder}/notes', [DraftOrdersController::class, 'addNote'])->name('draft-orders.notes.store');
 
     Route::get('/money-desk', [MoneyDeskController::class, 'index'])->name('money-desk.index');

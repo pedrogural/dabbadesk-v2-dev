@@ -54,6 +54,14 @@
         </tr>
     </table>
 
+
+    @if (!empty($requestNotes ?? ''))
+        <div style="margin:20px 0;padding:16px;border:1px solid #dbe3ef;border-radius:12px;background:#f8fafc;">
+            <div style="font-size:13px;font-weight:800;color:#111827;margin-bottom:8px;">Your request notes</div>
+            <div style="white-space:pre-wrap;font-size:13px;line-height:1.6;color:#475569;">{{ $requestNotes }}</div>
+        </div>
+    @endif
+
     @foreach ($groups as $group)
         @include('emails.partials.retailer-group', [
             'retailerName' => $group['retailer_name'],

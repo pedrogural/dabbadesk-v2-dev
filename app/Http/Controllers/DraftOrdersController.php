@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Drafts\DraftOrderWorkspaceService;
 use App\Services\Drafts\DraftRetailerDetectionService;
+use App\Services\Drafts\FinaliseDraftOrderService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -315,6 +316,22 @@ class DraftOrdersController extends Controller
         }
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft item removed.');
+    }
+
+
+    public function finalise(int $draftOrder, FinaliseDraftOrderService $finaliser)
+    {
+        try {
+            $orderId = $finaliser->finalise($draftOrder, Auth::id());
+        } catch (Throwable $exception) {
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors(['finalise' => $exception->getMessage()]);
+        }
+
+        return redirect()
+            ->route('orders.show', $orderId)
+            ->with('success', 'Draft finalised into an order.');
     }
 
     public function addNote(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)

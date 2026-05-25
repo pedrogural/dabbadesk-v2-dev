@@ -97,6 +97,7 @@ class CustomerNotificationService
             'grandTotal' => round($retailSubtotal + $dabbaFees, 2),
             'attachmentCount' => (int) ($payload['_attachment_count'] ?? count($attachments)),
             'attachments' => $attachments,
+            'requestNotes' => trim((string) ($payload['notes'] ?? '')),
         ];
     }
 

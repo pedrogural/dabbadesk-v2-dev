@@ -106,6 +106,7 @@ class PublicOrderRequestNotificationService
             'grandTotal' => round($retailSubtotal + $dabbaFees, 2),
             'attachmentCount' => $attachmentCount,
             'attachments' => $attachments,
+            'requestNotes' => trim((string) ($payload['notes'] ?? '')),
         ];
     }
 

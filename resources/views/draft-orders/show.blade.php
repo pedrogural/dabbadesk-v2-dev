@@ -736,11 +736,20 @@
                         disabled
                         class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-400"
                     >Duplicate soon</button>
-                    <button
-                        type="button"
-                        disabled
-                        class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white opacity-80"
-                    >Finalise to Order soon</button>
+                    @if ($draft->finalized_order_id)
+                        <a
+                            href="{{ route('orders.show', $draft->finalized_order_id) }}"
+                            class="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700"
+                        >Open Order #{{ $draft->finalized_order_number }}</a>
+                    @else
+                        <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" onsubmit="return confirm('Finalise this draft into a real order snapshot?');">
+                            @csrf
+                            <button
+                                type="submit"
+                                class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700"
+                            >Finalise to Order</button>
+                        </form>
+                    @endif
                 </div>
             </div>
             <div class="flex gap-1 border-t border-slate-100 px-5 py-3">
@@ -1517,11 +1526,20 @@
                             disabled
                             class="rounded-2xl border border-purple-200 px-4 py-3 text-sm font-black text-purple-400"
                         >Save draft</button>
-                        <button
-                            type="button"
-                            disabled
-                            class="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white opacity-80"
-                        >Finalise to Order</button>
+                        @if ($draft->finalized_order_id)
+                            <a
+                                href="{{ route('orders.show', $draft->finalized_order_id) }}"
+                                class="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-black text-white hover:bg-emerald-700"
+                            >Open Order</a>
+                        @else
+                            <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" onsubmit="return confirm('Finalise this draft into a real order snapshot?');">
+                                @csrf
+                                <button
+                                    type="submit"
+                                    class="w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700"
+                                >Finalise to Order</button>
+                            </form>
+                        @endif
                     </div>
                 </section>
             </aside>

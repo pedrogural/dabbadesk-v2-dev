@@ -256,6 +256,7 @@ class OrdersReadOnlyService
         return [
             'item_qty' => $itemQty,
             'purchased_qty' => $purchasedQty,
+            'remaining_purchase_qty' => max(0, $itemQty - $purchasedQty),
             'arrived_qty' => $arrivedQty,
             'ready_qty' => $readyQty,
             'collected_qty' => $collectedQty,
