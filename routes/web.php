@@ -27,7 +27,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/customers/{customer}', [CustomersController::class, 'show'])->name('customers.show');
     Route::get('/customers/{customer}/edit', [CustomersController::class, 'edit'])->name('customers.edit');
     Route::patch('/customers/{customer}', [CustomersController::class, 'update'])->name('customers.update');
-    Route::post('/customers/{customer}/notes', [CustomersController::class, 'storeNote'])->name('customers.notes.store');
 
     Route::get('/admin/fees', [GlobalFeesController::class, 'index'])->name('admin.fees.index');
     Route::post('/admin/fees', [GlobalFeesController::class, 'store'])->name('admin.fees.store');
@@ -35,10 +34,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/order-requests', [OrderRequestsController::class, 'index'])->name('order-requests.index');
     Route::get('/order-requests/counter', [OrderRequestsController::class, 'counter'])->name('order-requests.counter');
-    Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
-    // Backward-compatible alias used by earlier conversion/review packs.
-    Route::get('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'show'])->name('order-requests.review');
+    Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed'])->name('order-requests.review');
+    Route::post('/order-requests/{orderRequest}/cancel', [OrderRequestsController::class, 'cancel'])->name('order-requests.cancel');
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
+    Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
 
     Route::get('/draft-orders', [DraftOrdersController::class, 'index'])->name('draft-orders.index');
     Route::post('/draft-orders/detect-retailer', [DraftOrdersController::class, 'detectRetailer'])->name('draft-orders.detect-retailer');

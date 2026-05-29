@@ -23,6 +23,8 @@
         $existingAddress = old('address_line1', $requestRow->customer_address_line1 ?? $selectedCustomer->address_line1 ?? '');
         $existingPostcode = old('address_postcode', $requestRow->customer_address_postcode ?? $selectedCustomer->address_postcode ?? '');
         $existingAddressCountry = old('address_country_id', $requestRow->customer_address_country_id ?? $selectedCustomer->address_country_id ?? '');
+        $isConverted = ! empty($requestRow->converted_at) || ($requestRow->status ?? '') === 'converted';
+        $isCancelled = ($requestRow->status ?? '') === 'cancelled';
     @endphp
 
     <div class="space-y-5">
@@ -144,11 +146,22 @@
                         </div>
                     </div>
 
-                    @if ($requestRow->converted_at)
+                    @if ($isConverted)
                         <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
                             <p class="font-black">Already converted</p>
                             <p class="mt-1">Draft order ID: {{ $requestRow->converted_draft_order_id }}</p>
                             <p class="mt-1 text-xs">Converted at {{ $requestRow->converted_at }}</p>
+                        </div>
+                    @elseif ($isCancelled)
+                        <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+                            <p class="font-black">Request cancelled</p>
+                            <p class="mt-1">This request will not be converted to a draft.</p>
+                            @if (! empty($cancellationLog?->body))
+                                <div class="mt-3 rounded-xl bg-white/70 p-3 text-xs leading-5 text-rose-900 ring-1 ring-rose-100">
+                                    <p class="font-black uppercase tracking-wide text-rose-700">Cancellation reason</p>
+                                    <p class="mt-1 whitespace-pre-line">{{ $cancellationLog->body }}</p>
+                                </div>
+                            @endif
                         </div>
                     @else
                         @if (! $requestRow->reviewed_at)
@@ -157,6 +170,18 @@
                                 <button type="submit" class="w-full rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-700 hover:bg-indigo-100">Mark as under review</button>
                             </form>
                         @endif
+
+                        <details class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                            <summary class="cursor-pointer text-sm font-black text-rose-800">Cancel this request</summary>
+                            <form method="POST" action="{{ route('order-requests.cancel', $requestRow->id) }}" class="mt-3 space-y-3" onsubmit="return confirm('Cancel this order request? This prevents conversion to draft.');">
+                                @csrf
+                                <div>
+                                    <label class="text-xs font-black uppercase tracking-wide text-rose-700">Reason</label>
+                                    <textarea name="cancel_reason" rows="3" required minlength="3" placeholder="Customer changed mind, duplicate request, submitted by mistake…" class="mt-1 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm focus:border-rose-500 focus:ring-rose-500">{{ old('cancel_reason') }}</textarea>
+                                </div>
+                                <button type="submit" class="w-full rounded-2xl bg-rose-600 px-4 py-3 text-sm font-black text-white hover:bg-rose-700">Cancel order request</button>
+                            </form>
+                        </details>
 
                         <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-gray-200 p-4">
                             <label class="text-xs font-black uppercase tracking-wide text-gray-500">Search customer base</label>

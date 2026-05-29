@@ -34,7 +34,12 @@ class OrderRequestsController extends Controller
                 'converted_at',
                 'converted_draft_order_id',
             ])
-            ->when($status === 'open', fn($query) => $query->whereNull('converted_at'))
+            ->when($status === 'open', function ($query) {
+                $query->whereNull('converted_at')
+                    ->where(function ($statusQuery) {
+                        $statusQuery->whereNull('status')->orWhereNotIn('status', ['converted', 'cancelled']);
+                    });
+            })
             ->when($status !== '' && $status !== 'all' && $status !== 'open', fn($query) => $query->where('status', $status))
             ->when($search !== '', function ($query) use ($search) {
                 $query->where(function ($inner) use ($search) {
@@ -93,6 +98,13 @@ class OrderRequestsController extends Controller
             ->orderBy('id')
             ->get();
 
+        $cancellationLog = DB::table('activity_logs')
+            ->where('subject_type', 'order_request')
+            ->where('subject_id', $orderRequest)
+            ->where('type', 'cancelled')
+            ->orderByDesc('id')
+            ->first();
+
         $customerSearch = trim((string) $request->query('customer_q', ''));
         $customerMatches = $this->customerMatches($requestRow);
         $customerSearchResults = $customerSearch !== '' ? $this->customerSearchResults($customerSearch) : collect();
@@ -106,6 +118,7 @@ class OrderRequestsController extends Controller
             'requestRow' => $requestRow,
             'items' => $items,
             'attachments' => $attachments,
+            'cancellationLog' => $cancellationLog,
             'customerMatches' => $customerMatches,
             'customerSearch' => $customerSearch,
             'customerSearchResults' => $customerSearchResults,
@@ -120,17 +133,73 @@ class OrderRequestsController extends Controller
 
     public function markReviewed(int $orderRequest): RedirectResponse
     {
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        if ($requestRow->converted_at || $requestRow->status === 'converted') {
+            return redirect()->route('order-requests.show', $orderRequest)->withErrors([
+                'review' => 'Converted order requests cannot be marked for review.',
+            ]);
+        }
+
+        if ($requestRow->status === 'cancelled') {
+            return redirect()->route('order-requests.show', $orderRequest)->withErrors([
+                'review' => 'Cancelled order requests cannot be marked for review.',
+            ]);
+        }
+
         DB::table('order_requests')
             ->where('id', $orderRequest)
-            ->whereNull('reviewed_at')
             ->update([
                 'status' => 'reviewing',
-                'reviewed_at' => now(),
-                'reviewed_by_user_id' => auth()->id(),
+                'reviewed_at' => $requestRow->reviewed_at ?: now(),
+                'reviewed_by_user_id' => $requestRow->reviewed_by_user_id ?: auth()->id(),
                 'updated_at' => now(),
             ]);
 
+        $this->logOrderRequestActivity($orderRequest, 'reviewing', 'Request marked for review', 'Order request marked as under review.', (int) auth()->id());
+
         return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Request marked as under review.');
+    }
+
+    public function cancel(Request $request, int $orderRequest): RedirectResponse
+    {
+        $validated = $request->validate([
+            'cancel_reason' => ['required', 'string', 'min:3', 'max:1000'],
+        ]);
+
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        if ($requestRow->converted_at || $requestRow->status === 'converted') {
+            return redirect()->route('order-requests.show', $orderRequest)->withErrors([
+                'cancel_reason' => 'Converted order requests cannot be cancelled here. Manage the draft/order lifecycle instead.',
+            ]);
+        }
+
+        if ($requestRow->status === 'cancelled') {
+            return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Order request is already cancelled.');
+        }
+
+        DB::transaction(function () use ($orderRequest, $validated): void {
+            DB::table('order_requests')
+                ->where('id', $orderRequest)
+                ->whereNull('converted_at')
+                ->update([
+                    'status' => 'cancelled',
+                    'updated_at' => now(),
+                ]);
+
+            $this->logOrderRequestActivity(
+                $orderRequest,
+                'cancelled',
+                'Order request cancelled',
+                trim((string) $validated['cancel_reason']),
+                (int) auth()->id()
+            );
+        });
+
+        return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Order request cancelled.');
     }
 
     public function convert(Request $request, ConvertOrderRequestService $converter, int $orderRequest): RedirectResponse
@@ -149,6 +218,17 @@ class OrderRequestsController extends Controller
             'address_country_id' => ['nullable', 'integer', 'exists:countries,id'],
             'existing_customer_action' => ['nullable', Rule::in(['keep', 'update'])],
         ]);
+
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        if ($requestRow->status === 'cancelled') {
+            return back()->withInput()->withErrors(['convert' => 'Cancelled order requests cannot be converted to draft.']);
+        }
+
+        if ($requestRow->converted_at || $requestRow->status === 'converted') {
+            return redirect()->route('order-requests.show', $orderRequest)->withErrors(['convert' => 'This order request has already been converted.']);
+        }
 
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
             return back()->withInput()->withErrors(['customer_id' => 'Choose an existing customer before converting.']);
@@ -181,6 +261,23 @@ class OrderRequestsController extends Controller
     public function counter(): JsonResponse
     {
         return response()->json(['ok' => true, 'count' => $this->newRequestCount()]);
+    }
+
+    private function logOrderRequestActivity(int $orderRequestId, string $type, string $title, string $body, int $userId): void
+    {
+        DB::table('activity_logs')->insert([
+            'subject_type' => 'order_request',
+            'subject_id' => $orderRequestId,
+            'type' => $type,
+            'is_pinned' => 0,
+            'title' => $title,
+            'body' => $body,
+            'occurred_at' => now(),
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function customerMatches(object $requestRow)

@@ -71,6 +71,10 @@
                             value="converted"
                             @selected($status === 'converted')
                         >Converted</option>
+                        <option
+                            value="cancelled"
+                            @selected($status === 'cancelled')
+                        >Cancelled</option>
                     </select>
                 </div>
             </div>
@@ -143,10 +147,16 @@
                                     @endif
                                 </td>
                                 <td class="px-5 py-4">
-                                    <span
-                                        class="{{ $request->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }} rounded-full px-3 py-1 text-xs font-bold"
-                                    >
-                                        {{ ucfirst($request->status) }}
+                                    @php
+                                        $statusClass = match ((string) $request->status) {
+                                            'converted' => 'bg-emerald-100 text-emerald-800',
+                                            'cancelled' => 'bg-rose-100 text-rose-800',
+                                            'reviewing' => 'bg-indigo-100 text-indigo-800',
+                                            default => $request->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800',
+                                        };
+                                    @endphp
+                                    <span class="{{ $statusClass }} rounded-full px-3 py-1 text-xs font-bold">
+                                        {{ ucfirst($request->status ?: 'received') }}
                                     </span>
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right text-sm font-bold text-gray-900">
