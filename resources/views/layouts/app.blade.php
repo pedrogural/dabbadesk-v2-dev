@@ -81,17 +81,21 @@
                     ['label' => 'Orders', 'route' => 'orders.index', 'icon' => '📦'],
                     ['label' => 'Order Requests', 'route' => 'order-requests.index', 'icon' => '📝', 'counter' => true],
                     ['label' => 'Draft Orders', 'route' => 'draft-orders.index', 'icon' => '🧩'],
-                    ['label' => 'Customer Desk', 'route' => null, 'icon' => '👥'],
+                    ['label' => 'Customer Desk', 'route' => 'customers.index', 'icon' => '👥'],
                     ['label' => 'Money Desk', 'route' => 'money-desk.index', 'icon' => '💷'],
                     ['label' => 'Purchase Desk', 'route' => null, 'icon' => '🛒'],
                     ['label' => 'Marking', 'route' => null, 'icon' => '🏷️'],
                     ['label' => 'Collection', 'route' => null, 'icon' => '🚚'],
                     ['label' => 'Comms Desk', 'route' => null, 'icon' => '✉️'],
+                    ['label' => 'Admin Fees', 'route' => 'admin.fees.index', 'icon' => '⚙️', 'admin' => true],
                     ['label' => 'Audit Desk', 'route' => null, 'icon' => '🧾'],
                 ];
             @endphp
 
             @foreach ($navItems as $item)
+                @if (!empty($item['admin']) && Auth::user()->role !== 'admin')
+                    @continue
+                @endif
 
                 @php
                     $isActive = $item['route'] && request()->routeIs($item['route'], str_replace('.index', '.*', $item['route']));

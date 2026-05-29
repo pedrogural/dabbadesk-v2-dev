@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\GlobalFeesController;
+use App\Http\Controllers\CustomersController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DraftOrdersController;
 use App\Http\Controllers\MoneyDeskController;
@@ -17,6 +19,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
+
+    Route::get('/customers', [CustomersController::class, 'index'])->name('customers.index');
+    Route::get('/customers/live-search', [CustomersController::class, 'liveSearch'])->name('customers.live-search');
+    Route::get('/customers/create', [CustomersController::class, 'create'])->name('customers.create');
+    Route::post('/customers', [CustomersController::class, 'store'])->name('customers.store');
+    Route::get('/customers/{customer}', [CustomersController::class, 'show'])->name('customers.show');
+    Route::get('/customers/{customer}/edit', [CustomersController::class, 'edit'])->name('customers.edit');
+    Route::patch('/customers/{customer}', [CustomersController::class, 'update'])->name('customers.update');
+
+    Route::get('/admin/fees', [GlobalFeesController::class, 'index'])->name('admin.fees.index');
+    Route::post('/admin/fees', [GlobalFeesController::class, 'store'])->name('admin.fees.store');
     Route::get('/orders/{order}', [OrdersController::class, 'show'])->name('orders.show');
 
     Route::get('/order-requests', [OrderRequestsController::class, 'index'])->name('order-requests.index');

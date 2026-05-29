@@ -45,7 +45,7 @@ class ConvertOrderRequestService
                 throw new RuntimeException('Selected customer could not be found.');
             }
 
-            $feePolicy = $this->activeFeePolicy();
+            $feePolicy = $this->feePolicyForCustomer($customerId);
 
             $draftId = DB::table('draft_orders')->insertGetId([
                 'order_request_id' => $request->id,
@@ -59,8 +59,8 @@ class ConvertOrderRequestService
                 'updated_by_user_id' => $userId,
                 'created_at' => now(),
                 'updated_at' => now(),
-                'fee_mode' => 'standard',
-                'dabba_fee_level' => 'global',
+                'fee_mode' => $feePolicy['fee_mode'],
+                'dabba_fee_level' => $feePolicy['level'],
                 'dabba_fee_rate' => $feePolicy['rate_percent'],
                 'dabba_fee_min' => $feePolicy['minimum_fee'],
             ]);
@@ -344,10 +344,10 @@ class ConvertOrderRequestService
         app(DraftOrderWorkspaceService::class)->recalculate($draftId, $userId);
     }
 
-    private function activeFeePolicy(): array
+    private function feePolicyForCustomer(int $customerId): array
     {
         try {
-            $policy = app(FeePolicyLookupService::class)->activePolicy();
+            $policy = app(FeePolicyLookupService::class)->policyForCustomer($customerId);
         } catch (\Throwable) {
             $policy = [];
         }
@@ -360,6 +360,8 @@ class ConvertOrderRequestService
         return [
             'rate_percent' => round($rate > 0 ? $rate : 20, 4),
             'minimum_fee' => round((float) ($policy['minimum_fee'] ?? 10), 2),
+            'level' => (string) ($policy['level'] ?? 'global'),
+            'fee_mode' => (string) ($policy['fee_mode'] ?? 'standard'),
         ];
     }
 
