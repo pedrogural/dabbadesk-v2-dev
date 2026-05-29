@@ -173,8 +173,8 @@
 
         .draft-ui .money-label {
             display: block;
-            font-size: 11px;
-            font-weight: 950;
+            font-size: 10px;
+            font-weight: 900;
             text-transform: uppercase;
             letter-spacing: .09em;
             color: #64748b;
@@ -184,14 +184,14 @@
         .draft-ui .money-tile-grid {
             display: grid;
             grid-template-columns: repeat(4, minmax(105px, 1fr));
-            gap: 12px
+            gap: 8px
         }
 
         .draft-ui .money-box {
-            border-radius: 18px;
+            border-radius: 16px;
             background: #f8fafc;
-            padding: 15px 16px;
-            min-height: 74px;
+            padding: 10px 12px;
+            min-height: 58px;
             display: flex;
             flex-direction: column;
             justify-content: center
@@ -203,8 +203,8 @@
         }
 
         .draft-ui .money-value {
-            font-size: 19px;
-            font-weight: 950;
+            font-size: 15px;
+            font-weight: 900;
             color: #020617;
             white-space: nowrap
         }
@@ -1583,8 +1583,8 @@
                                 subtotal</span><strong>{{ $money($draft->items_subtotal) }}</strong></div>
                         <div class="flex justify-between"><span class="text-slate-500">Delivery
                                 fees</span><strong>{{ $money($draft->retailer_delivery_total) }}</strong></div>
-                        <div class="flex justify-between"><span class="text-slate-500">Retailer
-                                fees</span><strong>{{ $money($draft->dabba_fee_total) }}</strong></div>
+                        <div class="flex justify-between"><span class="text-slate-500">Dabba
+                                fee</span><strong>{{ $money($draft->dabba_fee_total) }}</strong></div>
                     </div>
                     <div class="mt-4 border-t border-slate-200 pt-4">
                         <div class="flex items-end justify-between"><span

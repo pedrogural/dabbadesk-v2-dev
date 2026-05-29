@@ -115,6 +115,12 @@
                                         · {{ $order->bill_to_email }}
                                     @endif
                                 </p>
+                                <p class="mt-1 text-xs font-semibold text-slate-500">
+                                    Created by {{ $order->created_by_name ?: 'Unknown user' }}
+                                    @if (($order->updated_by_name ?? null) && $order->updated_by_name !== $order->created_by_name)
+                                        · Updated by {{ $order->updated_by_name }}
+                                    @endif
+                                </p>
                             </div>
 
                             <div class="xl:col-span-2">

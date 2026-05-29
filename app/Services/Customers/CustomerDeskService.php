@@ -223,6 +223,49 @@ class CustomerDeskService
         });
     }
 
+
+    public function notes(int $customerId, int $limit = 50)
+    {
+        if (! Schema::hasTable('activity_logs')) {
+            return collect();
+        }
+
+        return DB::table('activity_logs as a')
+            ->leftJoin('users as u', 'u.id', '=', 'a.created_by_user_id')
+            ->where('a.subject_type', 'customer')
+            ->where('a.subject_id', $customerId)
+            ->whereNull('a.deleted_at')
+            ->whereIn('a.type', ['note', 'customer_note', 'system_note'])
+            ->select('a.*', 'u.name as author_name')
+            ->orderByDesc('a.is_pinned')
+            ->orderByDesc(DB::raw('coalesce(a.occurred_at, a.created_at)'))
+            ->limit($limit)
+            ->get();
+    }
+
+    public function addNote(int $customerId, string $body, int $userId): void
+    {
+        $body = trim($body);
+
+        if ($body === '' || ! Schema::hasTable('activity_logs')) {
+            return;
+        }
+
+        DB::table('activity_logs')->insert([
+            'subject_type' => 'customer',
+            'subject_id' => $customerId,
+            'type' => 'customer_note',
+            'is_pinned' => 0,
+            'title' => 'Customer note',
+            'body' => $body,
+            'occurred_at' => now(),
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     private function titleName(?string $value): ?string
     {
         $value = trim((string) $value);

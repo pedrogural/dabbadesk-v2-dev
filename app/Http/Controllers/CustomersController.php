@@ -56,6 +56,7 @@ class CustomersController extends Controller
             'customer' => $record,
             'details' => $customers->details($customer),
             'effectiveFee' => $customers->effectiveFeePolicy($customer),
+            'notes' => $customers->notes($customer),
         ]);
     }
 
@@ -69,6 +70,7 @@ class CustomersController extends Controller
             'details' => $customers->details($customer),
             'countries' => $customers->countries(),
             'defaults' => $customers->formDefaults(),
+            'notes' => $customers->notes($customer),
         ]);
     }
 
@@ -79,6 +81,20 @@ class CustomersController extends Controller
         $customers->update($customer, $this->validated($request), (int) Auth::id());
 
         return redirect()->route('customers.show', $customer)->with('success', 'Customer updated.');
+    }
+
+
+    public function storeNote(int $customer, Request $request, CustomerDeskService $customers)
+    {
+        abort_if(! $customers->find($customer), 404);
+
+        $data = $request->validate([
+            'body' => ['required', 'string', 'min:2', 'max:5000'],
+        ]);
+
+        $customers->addNote($customer, $data['body'], (int) Auth::id());
+
+        return redirect()->route('customers.show', $customer)->with('success', 'Customer note added.');
     }
 
     private function validated(Request $request): array

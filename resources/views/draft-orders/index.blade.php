@@ -62,6 +62,12 @@
                                 </div>
                                 <p class="mt-1 text-sm text-slate-600">{{ trim(($draft->first_name ?? '') . ' ' . ($draft->last_name ?? '')) ?: ($draft->company_name ?: 'Unknown customer') }}</p>
                                 <p class="mt-1 text-xs text-slate-400">Request: {{ $draft->request_ref ?: 'manual draft' }} · Updated {{ $draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->format('d M Y H:i') : 'unknown' }}</p>
+                                <p class="mt-1 text-xs font-semibold text-slate-500">
+                                    Created by {{ $draft->created_by_name ?: 'Unknown user' }}
+                                    @if (($draft->updated_by_name ?? null) && $draft->updated_by_name !== $draft->created_by_name)
+                                        · Updated by {{ $draft->updated_by_name }}
+                                    @endif
+                                </p>
                             </div>
 
                             <div class="xl:col-span-2">

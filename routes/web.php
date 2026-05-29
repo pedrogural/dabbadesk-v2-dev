@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/customers/{customer}', [CustomersController::class, 'show'])->name('customers.show');
     Route::get('/customers/{customer}/edit', [CustomersController::class, 'edit'])->name('customers.edit');
     Route::patch('/customers/{customer}', [CustomersController::class, 'update'])->name('customers.update');
+    Route::post('/customers/{customer}/notes', [CustomersController::class, 'storeNote'])->name('customers.notes.store');
 
     Route::get('/admin/fees', [GlobalFeesController::class, 'index'])->name('admin.fees.index');
     Route::post('/admin/fees', [GlobalFeesController::class, 'store'])->name('admin.fees.store');

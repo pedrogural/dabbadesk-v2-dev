@@ -16,10 +16,13 @@ class DraftOrderWorkspaceService
         $query = DB::table('draft_orders as d')
             ->leftJoin('customers as c', 'c.id', '=', 'd.customer_id')
             ->leftJoin('order_requests as r', 'r.id', '=', 'd.order_request_id')
+            ->leftJoin('users as created_user', 'created_user.id', '=', 'd.created_by_user_id')
+            ->leftJoin('users as updated_user', 'updated_user.id', '=', 'd.updated_by_user_id')
             ->select([
                 'd.id', 'd.draft_number', 'd.state', 'd.status', 'd.kind', 'd.grand_total', 'd.items_subtotal',
                 'd.retailer_delivery_total', 'd.dabba_fee_total', 'd.created_at', 'd.updated_at', 'd.finalized_order_id',
                 'c.first_name', 'c.last_name', 'c.company_name', 'r.request_ref',
+                'created_user.name as created_by_name', 'updated_user.name as updated_by_name',
             ])
             ->selectRaw('(select count(*) from draft_order_items i where i.draft_order_id = d.id) as item_count')
             ->selectRaw('(select coalesce(sum(i.qty),0) from draft_order_items i where i.draft_order_id = d.id) as total_qty')

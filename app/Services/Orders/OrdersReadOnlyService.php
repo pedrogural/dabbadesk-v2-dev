@@ -47,6 +47,8 @@ class OrdersReadOnlyService
         return DB::table('orders')
             ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
             ->join('customers', 'customers.id', '=', 'draft_orders.customer_id')
+            ->leftJoin('users as created_user', 'created_user.id', '=', 'orders.created_by_user_id')
+            ->leftJoin('users as updated_user', 'updated_user.id', '=', 'orders.updated_by_user_id')
             ->leftJoinSub($settlementSubquery, 'settlement_totals', function ($join) {
                 $join->on('settlement_totals.order_id', '=', 'orders.id');
             })
@@ -74,6 +76,8 @@ class OrdersReadOnlyService
                 'customers.first_name',
                 'customers.last_name',
                 'customers.company_name',
+                'created_user.name as created_by_name',
+                'updated_user.name as updated_by_name',
                 DB::raw('COALESCE(item_totals.item_count, 0) as item_count'),
                 DB::raw('COALESCE(item_totals.total_qty, 0) as total_qty'),
                 DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
