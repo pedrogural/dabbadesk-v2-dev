@@ -110,7 +110,7 @@
                     <label class="{{ $label }}">Fee level</label>
                     <select name="dabba_fee_level" class="{{ $input }}">
                         <option value="global" @selected(old('dabba_fee_level', $customer->dabba_fee_level ?? 'global') === 'global')>Use global fee</option>
-                        <option value="custom" @selected(old('dabba_fee_level', $customer->dabba_fee_level ?? 'global') === 'custom')>Custom customer fee</option>
+                        <option value="vip_min_percent" @selected(in_array(old('dabba_fee_level', $customer->dabba_fee_level ?? 'global'), ['custom', 'vip_min_percent'], true))>Custom customer fee</option>
                     </select>
                     @error('dabba_fee_level')<p class="{{ $errorText }}">{{ $message }}</p>@enderror
                 </div>

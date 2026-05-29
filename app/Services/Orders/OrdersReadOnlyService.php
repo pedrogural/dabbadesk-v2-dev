@@ -23,6 +23,8 @@ class OrdersReadOnlyService
     {
         $queryText = trim((string) ($filters['q'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
+        $mineOnly = ! empty($filters['mine']);
+        $userId = (int) ($filters['user_id'] ?? 0);
 
         $settlementSubquery = DB::table('order_transactions')
             ->select('order_id', DB::raw('SUM(amount) as settled_total'))
@@ -69,6 +71,8 @@ class OrdersReadOnlyService
                 'orders.bill_to_name',
                 'orders.bill_to_email',
                 'orders.created_at',
+                'orders.created_by_user_id',
+                'orders.updated_by_user_id',
                 'orders.paid_at',
                 'orders.purchased_at',
                 'orders.completed_at',
@@ -87,6 +91,9 @@ class OrdersReadOnlyService
             ])
             ->when($status !== '', function ($query) use ($status) {
                 $query->where('orders.status', $status);
+            })
+            ->when($mineOnly && $userId > 0, function ($query) use ($userId) {
+                $query->where('orders.created_by_user_id', $userId);
             })
             ->when($queryText !== '', function ($query) use ($queryText) {
                 $query->where(function ($subQuery) use ($queryText) {

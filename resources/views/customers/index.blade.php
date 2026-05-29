@@ -101,7 +101,7 @@
                                 <tr>
                                     <td class="px-6 py-4"><div class="font-black text-slate-950">{{ $name }}</div><div class="text-xs text-slate-500">#{{ $customer->id }} {{ $customer->reference ? '· '.$customer->reference : '' }}</div></td>
                                     <td class="px-6 py-4 text-slate-600"><div>{{ $customer->primary_email ?: '—' }}</div><div>{{ $customer->primary_phone ?: '—' }}</div></td>
-                                    <td class="px-6 py-4"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $customer->dabba_fee_is_disabled ? 'Fee disabled' : ucfirst($customer->dabba_fee_level ?? 'global') }}</span></td>
+                                    <td class="px-6 py-4"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $customer->dabba_fee_is_disabled ? 'Fee disabled' : (($customer->dabba_fee_level ?? 'global') === 'vip_min_percent' ? 'Custom fee' : (($customer->dabba_fee_level ?? 'global') === 'vip_percent_only' ? 'Custom percent only' : 'Global fee')) }}</span></td>
                                     <td class="px-6 py-4 text-right"><a href="{{ route('customers.show', $customer->id) }}" class="font-black text-purple-700 hover:text-purple-900">Open</a></td>
                                 </tr>
                             @endforeach

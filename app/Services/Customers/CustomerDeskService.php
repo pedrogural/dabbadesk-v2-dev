@@ -90,7 +90,7 @@ class CustomerDeskService
             'reference' => $customer->reference,
             'email' => $customer->primary_email ?: '',
             'phone' => $customer->primary_phone ?: '',
-            'fee_label' => $customer->dabba_fee_is_disabled ? 'Fee disabled' : ucfirst((string) ($customer->dabba_fee_level ?: 'global')),
+            'fee_label' => $this->feeLabel($customer),
             'is_active' => (bool) $customer->is_active,
             'url' => route('customers.show', $customer->id),
             'edit_url' => route('customers.edit', $customer->id),
@@ -294,30 +294,50 @@ class CustomerDeskService
 
     private function feeLevel(array $data): string
     {
-        if (! empty($data['dabba_fee_is_disabled'])) {
-            return 'disabled';
-        }
-
+        // Database enum currently allows: global, vip_min_percent, vip_percent_only.
+        // Fee disabling is stored separately in dabba_fee_is_disabled, so never write
+        // synthetic values like "disabled" or "custom" into this enum column.
         $level = (string) ($data['dabba_fee_level'] ?? 'global');
-        return in_array($level, ['global', 'custom'], true) ? $level : 'global';
+
+        return match ($level) {
+            'custom', 'customer', 'vip_min_percent' => 'vip_min_percent',
+            'vip_percent_only' => 'vip_percent_only',
+            default => 'global',
+        };
     }
 
     private function feeRateFraction(array $data): ?float
     {
-        if (($data['dabba_fee_level'] ?? 'global') !== 'custom' || ! empty($data['dabba_fee_is_disabled'])) {
+        $level = $this->feeLevel($data);
+        if ($level === 'global' || ! empty($data['dabba_fee_is_disabled'])) {
             return null;
         }
 
-        return round(max(0, (float) ($data['dabba_fee_rate'] ?? 0)) / 100, 4);
+        $rate = max(0, (float) ($data['dabba_fee_rate'] ?? 0));
+        return round($rate > 1 ? $rate / 100 : $rate, 4);
     }
 
     private function feeMin(array $data): ?float
     {
-        if (($data['dabba_fee_level'] ?? 'global') !== 'custom' || ! empty($data['dabba_fee_is_disabled'])) {
+        $level = $this->feeLevel($data);
+        if ($level === 'global' || $level === 'vip_percent_only' || ! empty($data['dabba_fee_is_disabled'])) {
             return null;
         }
 
         return round(max(0, (float) ($data['dabba_fee_min'] ?? 0)), 2);
+    }
+
+    private function feeLabel(object $customer): string
+    {
+        if ((int) ($customer->dabba_fee_is_disabled ?? 0) === 1) {
+            return 'Fee disabled';
+        }
+
+        return match ((string) ($customer->dabba_fee_level ?? 'global')) {
+            'vip_min_percent' => 'Custom fee',
+            'vip_percent_only' => 'Custom percent only',
+            default => 'Global fee',
+        };
     }
 
     private function attachEmail(int $customerId, string $email, int $userId): void

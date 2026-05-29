@@ -12,6 +12,8 @@ class DraftOrderWorkspaceService
     {
         $q = trim((string) ($filters['q'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
+        $mineOnly = ! empty($filters['mine']);
+        $userId = (int) ($filters['user_id'] ?? 0);
 
         $query = DB::table('draft_orders as d')
             ->leftJoin('customers as c', 'c.id', '=', 'd.customer_id')
@@ -21,7 +23,8 @@ class DraftOrderWorkspaceService
             ->select([
                 'd.id', 'd.draft_number', 'd.state', 'd.status', 'd.kind', 'd.grand_total', 'd.items_subtotal',
                 'd.retailer_delivery_total', 'd.dabba_fee_total', 'd.created_at', 'd.updated_at', 'd.finalized_order_id',
-                'c.first_name', 'c.last_name', 'c.company_name', 'r.request_ref',
+                'd.created_by_user_id', 'd.updated_by_user_id',
+                'c.id as customer_id', 'c.first_name', 'c.last_name', 'c.company_name', 'r.request_ref',
                 'created_user.name as created_by_name', 'updated_user.name as updated_by_name',
             ])
             ->selectRaw('(select count(*) from draft_order_items i where i.draft_order_id = d.id) as item_count')
@@ -33,6 +36,10 @@ class DraftOrderWorkspaceService
             $query->where('d.status', $status);
         }
 
+        if ($mineOnly && $userId > 0) {
+            $query->where('d.created_by_user_id', $userId);
+        }
+
         if ($q !== '') {
             $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
             $query->where(function ($inner) use ($like) {
@@ -41,6 +48,20 @@ class DraftOrderWorkspaceService
                     ->orWhere('c.first_name', 'like', $like)
                     ->orWhere('c.last_name', 'like', $like)
                     ->orWhere('c.company_name', 'like', $like)
+                    ->orWhereExists(function ($sub) use ($like) {
+                        $sub->selectRaw('1')
+                            ->from('customer_emails as ce')
+                            ->join('emails as e', 'e.id', '=', 'ce.email_id')
+                            ->whereColumn('ce.customer_id', 'c.id')
+                            ->where('e.email', 'like', $like);
+                    })
+                    ->orWhereExists(function ($sub) use ($like) {
+                        $sub->selectRaw('1')
+                            ->from('customer_phones as cp')
+                            ->join('phones as p', 'p.id', '=', 'cp.phone_id')
+                            ->whereColumn('cp.customer_id', 'c.id')
+                            ->where('p.phone', 'like', $like);
+                    })
                     ->orWhereExists(function ($sub) use ($like) {
                         $sub->selectRaw('1')
                             ->from('draft_order_items as i')

@@ -114,9 +114,9 @@ class CustomersController extends Controller
             'region' => ['nullable', 'string', 'max:191'],
             'postcode' => ['nullable', 'string', 'max:32'],
             'country_id' => ['nullable', 'integer', Rule::exists('countries', 'id')],
-            'dabba_fee_level' => ['required', 'string', 'in:global,custom'],
-            'dabba_fee_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'required_if:dabba_fee_level,custom'],
-            'dabba_fee_min' => ['nullable', 'numeric', 'min:0', 'max:999999', 'required_if:dabba_fee_level,custom'],
+            'dabba_fee_level' => ['required', 'string', 'in:global,custom,vip_min_percent,vip_percent_only'],
+            'dabba_fee_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'required_unless:dabba_fee_level,global'],
+            'dabba_fee_min' => ['nullable', 'numeric', 'min:0', 'max:999999', 'required_if:dabba_fee_level,custom,vip_min_percent'],
             'dabba_fee_is_disabled' => ['nullable'],
         ], [
             'first_name.regex' => 'First name may contain letters, spaces, hyphens and apostrophes only.',

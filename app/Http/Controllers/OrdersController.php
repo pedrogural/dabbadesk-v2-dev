@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Orders\OrdersReadOnlyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class OrdersController extends Controller
 {
@@ -12,6 +13,8 @@ class OrdersController extends Controller
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => trim((string) $request->query('status', '')),
+            'mine' => $request->boolean('mine'),
+            'user_id' => Auth::id(),
         ];
 
         return view('orders.index', [

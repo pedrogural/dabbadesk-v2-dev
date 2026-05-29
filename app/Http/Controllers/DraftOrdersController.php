@@ -23,6 +23,8 @@ class DraftOrdersController extends Controller
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => trim((string) $request->query('status', '')),
+            'mine' => $request->boolean('mine'),
+            'user_id' => Auth::id(),
         ];
 
         return view('draft-orders.index', [

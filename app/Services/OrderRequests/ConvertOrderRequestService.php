@@ -352,14 +352,28 @@ class ConvertOrderRequestService
             $policy = [];
         }
 
-        $rate = (float) ($policy['percentage_rate'] ?? 0.20);
-        if ($rate > 0 && $rate <= 1) {
-            $rate *= 100;
+        // Important: custom customer fees may legitimately be 0% with a fixed
+        // minimum fee, for example "0% / £21 minimum". The previous fallback
+        // logic treated a 0 rate as missing and silently reverted to 20%, which
+        // made request → draft conversion ignore customer-level fees.
+        $hasRate = array_key_exists('percentage_rate', $policy) || array_key_exists('percentage_rate_percent', $policy);
+
+        if (array_key_exists('percentage_rate_percent', $policy)) {
+            $ratePercent = (float) $policy['percentage_rate_percent'];
+        } elseif ($hasRate) {
+            $rawRate = (float) $policy['percentage_rate'];
+            $ratePercent = $rawRate > 1 ? $rawRate : $rawRate * 100;
+        } else {
+            $ratePercent = 20.0;
         }
 
+        $minimumFee = array_key_exists('minimum_fee', $policy)
+            ? (float) $policy['minimum_fee']
+            : 10.0;
+
         return [
-            'rate_percent' => round($rate > 0 ? $rate : 20, 4),
-            'minimum_fee' => round((float) ($policy['minimum_fee'] ?? 10), 2),
+            'rate_percent' => round(max(0, $ratePercent), 4),
+            'minimum_fee' => round(max(0, $minimumFee), 2),
             'level' => (string) ($policy['level'] ?? 'global'),
             'fee_mode' => (string) ($policy['fee_mode'] ?? 'standard'),
         ];

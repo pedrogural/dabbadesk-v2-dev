@@ -44,17 +44,19 @@ class FeePolicyLookupService
         $customerRate = $customer->dabba_fee_rate ?? null;
         $customerMin = $customer->dabba_fee_min ?? null;
 
-        if (in_array($level, ['custom', 'customer'], true) && $customerRate !== null && $customerMin !== null) {
+        if (in_array($level, ['custom', 'customer', 'vip_min_percent', 'vip_percent_only'], true) && $customerRate !== null) {
+            $minimumFee = $level === 'vip_percent_only' ? 0 : ($customerMin ?? 0);
+
             return $this->normalisePolicy([
                 'id' => null,
                 'name' => 'Customer-specific Dabba fee',
                 'currency' => 'GBP',
-                'minimum_fee' => $customerMin,
+                'minimum_fee' => $minimumFee,
                 'percentage_rate' => $customerRate,
                 'calculation_basis' => 'retailer_subtotal',
                 'rounding' => 'money_2dp',
                 'source' => 'customer',
-                'level' => 'customer',
+                'level' => $level === 'vip_percent_only' ? 'vip_percent_only' : 'vip_min_percent',
                 'fee_mode' => 'standard',
             ]);
         }
