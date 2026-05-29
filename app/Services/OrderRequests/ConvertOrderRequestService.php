@@ -2,6 +2,8 @@
 
 namespace App\Services\OrderRequests;
 
+use App\Services\Drafts\DraftOrderWorkspaceService;
+use App\Services\Intake\FeePolicyLookupService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -43,6 +45,8 @@ class ConvertOrderRequestService
                 throw new RuntimeException('Selected customer could not be found.');
             }
 
+            $feePolicy = $this->activeFeePolicy();
+
             $draftId = DB::table('draft_orders')->insertGetId([
                 'order_request_id' => $request->id,
                 'customer_id' => $customerId,
@@ -56,16 +60,21 @@ class ConvertOrderRequestService
                 'created_at' => now(),
                 'updated_at' => now(),
                 'fee_mode' => 'standard',
+                'dabba_fee_level' => 'global',
+                'dabba_fee_rate' => $feePolicy['rate_percent'],
+                'dabba_fee_min' => $feePolicy['minimum_fee'],
             ]);
 
             foreach ($items as $index => $item) {
                 $retailerId = $this->resolveRetailerId($item, $userId);
                 $qty = max(1, (int) $item->quantity);
                 $unitPrice = round((float) $item->unit_price, 2);
-                $lineSubtotal = round((float) ($item->line_total ?? ($qty * $unitPrice)), 2);
-                if ($lineSubtotal <= 0) {
-                    $lineSubtotal = round($qty * $unitPrice, 2);
-                }
+                // Important: order_request_items.line_total is not trusted as the goods subtotal.
+                // In the public intake flow it may represent a displayed/estimated line total, and
+                // older rows can contain already-calculated fee-style values. The draft workbench
+                // must start from pure goods value only, then calculate retailer delivery and
+                // Dabba fee as separate financial buckets.
+                $lineSubtotal = round($qty * $unitPrice, 2);
 
                 $description = (string) $item->description;
                 $notes = trim((string) ($item->notes ?? ''));
@@ -95,7 +104,7 @@ class ConvertOrderRequestService
                 ]);
             }
 
-            $this->recalculateDraftTotals($draftId);
+            $this->recalculateDraftTotals($draftId, $userId);
             $this->copyRequestNoteToDraft($request, $draftId, $userId);
 
             DB::table('order_requests')
@@ -330,63 +339,45 @@ class ConvertOrderRequestService
         ]);
     }
 
-    private function recalculateDraftTotals(int $draftId): void
+    private function recalculateDraftTotals(int $draftId, int $userId): void
     {
-        $items = DB::table('draft_order_items')
-            ->select(['retailer_id', 'qty', 'unit_price', 'line_subtotal', 'item_retailer_delivery_fee', 'item_delivery_fee'])
-            ->where('draft_order_id', $draftId)
-            ->get();
+        app(DraftOrderWorkspaceService::class)->recalculate($draftId, $userId);
+    }
 
-        $itemsSubtotal = round((float) $items->sum('line_subtotal'), 2);
-        $deliveryTotal = round((float) $items->sum(function ($item) {
-            return (float) ($item->item_retailer_delivery_fee ?? $item->item_delivery_fee ?? 0);
-        }), 2);
-
-        $dabbaFeeTotal = 0.0;
-        foreach ($items->groupBy('retailer_id') as $retailerItems) {
-            $retailerSubtotal = round((float) $retailerItems->sum('line_subtotal'), 2);
-            $dabbaFeeTotal += max(10.0, round($retailerSubtotal * 0.20, 2));
+    private function activeFeePolicy(): array
+    {
+        try {
+            $policy = app(FeePolicyLookupService::class)->activePolicy();
+        } catch (\Throwable) {
+            $policy = [];
         }
-        $dabbaFeeTotal = round($dabbaFeeTotal, 2);
 
-        DB::table('draft_orders')
-            ->where('id', $draftId)
-            ->update([
-                'items_subtotal' => $itemsSubtotal,
-                'retailer_delivery_total' => $deliveryTotal,
-                'dabba_fee_total' => $dabbaFeeTotal,
-                'grand_total' => round($itemsSubtotal + $deliveryTotal + $dabbaFeeTotal, 2),
-                'updated_at' => now(),
-            ]);
+        $rate = (float) ($policy['percentage_rate'] ?? 0.20);
+        if ($rate > 0 && $rate <= 1) {
+            $rate *= 100;
+        }
+
+        return [
+            'rate_percent' => round($rate > 0 ? $rate : 20, 4),
+            'minimum_fee' => round((float) ($policy['minimum_fee'] ?? 10), 2),
+        ];
     }
 
     private function copyRequestNoteToDraft(object $request, int $draftId, int $userId): void
     {
-        $customerNotes = trim((string) ($request->notes ?? ''));
-
-        if ($customerNotes !== '') {
-            DB::table('activity_logs')->insert([
-                'subject_type' => 'draft_order',
-                'subject_id' => $draftId,
-                'type' => 'order_request_note',
-                'is_pinned' => 1,
-                'title' => 'Customer order request notes',
-                'body' => $customerNotes,
-                'occurred_at' => $request->submitted_at ?: now(),
-                'created_by_user_id' => $userId,
-                'updated_by_user_id' => $userId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+        $bodyParts = [];
+        if (trim((string) $request->notes) !== '') {
+            $bodyParts[] = trim((string) $request->notes);
         }
+        $bodyParts[] = 'Converted from order request ' . $request->request_ref . '.';
 
         DB::table('activity_logs')->insert([
             'subject_type' => 'draft_order',
             'subject_id' => $draftId,
-            'type' => 'system_note',
+            'type' => 'note',
             'is_pinned' => 0,
             'title' => 'Order request converted',
-            'body' => 'Converted from order request ' . $request->request_ref . '.',
+            'body' => implode("\n\n", $bodyParts),
             'occurred_at' => now(),
             'created_by_user_id' => $userId,
             'updated_by_user_id' => $userId,
