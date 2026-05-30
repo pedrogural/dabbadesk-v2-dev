@@ -14,6 +14,10 @@
         $retailerRows = $retailerSummaries->keyBy('retailer_id');
         $money = fn($value) => '£' . number_format((float) ($value ?? 0), 2);
         $draftNo = $draft->draft_number ?: $draft->id;
+        $hasChildOrder = ! empty($draft->finalized_order_id);
+        $isConsumedDraft = in_array((string) ($draft->status ?? ''), ['consumed', 'finalised'], true) || in_array((string) ($draft->state ?? ''), ['consumed', 'finalised'], true);
+        $isReopenedVersionDraft = $hasChildOrder && ! $isConsumedDraft;
+        $finalizedOrderLabel = $draft->finalized_order_number ? ('Order #' . $draft->finalized_order_number) : ($draft->finalized_order_id ? ('Order ID #' . $draft->finalized_order_id) : null);
         $retailerLogoUrl = function ($logoPath) {
             $path = trim((string) ($logoPath ?? ''));
             if ($path === '') {
@@ -659,15 +663,44 @@
             detectUrl: '{{ route('draft-orders.detect-retailer') }}',
             quickRetailerUrl: '{{ route('draft-orders.retailers.quick-store') }}',
             csrf: '{{ csrf_token() }}',
-            initialTab: '{{ $activeTab }}'
+            initialTab: '{{ $activeTab }}',
+            isConsumedDraft: @js($isConsumedDraft),
+            hasChildOrder: @js($hasChildOrder),
+            finalizedOrderLabel: @js($finalizedOrderLabel),
+            finalizedOrderUrl: @js($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null)
         })"
         x-init="boot()"
         @delete-item.window="deleteModal = { open: true, url: $event.detail.url, title: $event.detail.title }"
+        @consumed-draft-edit-attempt.window="openConsumedEditModal($event.detail.form || null)"
     >
         @if ($errors->any())
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                 <strong>Something needs checking:</strong> {{ $errors->first() }}
             </div>
+        @endif
+
+        @if ($hasChildOrder)
+            <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm">
+                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                        <p class="text-sm font-black uppercase tracking-widest text-amber-700">{{ $isConsumedDraft ? 'Consumed draft' : 'Version draft' }}</p>
+                        <h2 class="mt-1 text-xl font-black text-amber-950">This draft has already created {{ $finalizedOrderLabel ?: 'an order' }}.</h2>
+                        <p class="mt-2 max-w-3xl text-sm font-semibold leading-6 text-amber-800">
+                            @if ($isConsumedDraft)
+                                The consumed draft should match the child order at the point it was created. If you edit this draft now,
+                                DabbaDesk will reopen it as preparation for a new order version.
+                            @else
+                                This draft has already been reopened for a new order version. The existing child order remains unchanged until this draft is finalised again.
+                            @endif
+                        </p>
+                    </div>
+                    @if ($draft->finalized_order_id)
+                        <a href="{{ route('orders.show', $draft->finalized_order_id) }}" class="inline-flex shrink-0 items-center justify-center rounded-2xl bg-amber-900 px-4 py-3 text-sm font-black text-white hover:bg-amber-950">
+                            Open child order
+                        </a>
+                    @endif
+                </div>
+            </section>
         @endif
 
         @if (session('success'))
@@ -740,16 +773,13 @@
                         <a
                             href="{{ route('orders.show', $draft->finalized_order_id) }}"
                             class="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700"
-                        >Open Order #{{ $draft->finalized_order_number }}</a>
-                    @else
-                        <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" onsubmit="return confirm('Finalise this draft into a real order snapshot?');">
-                            @csrf
-                            <button
-                                type="submit"
-                                class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700"
-                            >Finalise to Order</button>
-                        </form>
+                        >Open {{ $finalizedOrderLabel }}</a>
                     @endif
+                    <button
+                        type="button"
+                        @click="openFinaliseModal()"
+                        class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700"
+                    >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
                 </div>
             </div>
             <div class="flex gap-1 border-t border-slate-100 px-5 py-3">
@@ -1690,18 +1720,60 @@
                                 href="{{ route('orders.show', $draft->finalized_order_id) }}"
                                 class="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-black text-white hover:bg-emerald-700"
                             >Open Order</a>
-                        @else
-                            <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" onsubmit="return confirm('Finalise this draft into a real order snapshot?');">
-                                @csrf
-                                <button
-                                    type="submit"
-                                    class="w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700"
-                                >Finalise to Order</button>
-                            </form>
                         @endif
+                        <button
+                            type="button"
+                            @click="openFinaliseModal()"
+                            class="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700"
+                        >{{ $hasChildOrder ? 'New Version' : 'Finalise' }}</button>
                     </div>
                 </section>
             </aside>
+        </div>
+
+        {{-- Finalise / new version modal --}}
+        <div x-show="finaliseModal.open" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" @keydown.escape.window="finaliseModal.open=false">
+            <div @click.outside="finaliseModal.open=false" class="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+                <div class="flex items-start gap-4">
+                    <div class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" :class="hasChildOrder ? 'bg-amber-50 text-amber-700' : 'bg-purple-50 text-purple-700'">➜</div>
+                    <div class="min-w-0">
+                        <h2 class="text-xl font-black text-slate-950" x-text="hasChildOrder ? 'Create new order version?' : 'Finalise draft into order?'"></h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-600" x-show="!hasChildOrder">
+                            This will consume the draft and create a new immutable order snapshot from the current basket, customer and fee details.
+                        </p>
+                        <p class="mt-2 text-sm leading-6 text-slate-600" x-show="hasChildOrder">
+                            This draft has already created <strong>{{ $finalizedOrderLabel ?: 'an order' }}</strong>. Creating a new version will supersede the previous active order and create a new immutable order snapshot.
+                        </p>
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" data-allow-consumed-submit="1" class="mt-6 flex justify-end gap-3">
+                    @csrf
+                    @if ($hasChildOrder)
+                        <input type="hidden" name="confirm_new_version" value="1">
+                    @endif
+                    <button type="button" @click="finaliseModal.open=false" class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="submit" class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700" x-text="hasChildOrder ? 'Create New Version' : 'Create Order'"></button>
+                </form>
+            </div>
+        </div>
+
+        {{-- Consumed draft edit warning modal --}}
+        <div x-show="consumedEditModal.open" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" @keydown.escape.window="consumedEditModal.open=false">
+            <div @click.outside="consumedEditModal.open=false" class="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-6 shadow-2xl">
+                <div class="flex items-start gap-4">
+                    <div class="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-700">⚠</div>
+                    <div class="min-w-0">
+                        <h2 class="text-xl font-black text-slate-950">Edit consumed draft?</h2>
+                        <p class="mt-2 text-sm leading-6 text-slate-600">
+                            This draft already created {{ $finalizedOrderLabel ?: 'an order' }}. Any changes you make now are for a future order version. The existing child order remains unchanged.
+                        </p>
+                    </div>
+                </div>
+                <div class="mt-6 flex justify-end gap-3">
+                    <button type="button" @click="consumedEditModal.open=false" class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                    <button type="button" @click="confirmConsumedEdit()" class="rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white hover:bg-amber-700">Continue Editing</button>
+                </div>
+            </div>
         </div>
 
         {{-- Modern delete confirmation modal --}}
@@ -1847,8 +1919,17 @@
     </div>
 
     <script>
+        window.dabbaConsumedDraft = @js($isConsumedDraft);
+        window.dabbaConsumedDraftEditAcknowledged = false;
+
         window.dabbaDraftAutosave = async function(form) {
             const debugPayload = {};
+
+            if (window.dabbaConsumedDraft && !window.dabbaConsumedDraftEditAcknowledged) {
+                if (form instanceof HTMLFormElement) form.dataset.autosaveRetry = '1';
+                window.dispatchEvent(new CustomEvent('consumed-draft-edit-attempt', { detail: { form } }));
+                return { ok: false, message: 'Confirm editing this consumed draft first.' };
+            }
 
             try {
                 if (!(form instanceof HTMLFormElement)) {
@@ -1883,6 +1964,11 @@
                 if (!data.has('_method')) {
                     data.append('_method', 'PATCH');
                     debugPayload._method = 'PATCH';
+                }
+
+                if (window.dabbaConsumedDraftEditAcknowledged) {
+                    data.append('confirm_consumed_edit', '1');
+                    debugPayload.confirm_consumed_edit = '1';
                 }
 
                 const csrf = data.get('_token') ||
@@ -1929,6 +2015,12 @@
                     ok: response.ok,
                     payload,
                 });
+
+                if (payload.requires_consumed_edit_confirmation) {
+                    if (form instanceof HTMLFormElement) form.dataset.autosaveRetry = '1';
+                    window.dispatchEvent(new CustomEvent('consumed-draft-edit-attempt', { detail: { form } }));
+                    return { ok: false, message: payload.message || 'Confirm editing this consumed draft first.' };
+                }
 
                 if (!response.ok || payload.ok === false) {
                     const firstValidationError = payload.errors ?
@@ -1980,6 +2072,17 @@
             console.error('Draft page unhandled promise rejection', event.reason);
         });
 
+        document.addEventListener('submit', function(event) {
+            const form = event.target;
+            if (!(form instanceof HTMLFormElement)) return;
+            if (!window.dabbaConsumedDraft || window.dabbaConsumedDraftEditAcknowledged) return;
+            if (form.dataset.allowConsumedSubmit === '1') return;
+            if (form.action && form.action.includes('/finalise')) return;
+
+            event.preventDefault();
+            window.dispatchEvent(new CustomEvent('consumed-draft-edit-attempt', { detail: { form } }));
+        }, true);
+
         function draftWorkspace(config) {
             return {
                 tab: config.initialTab || 'products',
@@ -2008,6 +2111,16 @@
                     title: '',
                     message: ''
                 },
+                finaliseModal: {
+                    open: false
+                },
+                consumedEditModal: {
+                    open: false,
+                    pendingForm: null,
+                    pendingDelete: false
+                },
+                isConsumedDraft: !!config.isConsumedDraft,
+                hasChildOrder: !!config.hasChildOrder,
 
                 boot() {
                     const justAdded = document.querySelector('[id^="item-"].bg-purple-50\\/70');
@@ -2030,9 +2143,60 @@
                     setTimeout(() => this.toast.open = false, 3500);
                 },
 
+                openFinaliseModal() {
+                    this.finaliseModal.open = true;
+                },
+
+                openConsumedEditModal(form) {
+                    this.consumedEditModal.pendingForm = form || null;
+                    this.consumedEditModal.open = true;
+                },
+
+                confirmConsumedEdit() {
+                    window.dabbaConsumedDraftEditAcknowledged = true;
+                    this.consumedEditModal.open = false;
+                    const form = this.consumedEditModal.pendingForm;
+                    const shouldDelete = this.consumedEditModal.pendingDelete;
+                    this.consumedEditModal.pendingForm = null;
+                    this.consumedEditModal.pendingDelete = false;
+                    if (shouldDelete) {
+                        this.confirmDeleteItem();
+                        return;
+                    }
+                    if (form instanceof HTMLFormElement) {
+                        if (form.dataset.autosaveRetry === '1') {
+                            window.dabbaDraftAutosave(form).then((result) => {
+                                this.showToast(result.ok ? 'Draft change saved' : 'Could not save', result.message || 'Please try again.');
+                                if (result.ok && result.reload) setTimeout(() => window.location.reload(), 500);
+                            });
+                        } else {
+                            let input = form.querySelector('input[name="confirm_consumed_edit"]');
+                            if (!input) {
+                                input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = 'confirm_consumed_edit';
+                                form.appendChild(input);
+                            }
+                            input.value = '1';
+                            form.submit();
+                        }
+                    }
+                },
+
                 async confirmDeleteItem() {
-                    const url = this.deleteModal.url;
+                    if (this.isConsumedDraft && !window.dabbaConsumedDraftEditAcknowledged) {
+                        this.consumedEditModal.pendingDelete = true;
+                        this.consumedEditModal.open = true;
+                        return;
+                    }
+
+                    let url = this.deleteModal.url;
                     const title = this.deleteModal.title;
+                    if (window.dabbaConsumedDraftEditAcknowledged) {
+                        const deleteUrl = new URL(url, window.location.origin);
+                        deleteUrl.searchParams.set('confirm_consumed_edit', '1');
+                        url = deleteUrl.toString();
+                    }
                     this.deleteModal.open = false;
                     try {
                         const response = await fetch(url, {
@@ -2040,6 +2204,7 @@
                             headers: {
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': config.csrf,
+                                'X-Confirm-Consumed-Edit': window.dabbaConsumedDraftEditAcknowledged ? '1' : '0',
                             },
                         });
                         if (!response.ok) throw new Error('Delete failed');
@@ -2080,6 +2245,7 @@
                                 'Content-Type': 'application/json',
                                 'Accept': 'application/json',
                                 'X-CSRF-TOKEN': config.csrf,
+                                'X-Confirm-Consumed-Edit': window.dabbaConsumedDraftEditAcknowledged ? '1' : '0',
                             },
                             body: JSON.stringify({
                                 url: this.newItem.url

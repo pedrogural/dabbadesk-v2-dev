@@ -81,7 +81,7 @@ class DraftOrderWorkspaceService
 
     public function statusOptions(): array
     {
-        return ['open', 'reviewing', 'ready', 'finalised', 'cancelled'];
+        return ['open', 'reviewing', 'ready', 'consumed', 'cancelled'];
     }
 
     public function find(int $draftId): ?object
@@ -95,7 +95,7 @@ class DraftOrderWorkspaceService
                 'd.*',
                 'c.first_name', 'c.last_name', 'c.company_name', 'c.reference as customer_reference',
                 'c.dabba_fee_level as customer_fee_level', 'c.dabba_fee_rate as customer_fee_rate', 'c.dabba_fee_min as customer_fee_min',
-                'r.request_ref', 'o.order_number as finalized_order_number',
+                'r.request_ref', 'o.order_number as finalized_order_number', 'o.status as finalized_order_status',
             ])
             ->first();
     }
@@ -269,6 +269,37 @@ class DraftOrderWorkspaceService
             ->orderByRaw("case when name = 'Gibraltar' then 0 when name = 'Spain' then 1 when name in ('United Kingdom', 'UK') then 2 else 3 end")
             ->orderBy('name')
             ->get();
+    }
+
+
+    public function reopenConsumedDraftForNewVersion(int $draftId, int $userId): void
+    {
+        $draft = DB::table('draft_orders')->where('id', $draftId)->first();
+
+        if (! $draft) {
+            return;
+        }
+
+        $status = (string) ($draft->status ?? '');
+        $state = (string) ($draft->state ?? '');
+
+        if (! in_array($status, ['consumed', 'finalised'], true) && ! in_array($state, ['consumed', 'finalised'], true)) {
+            return;
+        }
+
+        DB::table('draft_orders')->where('id', $draftId)->update([
+            'status' => 'open',
+            'state' => 'draft',
+            'updated_by_user_id' => $userId,
+            'updated_at' => now(),
+        ]);
+
+        $this->addSystemNote(
+            $draftId,
+            'Consumed draft reopened for new version',
+            'Staff confirmed editing a consumed draft. The existing child order remains unchanged; future finalise will create a new order version.',
+            $userId
+        );
     }
 
     public function updateCustomer(int $customerId, int $draftId, array $data, int $userId): void

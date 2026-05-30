@@ -24,9 +24,7 @@ class FinaliseDraftOrderService
                 throw new RuntimeException('Draft order not found.');
             }
 
-            if (! empty($draft->finalized_order_id)) {
-                return (int) $draft->finalized_order_id;
-            }
+            $previousOrderId = $this->previousOrderId($draft);
 
             $items = DB::table('draft_order_items')
                 ->where('draft_order_id', $draftId)
@@ -66,7 +64,7 @@ class FinaliseDraftOrderService
             $orderId = (int) DB::table('orders')->insertGetId([
                 'draft_order_id' => $draftId,
                 'source_draft_order_id' => $draftId,
-                'parent_order_id' => $draft->parent_order_id ?: null,
+                'parent_order_id' => $previousOrderId ?: ($draft->parent_order_id ?: null),
                 'order_type' => 'invoice',
                 'order_number' => $orderNumber,
                 'status' => 'ready',
@@ -95,11 +93,23 @@ class FinaliseDraftOrderService
             $orderRetailerIds = $this->createOrderRetailers($orderId, $retailerSummaries, $userId);
             $this->createOrderItems($orderId, $items, $retailerSummaries, $orderRetailerIds, $userId);
 
+            if ($previousOrderId) {
+                DB::table('orders')
+                    ->where('id', $previousOrderId)
+                    ->whereNotIn('status', ['cancelled', 'superseded'])
+                    ->update([
+                        'status' => 'superseded',
+                        'updated_by_user_id' => $userId,
+                        'updated_at' => now(),
+                    ]);
+            }
+
             DB::table('draft_orders')
                 ->where('id', $draftId)
                 ->update([
-                    'state' => 'finalised',
-                    'status' => 'finalised',
+                    'state' => 'consumed',
+                    'status' => 'consumed',
+                    'parent_order_id' => $previousOrderId ?: ($draft->parent_order_id ?: null),
                     'finalized_order_id' => $orderId,
                     'updated_by_user_id' => $userId,
                     'updated_at' => now(),
@@ -109,8 +119,10 @@ class FinaliseDraftOrderService
                 'subject_type' => 'draft_order',
                 'subject_id' => $draftId,
                 'type' => 'system_note',
-                'title' => 'Draft finalised',
-                'body' => 'Draft finalised into Order #' . $orderNumber . '.',
+                'title' => $previousOrderId ? 'New order version created' : 'Draft consumed',
+                'body' => $previousOrderId
+                    ? 'Draft was edited after prior consumption and used to create a new order version. Previous Order ID #' . $previousOrderId . ' was marked as superseded. New Order #' . $orderNumber . ' was created.'
+                    : 'Draft consumed into Order #' . $orderNumber . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -135,6 +147,24 @@ class FinaliseDraftOrderService
 
             return $orderId;
         });
+    }
+
+
+    private function previousOrderId(object $draft): ?int
+    {
+        if (! empty($draft->finalized_order_id)) {
+            return (int) $draft->finalized_order_id;
+        }
+
+        $row = DB::table('orders')
+            ->where(function ($query) use ($draft) {
+                $query->where('draft_order_id', $draft->id)
+                    ->orWhere('source_draft_order_id', $draft->id);
+            })
+            ->orderByDesc('id')
+            ->first(['id']);
+
+        return $row ? (int) $row->id : null;
     }
 
     private function copyCustomerRequestNotesToOrder(int $draftId, int $orderId, int $userId): void

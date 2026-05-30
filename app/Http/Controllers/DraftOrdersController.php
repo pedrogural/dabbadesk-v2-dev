@@ -124,6 +124,14 @@ class DraftOrdersController extends Controller
 
     public function update(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
+        if ($request->attributes->get('consumed_draft_reopened') && in_array((string) $request->input('status'), ['consumed', 'finalised'], true)) {
+            $request->merge(['status' => 'open']);
+        }
+
         $request->validate([
             'status' => ['required', 'string', 'max:30'],
             'fee_mode' => ['required', 'string', 'max:20'],
@@ -140,6 +148,10 @@ class DraftOrdersController extends Controller
     {
         $draft = $drafts->find($draftOrder);
         abort_if(! $draft, 404);
+
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
 
         $data = $request->validate([
             'first_name' => ['nullable', 'string', 'max:191'],
@@ -165,6 +177,10 @@ class DraftOrdersController extends Controller
 
     public function updateFees(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         $data = $request->validate([
             'fee_mode' => ['required', 'string', 'in:standard,fee_disabled'],
             'dabba_fee_rate' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -180,6 +196,10 @@ class DraftOrdersController extends Controller
 
     public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         Log::info('Draft item autosave reached controller', [
             'draft_order_id' => $draftOrder,
             'item_id' => $item,
@@ -295,7 +315,7 @@ class DraftOrdersController extends Controller
             return response()->json([
                 'ok' => true,
                 'message' => $urlResolveWarning ?: ($retailerChanged ? 'Saved. Retailer changed after URL resolving.' : 'Saved.'),
-                'reload' => $retailerChanged,
+                'reload' => $retailerChanged || (bool) $request->attributes->get('consumed_draft_reopened'),
             ]);
         }
 
@@ -304,6 +324,10 @@ class DraftOrdersController extends Controller
 
     public function addItem(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         $data = $request->validate([
             'retailer_id' => ['required', 'integer', 'exists:retailers,id'],
             'description' => ['nullable', 'string'],
@@ -336,6 +360,10 @@ class DraftOrdersController extends Controller
 
     public function updateRetailerDelivery(int $draftOrder, int $retailer, Request $request, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         $data = $request->validate([
             'retailer_delivery_fee_total' => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -356,6 +384,10 @@ class DraftOrdersController extends Controller
 
     public function deleteItem(int $draftOrder, int $item, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardConsumedDraftMutation($draftOrder, request(), $drafts)) {
+            return $response;
+        }
+
         $drafts->deleteItem($draftOrder, $item, Auth::id());
 
         if (request()->expectsJson() || request()->ajax()) {
@@ -366,8 +398,19 @@ class DraftOrdersController extends Controller
     }
 
 
-    public function finalise(int $draftOrder, FinaliseDraftOrderService $finaliser)
+    public function finalise(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts, FinaliseDraftOrderService $finaliser)
     {
+        $draft = $drafts->find($draftOrder);
+        abort_if(! $draft, 404);
+
+        $isConsumed = ! empty($draft->finalized_order_id);
+
+        if ($isConsumed && ! $request->boolean('confirm_new_version')) {
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors(['finalise' => 'This draft has already created an order. Confirm that you want to create a new order version.']);
+        }
+
         try {
             $orderId = $finaliser->finalise($draftOrder, Auth::id());
         } catch (Throwable $exception) {
@@ -378,7 +421,7 @@ class DraftOrdersController extends Controller
 
         return redirect()
             ->route('orders.show', $orderId)
-            ->with('success', 'Draft finalised into an order.');
+            ->with('success', $isConsumed ? 'New order version created. Previous order was marked as superseded.' : 'Draft consumed into an order.');
     }
 
     public function addNote(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
@@ -387,6 +430,42 @@ class DraftOrdersController extends Controller
         $drafts->addNote($draftOrder, $request->string('body')->toString(), Auth::id());
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Note added.');
+    }
+
+
+    private function guardConsumedDraftMutation(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
+    {
+        $draft = $drafts->find($draftOrder);
+        abort_if(! $draft, 404);
+
+        $isConsumed = in_array((string) ($draft->status ?? ''), ['consumed', 'finalised'], true)
+            || in_array((string) ($draft->state ?? ''), ['consumed', 'finalised'], true);
+
+        if (! $isConsumed) {
+            return null;
+        }
+
+        $confirmed = $request->boolean('confirm_consumed_edit')
+            || $request->header('X-Confirm-Consumed-Edit') === '1';
+
+        if (! $confirmed) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'ok' => false,
+                    'requires_consumed_edit_confirmation' => true,
+                    'message' => 'This draft has already created an order. Confirm editing it before saving changes for a new order version.',
+                ], 409);
+            }
+
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors(['draft' => 'This draft has already created an order. Confirm editing it before saving changes for a new order version.']);
+        }
+
+        $drafts->reopenConsumedDraftForNewVersion($draftOrder, Auth::id());
+        $request->attributes->set('consumed_draft_reopened', true);
+
+        return null;
     }
 
     private function cleanBaseUrl(string $value): string
