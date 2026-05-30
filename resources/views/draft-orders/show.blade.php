@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="header">Draft #{{ $draft->draft_number ?: $draft->id }}</x-slot>
+    <x-slot name="header">Order Request #{{ $draft->request_ref ?: ($draft->draft_number ?: $draft->id) }}</x-slot>
 
     @php
         $customerName =
@@ -14,6 +14,7 @@
         $retailerRows = $retailerSummaries->keyBy('retailer_id');
         $money = fn($value) => '£' . number_format((float) ($value ?? 0), 2);
         $draftNo = $draft->draft_number ?: $draft->id;
+        $requestRef = $draft->request_ref ?: $draftNo;
         $hasChildOrder = ! empty($draft->finalized_order_id);
         $isConsumedDraft = in_array((string) ($draft->status ?? ''), ['consumed', 'finalised'], true) || in_array((string) ($draft->state ?? ''), ['consumed', 'finalised'], true);
         $isReopenedVersionDraft = $hasChildOrder && ! $isConsumedDraft;
@@ -740,49 +741,45 @@
 
         {{-- Header --}}
         <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex flex-col gap-5 px-6 py-5 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
                 <div class="min-w-0">
                     <a
                         href="{{ route('draft-orders.index') }}"
                         class="text-sm font-semibold text-slate-500 hover:text-slate-950"
                     >← Back to drafts</a>
-                    <div class="mt-3 flex flex-wrap items-center gap-3">
-                        <h1 class="text-3xl font-black tracking-tight text-slate-950">Draft #{{ $draftNo }}</h1>
+                    <div class="mt-2 flex flex-wrap items-center gap-3">
+                        <h1 class="text-2xl font-black tracking-tight text-slate-950">Draft Workbench</h1>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700">Request #{{ $requestRef }}</span>
                         <span
                             class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-700"
                         >{{ $draft->status ?: 'open' }}</span>
                     </div>
-                    <p class="mt-2 text-sm text-slate-500">
+                    <p class="mt-1 text-sm text-slate-500">
                         {{ $customerName }}
-                        @if ($draft->request_ref)
-                            <span class="mx-1">•</span> Source: Order request #{{ $draft->request_ref }}
+                        <span class="mx-1">•</span> Draft ID {{ $draft->id }}
+                        @if ($draftNo && (string) $draftNo !== (string) $draft->id)
+                            <span class="mx-1">•</span> Draft ref {{ $draftNo }}
                         @endif
                         @if ($draft->created_at)
-                            <span class="mx-1">•</span> Created
-                            {{ \Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i') }}
+                            <span class="mx-1">•</span> Created {{ \Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i') }}
                         @endif
                     </p>
                 </div>
-                <div class="flex flex-wrap gap-3">
-                    <button
-                        type="button"
-                        disabled
-                        class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-400"
-                    >Duplicate soon</button>
+                <div class="flex flex-wrap gap-2">
                     @if ($draft->finalized_order_id)
                         <a
                             href="{{ route('orders.show', $draft->finalized_order_id) }}"
-                            class="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-700"
+                            class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"
                         >Open {{ $finalizedOrderLabel }}</a>
                     @endif
                     <button
                         type="button"
                         @click="openFinaliseModal()"
-                        class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700"
+                        class="rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-purple-700"
                     >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
                 </div>
             </div>
-            <div class="flex gap-1 border-t border-slate-100 px-5 py-3">
+            <div class="flex gap-1 border-t border-slate-100 px-5 py-2">
                 @foreach ([['products', 'Products', '🛒'], ['customer', 'Customer', '👤'], ['notes', 'Notes', '📝'], ['fees', 'Dabba fees', '🏷️'], ['activity', 'Activity', '〽️']] as [$key, $label, $icon])
                     <button
                         type="button"
@@ -812,11 +809,6 @@
                                 <p class="mt-1 text-sm text-slate-500">Paste the URL, confirm the retailer, enter
                                     quantity and unit price. Delivery fees are adjusted in the basket rows below.</p>
                             </div>
-                            <button
-                                type="button"
-                                disabled
-                                class="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-400"
-                            >Add multiple soon</button>
                         </div>
 
                         <form
@@ -1027,11 +1019,13 @@
                                                         <span class="currency-prefix">£</span>
                                                         <input
                                                             name="retailer_delivery_fee_total"
-                                                            value="{{ number_format($retailerDeliveryFee, 2, '.', '') }}"
+                                                            value="{{ $retailerDeliveryFee > 0 ? number_format($retailerDeliveryFee, 2, '.', '') : '' }}"
                                                             type="number"
                                                             min="0"
                                                             step="0.01"
                                                             class="currency-input"
+                                                            placeholder="Delivery"
+                                                            onfocus="if (this.value === '0' || this.value === '0.00') this.value = '';"
                                                             aria-label="Retailer delivery fee"
                                                         >
                                                     </div>
@@ -1298,11 +1292,7 @@
 
                                         <div
                                             class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
-                                            <button
-                                                type="button"
-                                                disabled
-                                                class="text-sm font-black text-purple-600"
-                                            >＋ Add item to {{ $retailerName }} soon</button>
+                                            <span class="text-sm font-black text-slate-500">{{ $retailerItems->count() }} {{ Str::plural('item', $retailerItems->count()) }} for {{ $retailerName }}</span>
                                             <div
                                                 class="flex flex-wrap items-center gap-6 text-sm font-black text-slate-500">
                                                 <span>{{ $retailerItems->count() }} items</span>
@@ -1321,22 +1311,10 @@
                             @endforelse
                         </div>
 
-                        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-5">
-                            <button
-                                type="button"
-                                disabled
-                                class="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-black text-slate-400"
-                            >Bulk actions soon</button>
-                            <div class="text-sm font-semibold text-slate-500">{{ $items->count() }} items · Last
+                        <div class="border-t border-slate-100 p-5 text-sm font-semibold text-slate-500">{{ $items->count() }} items · Last
                                 updated
                                 {{ $draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->diffForHumans() : 'recently' }}
                             </div>
-                            <button
-                                type="button"
-                                disabled
-                                class="rounded-2xl border border-rose-200 px-4 py-2.5 text-sm font-black text-rose-400"
-                            >Clear all items soon</button>
-                        </div>
                     </section>
                 </section>
 
@@ -2259,8 +2237,11 @@
                             this.newItem.url = retailer.final_url || retailer.finalUrl;
                         }
 
-                        if (retailer.retailer_id || retailer.retailerId) {
-                            const id = retailer.retailer_id || retailer.retailerId;
+                        const retailerId = retailer.retailer_id || retailer.retailerId || null;
+                        const requiresManualReview = retailer.requires_manual_review || retailer.requiresManualReview || false;
+
+                        if (retailerId && !requiresManualReview) {
+                            const id = retailerId;
                             this.newItem.retailerId = String(id);
                             this.detectedRetailerId = id;
                             this.detectMessage = 'Retailer detected: ' + (retailer.name || 'matched') + ((retailer
@@ -2268,12 +2249,12 @@
                             return;
                         }
 
-                        const host = retailer.host || this.cleanHost(this.newItem.url);
+                        const host = retailer.host || retailer.final_host || retailer.finalHost || this.cleanHost(this.newItem.url);
                         this.retailerModal.baseUrl = host;
                         this.retailerModal.name = retailer.name || this.guessRetailerName(host);
                         this.retailerModal.error = '';
                         this.retailerModal.open = true;
-                        this.detectMessage = 'Retailer not recognised. Add it once and continue.';
+                        this.detectMessage = 'Retailer not recognised: ' + (host || 'unknown retailer') + '. Add it once to continue.';
                     } catch (e) {
                         this.detectMessage = 'Could not detect retailer. You can choose one manually.';
                     }

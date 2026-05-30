@@ -16,7 +16,7 @@
             <form method="GET" action="{{ route('orders.index') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
                 <div class="lg:col-span-6">
                     <label for="q" class="text-sm font-semibold text-slate-700">Search orders</label>
-                    <input id="q" name="q" value="{{ $filters['q'] }}" type="text" placeholder="Order number, customer, email, item, SKU, retailer ref or tracking" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    <input id="q" name="q" value="{{ $filters['q'] }}" type="text" placeholder="Request/order number, customer, email, item, SKU, retailer ref or tracking" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
 
                 <div class="lg:col-span-3">
@@ -60,14 +60,14 @@
                         <div class="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-center">
                             <div class="xl:col-span-4">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <h3 class="text-lg font-black text-slate-950">Order #{{ $order->order_number }}</h3>
+                                    <h3 class="text-lg font-black text-slate-950">Request #{{ $order->order_number }}</h3>
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
                                 </div>
                                 <p class="mt-1 text-sm font-black text-slate-700">
                                     <a href="{{ route('customers.show', $order->customer_id) }}" class="hover:text-indigo-700 hover:underline">{{ $customerName }}</a>
                                 </p>
                                 <p class="mt-1 text-xs text-slate-400">
-                                    {{ $order->created_at ? \Carbon\Carbon::parse($order->created_at)->format('d M Y H:i') : 'No date' }}
+                                    Order ID {{ $order->id }} · {{ $order->created_at ? \Carbon\Carbon::parse($order->created_at)->format('d M Y H:i') : 'No date' }}
                                     @if ($order->bill_to_email)
                                         · {{ $order->bill_to_email }}
                                     @endif
@@ -97,7 +97,7 @@
                             </div>
 
                             <div class="xl:col-span-2 flex flex-wrap justify-start gap-2 xl:justify-end">
-                                <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open order</a>
+                                <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open request</a>
                                 <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-200">Finance</a>
                             </div>
                         </div>

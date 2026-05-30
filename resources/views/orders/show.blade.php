@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        Order Detail
+        Request #{{ $order->order_number }}
     </x-slot>
 
     @php
@@ -20,7 +20,7 @@
 
                     <div class="mt-3 flex flex-wrap items-center gap-3">
                         <h1 class="text-3xl font-bold text-slate-950">
-                            Order #{{ $order->order_number }}
+                            Request #{{ $order->order_number }}
                         </h1>
 
                         <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">

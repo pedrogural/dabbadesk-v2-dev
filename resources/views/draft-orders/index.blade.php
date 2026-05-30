@@ -49,7 +49,7 @@
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-lg font-bold text-slate-900">Draft results</h2>
-                    <p class="mt-1 text-xs font-semibold text-slate-500">Statuses currently supported: open, reviewing, ready, finalised, cancelled.</p>
+                    <p class="mt-1 text-xs font-semibold text-slate-500">Statuses currently supported: open, reviewing, ready, consumed, cancelled.</p>
                 </div>
                 <p class="text-sm text-slate-500">Showing {{ $drafts->firstItem() ?? 0 }}–{{ $drafts->lastItem() ?? 0 }} of {{ $drafts->total() }}</p>
             </div>
@@ -67,13 +67,13 @@
                                     <h3 class="text-lg font-black text-slate-950">Request #{{ $primaryRef }}</h3>
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ str_replace('_', ' ', $draft->status) }}</span>
                                     @if ($draft->finalized_order_id)
-                                        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">finalised</span>
+                                        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">linked order</span>
                                     @endif
                                 </div>
                                 <p class="mt-1 text-sm font-black text-slate-700">
                                     <a href="{{ route('customers.show', $draft->customer_id) }}" class="hover:text-indigo-700 hover:underline">{{ $customerName }}</a>
                                 </p>
-                                <p class="mt-1 text-xs text-slate-400">Draft #{{ $draft->id }}{{ $draft->draft_number && $draft->draft_number !== (string) $draft->id ? ' · Ref '.$draft->draft_number : '' }} · Updated {{ $draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->format('d M Y H:i') : 'unknown' }}</p>
+                                <p class="mt-1 text-xs text-slate-400">Draft ID {{ $draft->id }}{{ $draft->draft_number && $draft->draft_number !== (string) $primaryRef && $draft->draft_number !== (string) $draft->id ? ' · Legacy ref '.$draft->draft_number : '' }} · Updated {{ $draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->format('d M Y H:i') : 'unknown' }}</p>
                                 <p class="mt-1 text-xs font-semibold text-slate-500">
                                     Created by {{ $draft->created_by_name ?: 'Unknown user' }}
                                     @if (($draft->updated_by_name ?? null) && $draft->updated_by_name !== $draft->created_by_name)
@@ -98,7 +98,7 @@
                             </div>
 
                             <div class="xl:col-span-2 flex justify-start xl:justify-end">
-                                <a href="{{ route('draft-orders.show', $draft->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open draft</a>
+                                <a href="{{ route('draft-orders.show', $draft->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open request draft</a>
                             </div>
                         </div>
                     </div>

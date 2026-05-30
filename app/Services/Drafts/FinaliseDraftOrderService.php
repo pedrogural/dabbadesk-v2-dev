@@ -4,6 +4,7 @@ namespace App\Services\Drafts;
 
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use RuntimeException;
 
 class FinaliseDraftOrderService
@@ -55,7 +56,7 @@ class FinaliseDraftOrderService
             }
 
             $billing = $this->billingSnapshot((int) $draft->customer_id, $customer);
-            $orderNumber = trim((string) ($draft->draft_number ?: $draft->id));
+            $orderNumber = $this->businessOrderNumber($draft, $previousOrderId);
             $orderFeeRate = (float) ($draft->dabba_fee_rate ?? $customer->dabba_fee_rate ?? 20);
             if ($orderFeeRate > 1) {
                 $orderFeeRate = round($orderFeeRate / 100, 4);
@@ -91,9 +92,11 @@ class FinaliseDraftOrderService
             ]);
 
             $orderRetailerIds = $this->createOrderRetailers($orderId, $retailerSummaries, $userId);
-            $this->createOrderItems($orderId, $items, $retailerSummaries, $orderRetailerIds, $userId);
+            $itemMap = $this->createOrderItems($orderId, $items, $retailerSummaries, $orderRetailerIds, $previousOrderId, $userId);
 
             if ($previousOrderId) {
+                $this->carryForwardOperationalState($previousOrderId, $orderId, $itemMap, $userId);
+
                 DB::table('orders')
                     ->where('id', $previousOrderId)
                     ->whereNotIn('status', ['cancelled', 'superseded'])
@@ -121,8 +124,8 @@ class FinaliseDraftOrderService
                 'type' => 'system_note',
                 'title' => $previousOrderId ? 'New order version created' : 'Draft consumed',
                 'body' => $previousOrderId
-                    ? 'Draft was edited after prior consumption and used to create a new order version. Previous Order ID #' . $previousOrderId . ' was marked as superseded. New Order #' . $orderNumber . ' was created.'
-                    : 'Draft consumed into Order #' . $orderNumber . '.',
+                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded.'
+                    : 'Draft consumed into Order/Request #' . $orderNumber . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -135,7 +138,7 @@ class FinaliseDraftOrderService
                 'subject_id' => $orderId,
                 'type' => 'system_note',
                 'title' => 'Order created',
-                'body' => 'Order created from Draft #' . $orderNumber . '.',
+                'body' => 'Order created from draft workspace for Request #' . $orderNumber . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -149,6 +152,25 @@ class FinaliseDraftOrderService
         });
     }
 
+
+    private function businessOrderNumber(object $draft, ?int $previousOrderId): string
+    {
+        if ($previousOrderId) {
+            $previousOrderNumber = DB::table('orders')->where('id', $previousOrderId)->value('order_number');
+            if (trim((string) $previousOrderNumber) !== '') {
+                return trim((string) $previousOrderNumber);
+            }
+        }
+
+        if (! empty($draft->order_request_id)) {
+            $requestRef = DB::table('order_requests')->where('id', $draft->order_request_id)->value('request_ref');
+            if (trim((string) $requestRef) !== '') {
+                return trim((string) $requestRef);
+            }
+        }
+
+        return trim((string) ($draft->draft_number ?: $draft->id));
+    }
 
     private function previousOrderId(object $draft): ?int
     {
@@ -244,8 +266,11 @@ class FinaliseDraftOrderService
         return $ids;
     }
 
-    private function createOrderItems(int $orderId, Collection $items, Collection $retailerSummaries, array $orderRetailerIds, int $userId): void
+    private function createOrderItems(int $orderId, Collection $items, Collection $retailerSummaries, array $orderRetailerIds, ?int $previousOrderId, int $userId): array
     {
+        $previousItems = $this->previousOrderItems($previousOrderId);
+        $usedPreviousItemIds = [];
+        $itemMap = [];
         foreach ($items->groupBy('retailer_id') as $retailerId => $retailerItems) {
             $summary = $retailerSummaries->get($retailerId);
             $retailerSubtotal = max(0.0, (float) ($summary->retailer_subtotal ?? $retailerItems->sum('line_subtotal')));
@@ -266,11 +291,15 @@ class FinaliseDraftOrderService
                 $description = trim((string) ($item->description ?? ''));
                 $itemName = $this->itemNameFromDescription($description, (string) ($item->product_code ?? ''));
 
-                DB::table('order_items')->insert([
+                $previousItem = $this->matchPreviousOrderItem($item, $previousItems, $usedPreviousItemIds);
+                $sourceOrderItemId = $previousItem ? (int) $previousItem->id : null;
+                $rootItemId = $previousItem ? (int) ($previousItem->root_item_id ?: $previousItem->id) : null;
+
+                $orderItemId = (int) DB::table('order_items')->insertGetId([
                     'order_id' => $orderId,
                     'order_retailer_id' => $orderRetailerIds[(int) $retailerId] ?? null,
-                    'source_order_item_id' => null,
-                    'root_item_id' => null,
+                    'source_order_item_id' => $sourceOrderItemId,
+                    'root_item_id' => $rootItemId,
                     'item_name' => $itemName,
                     'description' => $description ?: $itemName,
                     'product_code' => trim((string) ($item->product_code ?? $item->sku ?? '')) ?: null,
@@ -284,15 +313,227 @@ class FinaliseDraftOrderService
                     'retailer_delivery_allocated' => $retailerDeliveryAllocated,
                     'sort_order' => (int) ($item->sort_order ?? ($index + 1)),
                     'dabba_fee_allocated' => $dabbaFeeAllocated,
-                    'status' => 'requested',
-                    'last_status_changed_at' => now(),
+                    'status' => $previousItem ? (string) ($previousItem->status ?: 'requested') : 'requested',
+                    'last_status_changed_at' => $previousItem && $previousItem->last_status_changed_at ? $previousItem->last_status_changed_at : now(),
                     'created_by_user_id' => $userId,
                     'updated_by_user_id' => $userId,
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
+
+                if (! $sourceOrderItemId) {
+                    DB::table('order_items')->where('id', $orderItemId)->update(['root_item_id' => $orderItemId]);
+                } else {
+                    $itemMap[$sourceOrderItemId] = $orderItemId;
+                }
             }
         }
+
+        return $itemMap;
+    }
+
+    private function previousOrderItems(?int $previousOrderId): Collection
+    {
+        if (! $previousOrderId) {
+            return collect();
+        }
+
+        return DB::table('order_items')
+            ->where('order_id', $previousOrderId)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get();
+    }
+
+    private function matchPreviousOrderItem(object $draftItem, Collection $previousItems, array &$usedPreviousItemIds): ?object
+    {
+        if ($previousItems->isEmpty()) {
+            return null;
+        }
+
+        $sourceId = (int) ($draftItem->source_order_item_id ?? 0);
+        if ($sourceId > 0) {
+            $matched = $previousItems->first(fn ($item) => (int) $item->id === $sourceId && empty($usedPreviousItemIds[(int) $item->id]));
+            if ($matched) {
+                $usedPreviousItemIds[(int) $matched->id] = true;
+                return $matched;
+            }
+        }
+
+        $productCode = $this->normaliseMatchText((string) ($draftItem->product_code ?: $draftItem->sku ?: ''));
+        if ($productCode !== '') {
+            $matched = $previousItems->first(function ($item) use ($productCode, $usedPreviousItemIds) {
+                return empty($usedPreviousItemIds[(int) $item->id])
+                    && $this->normaliseMatchText((string) ($item->product_code ?? '')) === $productCode;
+            });
+            if ($matched) {
+                $usedPreviousItemIds[(int) $matched->id] = true;
+                return $matched;
+            }
+        }
+
+        $url = $this->normaliseUrlForMatch((string) ($draftItem->url ?? ''));
+        if ($url !== '') {
+            $matched = $previousItems->first(function ($item) use ($url, $usedPreviousItemIds) {
+                return empty($usedPreviousItemIds[(int) $item->id])
+                    && $this->normaliseUrlForMatch((string) ($item->product_url ?? '')) === $url;
+            });
+            if ($matched) {
+                $usedPreviousItemIds[(int) $matched->id] = true;
+                return $matched;
+            }
+        }
+
+        $description = $this->normaliseMatchText((string) ($draftItem->description ?? ''));
+        if ($description !== '') {
+            $matched = $previousItems->first(function ($item) use ($description, $usedPreviousItemIds) {
+                return empty($usedPreviousItemIds[(int) $item->id])
+                    && $this->normaliseMatchText((string) ($item->description ?? '')) === $description;
+            });
+            if ($matched) {
+                $usedPreviousItemIds[(int) $matched->id] = true;
+                return $matched;
+            }
+        }
+
+        return null;
+    }
+
+    private function carryForwardOperationalState(int $previousOrderId, int $newOrderId, array $itemMap, int $userId): void
+    {
+        if (empty($itemMap)) {
+            $this->copyOrderTransactions($previousOrderId, $newOrderId, $userId);
+            return;
+        }
+
+        $newItems = DB::table('order_items')
+            ->whereIn('id', array_values($itemMap))
+            ->get()
+            ->keyBy('id');
+
+        $purchaseMap = [];
+
+        DB::table('order_item_purchases')
+            ->where('order_id', $previousOrderId)
+            ->whereIn('order_item_id', array_keys($itemMap))
+            ->orderBy('id')
+            ->get()
+            ->each(function ($purchase) use ($newOrderId, $itemMap, $newItems, &$purchaseMap) {
+                $newOrderItemId = $itemMap[(int) $purchase->order_item_id] ?? null;
+                $newItem = $newOrderItemId ? $newItems->get($newOrderItemId) : null;
+
+                if (! $newOrderItemId || ! $newItem) {
+                    return;
+                }
+
+                $row = (array) $purchase;
+                unset($row['id']);
+                $row['order_id'] = $newOrderId;
+                $row['order_item_id'] = $newOrderItemId;
+                $row['order_retailer_id'] = $newItem->order_retailer_id ?? null;
+                $row['root_item_id'] = $newItem->root_item_id ?: $newOrderItemId;
+
+                $newPurchaseId = $this->insertFiltered('order_item_purchases', $row);
+                $purchaseMap[(int) $purchase->id] = $newPurchaseId;
+            });
+
+        if (! empty($purchaseMap)) {
+            DB::table('purchase_arrival_assignments')
+                ->where('order_id', $previousOrderId)
+                ->whereIn('order_item_purchase_id', array_keys($purchaseMap))
+                ->orderBy('id')
+                ->get()
+                ->each(function ($assignment) use ($newOrderId, $itemMap, $purchaseMap, $newItems) {
+                    $newOrderItemId = $itemMap[(int) $assignment->order_item_id] ?? null;
+                    $newPurchaseId = $purchaseMap[(int) $assignment->order_item_purchase_id] ?? null;
+                    $newItem = $newOrderItemId ? $newItems->get($newOrderItemId) : null;
+
+                    if (! $newOrderItemId || ! $newPurchaseId || ! $newItem) {
+                        return;
+                    }
+
+                    $row = (array) $assignment;
+                    unset($row['id']);
+                    $row['order_id'] = $newOrderId;
+                    $row['order_item_id'] = $newOrderItemId;
+                    $row['order_item_purchase_id'] = $newPurchaseId;
+                    $row['root_item_id'] = $newItem->root_item_id ?: $newOrderItemId;
+
+                    $this->insertFiltered('purchase_arrival_assignments', $row);
+                });
+        }
+
+        $this->copyOrderTransactions($previousOrderId, $newOrderId, $userId);
+
+        DB::table('activity_logs')->insert([
+            'subject_type' => 'order',
+            'subject_id' => $newOrderId,
+            'type' => 'system_note',
+            'title' => 'Prior operational state carried forward',
+            'body' => 'Purchases, arrivals and order settlement events were carried forward from superseded Order ID #' . $previousOrderId . '.',
+            'occurred_at' => now(),
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function copyOrderTransactions(int $previousOrderId, int $newOrderId, int $userId): void
+    {
+        DB::table('order_transactions')
+            ->where('order_id', $previousOrderId)
+            ->orderBy('id')
+            ->get()
+            ->each(function ($transaction) use ($newOrderId, $previousOrderId, $userId) {
+                $row = (array) $transaction;
+                unset($row['id']);
+                $row['order_id'] = $newOrderId;
+                $row['invoice_version_id'] = null;
+                $row['created_by_user_id'] = $transaction->created_by_user_id ?: $userId;
+
+                if (array_key_exists('note', $row)) {
+                    $note = trim((string) ($row['note'] ?? ''));
+                    $suffix = 'Carried forward from superseded Order ID #' . $previousOrderId . '.';
+                    $row['note'] = $note === '' ? $suffix : mb_substr($note . ' | ' . $suffix, 0, 255);
+                }
+
+                $this->insertFiltered('order_transactions', $row);
+            });
+    }
+
+    private function insertFiltered(string $table, array $row): int
+    {
+        $columns = Schema::getColumnListing($table);
+        $filtered = array_intersect_key($row, array_flip($columns));
+
+        return (int) DB::table($table)->insertGetId($filtered);
+    }
+
+    private function normaliseMatchText(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value) ?: '';
+
+        return $value;
+    }
+
+    private function normaliseUrlForMatch(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return '';
+        }
+
+        $parts = parse_url($url);
+        if (! $parts || empty($parts['host'])) {
+            return mb_strtolower($url);
+        }
+
+        $host = preg_replace('/^www\./', '', mb_strtolower($parts['host']));
+        $path = rtrim((string) ($parts['path'] ?? ''), '/');
+
+        return $host . $path;
     }
 
     private function allocateMoney(Collection $items, float $amount, float $subtotal): array

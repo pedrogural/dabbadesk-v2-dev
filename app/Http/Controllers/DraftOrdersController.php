@@ -138,6 +138,13 @@ class DraftOrdersController extends Controller
             'home_delivery_requested' => ['nullable'],
         ]);
 
+        $draft = $drafts->find($draftOrder);
+        if ((string) $request->input('status') === 'cancelled' && ! empty($draft?->finalized_order_id)) {
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors(['status' => 'This draft has already created an order and cannot be cancelled. Cancel the order instead if required.']);
+        }
+
         $drafts->updateDraft($draftOrder, $request->only(['status', 'fee_mode', 'home_delivery_requested']), Auth::id());
 
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Draft settings updated.');
