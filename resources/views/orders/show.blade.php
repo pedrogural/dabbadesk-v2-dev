@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        Request #{{ $order->order_number }}
+        Order #{{ $order->order_number }} · Rev {{ $order->revision_number ?? 1 }}
     </x-slot>
 
     @php
@@ -20,12 +20,22 @@
 
                     <div class="mt-3 flex flex-wrap items-center gap-3">
                         <h1 class="text-3xl font-bold text-slate-950">
-                            Request #{{ $order->order_number }}
+                            Order #{{ $order->order_number }}
                         </h1>
 
                         <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">
                             {{ str_replace('_', ' ', ucfirst($order->status)) }}
                         </span>
+
+                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-sm font-black text-indigo-700">
+                            Rev {{ $order->revision_number ?? 1 }}
+                        </span>
+
+                        @if (($order->revision_state ?? 'current') === 'superseded')
+                            <span class="rounded-full bg-rose-100 px-3 py-1 text-sm font-black text-rose-700">Superseded</span>
+                        @elseif (($order->revision_state ?? 'current') === 'current_revision')
+                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">Current revision</span>
+                        @endif
 
                         @if (($progress['remaining_purchase_qty'] ?? 0) > 0)
                             <span class="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">
@@ -41,6 +51,13 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
+                    <a
+                        href="{{ route('draft-orders.show', $order->draft_order_id) }}"
+                        class="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+                    >
+                        Open Draft
+                    </a>
+
                     <a
                         href="{{ route('money-desk.orders.show', $order->id) }}"
                         class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"

@@ -67,7 +67,8 @@
                         <div class="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-center">
                             <div class="xl:col-span-4">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <h3 class="text-lg font-black text-slate-950">Request #{{ $order->order_number }}</h3>
+                                    <h3 class="text-lg font-black text-slate-950">Order #{{ $order->order_number }}</h3>
+                                    <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">Rev {{ $order->revision_number ?? 1 }}</span>
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
                                     @if (($order->revision_state ?? 'current') === 'superseded')
                                         <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">Superseded</span>
@@ -110,6 +111,9 @@
 
                             <div class="xl:col-span-2 flex flex-wrap justify-start gap-2 xl:justify-end">
                                 <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open order</a>
+                                @if (! empty($order->draft_order_id))
+                                    <a href="{{ route('draft-orders.show', $order->draft_order_id) }}" class="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">Open Draft</a>
+                                @endif
                                 <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-200">Finance</a>
                             </div>
                         </div>

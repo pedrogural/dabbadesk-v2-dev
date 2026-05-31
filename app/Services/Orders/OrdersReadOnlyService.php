@@ -82,6 +82,7 @@ class OrdersReadOnlyService
             })
             ->select([
                 'orders.id',
+                'orders.draft_order_id',
                 'orders.order_number',
                 'orders.status',
                 'orders.grand_total',
@@ -107,13 +108,16 @@ class OrdersReadOnlyService
                 DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
                 DB::raw('COALESCE(settlement_totals.settled_total, 0) as settled_total'),
                 DB::raw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) as balance_due'),
-                DB::raw("CASE WHEN orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
+                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
             ])
             ->when(! $showHistory, function ($query) {
                 $query->where(function ($historyQuery) {
                     $historyQuery
-                        ->whereNull('orders.cancel_reason')
-                        ->orWhere('orders.cancel_reason', '!=', 'superseded');
+                        ->where(function ($activeQuery) {
+                            $activeQuery->whereNull('orders.cancel_reason')->orWhere('orders.cancel_reason', '!=', 'superseded');
+                        })
+                        ->where('orders.status', '!=', 'superseded');
                 });
             })
             ->when($status !== '', function ($query) use ($status) {
@@ -178,8 +182,11 @@ class OrdersReadOnlyService
                 'orders.draft_order_id',
                 'orders.source_draft_order_id',
                 'orders.parent_order_id',
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
+                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
                 'orders.order_type',
                 'orders.order_number',
+                'orders.draft_order_id',
                 'orders.status',
                 'orders.subtotal',
                 'orders.retailer_delivery_fee_total',
@@ -270,57 +277,45 @@ class OrdersReadOnlyService
 
     public function progressSummary(int $orderId): array
     {
-        $items = $this->items($orderId);
-        $itemQty = (int) $items->sum('quantity');
+        $itemQty = (int) DB::table('order_items')
+            ->where('order_id', $orderId)
+            ->sum('quantity');
 
-        if ($items->isEmpty()) {
+        $rootItemIds = $this->rootItemIdsForOrder($orderId);
+
+        if ($rootItemIds->isEmpty()) {
             return [
-                'item_qty' => 0,
+                'item_qty' => $itemQty,
                 'purchased_qty' => 0,
-                'remaining_purchase_qty' => 0,
+                'remaining_purchase_qty' => $itemQty,
                 'arrived_qty' => 0,
                 'ready_qty' => 0,
                 'collected_qty' => 0,
             ];
         }
 
-        $rootItemIds = $items
-            ->map(fn ($item) => (int) ($item->root_item_id ?? $item->id))
-            ->filter()
-            ->unique()
-            ->values();
+        $purchasedQty = (int) DB::table('order_item_purchases')
+            ->whereIn('root_item_id', $rootItemIds->all())
+            ->whereIn('status', ['purchased', 'ordered', 'received'])
+            ->whereNull('cancelled_at')
+            ->sum('qty');
 
-        $readyQty = 0;
-        $collectedQty = 0;
+        $arrivedQty = (int) DB::table('purchase_arrival_assignments')
+            ->whereIn('root_item_id', $rootItemIds->all())
+            ->whereNull('undone_at')
+            ->sum('qty');
 
-        if ($rootItemIds->isNotEmpty()) {
-            $readyByRoot = DB::table('purchase_arrival_assignments')
-                ->select('root_item_id', DB::raw('SUM(qty) as qty'))
-                ->whereIn('root_item_id', $rootItemIds->all())
-                ->whereNull('undone_at')
-                ->whereIn('status', ['ready_for_collection', 'for_delivery'])
-                ->groupBy('root_item_id')
-                ->pluck('qty', 'root_item_id');
+        $readyQty = (int) DB::table('purchase_arrival_assignments')
+            ->whereIn('root_item_id', $rootItemIds->all())
+            ->whereNull('undone_at')
+            ->whereIn('status', ['ready_for_collection', 'for_delivery'])
+            ->sum('qty');
 
-            $collectedByRoot = DB::table('purchase_arrival_assignments')
-                ->select('root_item_id', DB::raw('SUM(qty) as qty'))
-                ->whereIn('root_item_id', $rootItemIds->all())
-                ->whereNull('undone_at')
-                ->whereIn('status', ['collected', 'delivered'])
-                ->groupBy('root_item_id')
-                ->pluck('qty', 'root_item_id');
-
-            foreach ($items as $item) {
-                $rootId = (int) ($item->root_item_id ?? $item->id);
-                $qty = (int) $item->quantity;
-
-                $readyQty += min($qty, (int) ($readyByRoot[$rootId] ?? 0));
-                $collectedQty += min($qty, (int) ($collectedByRoot[$rootId] ?? 0));
-            }
-        }
-
-        $purchasedQty = (int) $items->sum('purchased_qty');
-        $arrivedQty = (int) $items->sum('arrived_qty');
+        $collectedQty = (int) DB::table('purchase_arrival_assignments')
+            ->whereIn('root_item_id', $rootItemIds->all())
+            ->whereNull('undone_at')
+            ->whereIn('status', ['collected', 'delivered'])
+            ->sum('qty');
 
         return [
             'item_qty' => $itemQty,
@@ -391,7 +386,6 @@ class OrdersReadOnlyService
             })
             ->select([
                 'order_items.id',
-                'order_items.root_item_id',
                 'order_items.item_name',
                 'order_items.description',
                 'order_items.product_code',
