@@ -2386,7 +2386,7 @@ CREATE TABLE `cache` (
 LOCK TABLES `cache` WRITE;
 /*!40000 ALTER TABLE `cache` DISABLE KEYS */;
 INSERT INTO `cache` VALUES
-('dabba-direct-cms-cache-sidebar.order_requests.unconverted_count','i:16;',1780206551),
+('dabba-direct-cms-cache-sidebar.order_requests.unconverted_count','i:16;',1780214121),
 ('laravel-cache-047fed6628a30f881eb5683c981e2702dcb4d32f','i:1;',1779111892),
 ('laravel-cache-047fed6628a30f881eb5683c981e2702dcb4d32f:timer','i:1779111892;',1779111892),
 ('laravel-cache-fce98a41478d97e8b1a1d6807fba5692a4fff995','i:2;',1780160629),
@@ -13041,7 +13041,7 @@ INSERT INTO `draft_order_retailers` VALUES
 (854,587,115,352.97,0.00,0.20,10.00,0,NULL,70.59,423.56,NULL,2,'2026-05-29 13:23:49','2026-05-29 13:23:49'),
 (855,588,115,69.58,0.00,0.20,10.00,0,NULL,13.92,83.50,NULL,NULL,'2026-05-29 13:28:48','2026-05-29 13:30:16'),
 (856,589,115,63.91,0.00,0.20,10.00,0,NULL,12.78,76.69,NULL,NULL,'2026-05-29 13:44:47','2026-05-29 15:07:59'),
-(857,590,115,68.94,0.00,0.20,10.00,0,NULL,13.79,82.73,NULL,5,'2026-05-29 13:53:28','2026-05-29 13:53:28'),
+(857,590,115,68.94,0.00,0.20,10.00,0,NULL,13.79,82.73,NULL,5,'2026-05-29 13:53:28','2026-05-31 09:54:57'),
 (858,592,115,71.97,0.00,0.20,10.00,0,NULL,14.39,86.36,NULL,5,'2026-05-29 15:18:10','2026-05-29 15:24:43');
 /*!40000 ALTER TABLE `draft_order_retailers` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -13665,7 +13665,7 @@ INSERT INTO `draft_orders` VALUES
 (587,611,479,NULL,NULL,'normal','consumed','consumed',0,2,2,'2026-05-29 13:23:49','2026-05-29 13:23:49','global',0.2000,10.00,'standard',352.97,0.00,70.59,423.56,672),
 (588,612,851,NULL,'26591','normal','consumed','consumed',0,5,5,'2026-05-29 13:27:42','2026-05-29 13:30:16','global',0.2000,10.00,'standard',69.58,0.00,13.92,83.50,674),
 (589,613,670,NULL,'26592','normal','consumed','consumed',0,2,2,'2026-05-29 13:43:58','2026-05-29 15:07:59','global',0.2000,10.00,'standard',63.91,0.00,12.78,76.69,673),
-(590,614,1033,NULL,NULL,'normal','consumed','consumed',0,5,5,'2026-05-29 13:53:28','2026-05-29 13:53:28','global',0.2000,10.00,'standard',68.94,0.00,13.79,82.73,675),
+(590,614,1033,NULL,NULL,'normal','consumed','consumed',0,5,5,'2026-05-29 13:53:28','2026-05-31 09:54:57','global',0.2000,10.00,'standard',68.94,0.00,13.79,82.73,675),
 (592,616,640,NULL,NULL,'normal','consumed','consumed',0,5,5,'2026-05-29 15:18:10','2026-05-29 15:24:43','global',0.2000,10.00,'standard',71.97,0.00,14.39,86.36,676);
 /*!40000 ALTER TABLE `draft_orders` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -32307,7 +32307,7 @@ LOCK TABLES `users` WRITE;
 INSERT INTO `users` VALUES
 (2,'Sharan Mohinani','sharan@dabbadirect.com','staff',NULL,'$2y$12$OUspE9vb0gbc13ybzFSdvex7TtXr31.XY/ZMsXUatP.VKIgab5Mo6','NpMCtCZE1LzWnXF0Po9nXeA1L3ggf0hp4lFZrjshNbGp8i7s8M8ILjfia2u1',0,NULL,NULL,NULL,5,'2025-12-30 05:23:54','2026-01-02 02:20:07',NULL),
 (4,'System Administrator   ','webmaster@dabbadirect.com','admin',NULL,'$2y$12$q3WB7f/aSr9PzMytug0HKO4bcHN9hoLxWmpEFPk4UYHvRFm8RgCU6','8Eep2nm0uA5SCMmj8N4aPM2y5pWwV8H7CX71tkrVd1YsV7Oe7skwtyItWbF7',0,NULL,NULL,NULL,5,'2025-12-30 05:33:18','2026-01-09 20:06:25',NULL),
-(5,'Peter Gural','peter@dabbadirect.com','admin',NULL,'$2y$12$dbL9iMmTWrRF/IiWabEAZ.sCip99jF4k/ptJ8c5w0kum3Qyv1i9HW','Ul5aXkoLVML7GgEgArY6z4rabu8q1MxQpxfSKMpoH9Ztg6gc7CaCPUJmk5im',0,NULL,NULL,NULL,4,'2025-12-30 13:42:19','2026-01-02 23:14:33',NULL),
+(5,'Peter Gural','peter@dabbadirect.com','admin',NULL,'$2y$12$dbL9iMmTWrRF/IiWabEAZ.sCip99jF4k/ptJ8c5w0kum3Qyv1i9HW','hAnJdLaWsYLDo83GtGvy6OBaUXgK7E3Indojg58VGcuadwOtobI9V3nG3sm2',0,NULL,NULL,NULL,4,'2025-12-30 13:42:19','2026-01-02 23:14:33',NULL),
 (6,'Jai Mirpuri','jai@freight-it.gi','staff',NULL,'$2y$12$UcGQrCCRnbTBFTIjZz25t.rcaEl/xRrrb/ou6y/bm8A5D6csg7AJK',NULL,0,NULL,NULL,NULL,NULL,'2026-03-18 16:12:31','2026-03-18 16:14:08',NULL);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -32596,4 +32596,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-05-31  5:49:46
+-- Dump completed on 2026-05-31  8:33:07

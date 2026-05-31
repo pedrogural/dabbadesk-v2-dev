@@ -28,6 +28,8 @@
         $hasUnresolvedRetailers = isset($unresolvedRetailers) && $unresolvedRetailers->isNotEmpty();
     @endphp
 
+    <style>[x-cloak] { display: none !important; }</style>
+
     <div class="space-y-5">
         @if (session('status'))
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800">{{ session('status') }}</div>
@@ -119,7 +121,9 @@
                                             <div class="max-w-xl text-sm font-bold text-gray-900">{{ $item->description }}</div>
                                             <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
                                                 @if ($item->product_code)<span>Code: {{ $item->product_code }}</span>@endif
-                                                @if ($item->retailer_url)<a href="{{ $item->retailer_url }}" target="_blank" class="font-semibold text-indigo-600 hover:text-indigo-800">Open link</a>@endif
+                                                @if ($item->retailer_url)
+                                                    <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open product link" title="Open product link" class="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
+                                                @endif
                                             </div>
                                             @if ($item->notes)<div class="mt-2 rounded-xl bg-gray-50 p-2 text-xs text-gray-600">{{ $item->notes }}</div>@endif
                                         </td>
@@ -185,7 +189,7 @@
                         </details>
 
                         @if ($hasUnresolvedRetailers)
-                            <section class="mt-4 overflow-hidden rounded-3xl border border-amber-300 bg-white shadow-sm">
+                            <section id="retailer-review-queue" class="mt-4 overflow-hidden rounded-3xl border border-amber-300 bg-white shadow-sm" x-data="retailerReviewQueue(@js($unresolvedRetailers->values()))">
                                 <div class="border-b border-amber-200 bg-amber-50 p-5">
                                     <div class="flex flex-wrap items-start justify-between gap-3">
                                         <div class="max-w-2xl">
@@ -195,68 +199,107 @@
                                                     {{ $unresolvedRetailers->count() }} unknown retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }}
                                                 </span>
                                             </div>
-                                            <h3 class="mt-3 text-lg font-black text-gray-950">Resolve retailers before creating the draft</h3>
+                                            <h3 class="mt-3 text-lg font-black text-gray-950">Retailer review required</h3>
                                             <p class="mt-1 text-sm leading-6 text-amber-900">
-                                                The draft is blocked so DabbaDesk does not create vague retailers like bare domains automatically. Review each unknown retailer below, edit the suggested name/domain if needed, then click <span class="font-black">Add & link</span>. When this queue is empty, the convert button will unlock.
+                                                Conversion is paused until each unknown retailer is linked to the retailer table. The list below stays compact; click <span class="font-black">Review</span> to check one retailer at a time.
                                             </p>
                                         </div>
                                         <div class="rounded-2xl bg-white px-4 py-3 text-center ring-1 ring-amber-200">
-                                            <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Conversion status</p>
-                                            <p class="mt-1 text-sm font-black text-gray-950">Paused safely</p>
+                                            <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Convert button</p>
+                                            <p class="mt-1 text-sm font-black text-gray-950">Locked</p>
                                         </div>
-                                    </div>
-
-                                    <div class="mt-4 grid gap-2 text-xs font-semibold text-amber-950 sm:grid-cols-3">
-                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">1. Check the retailer name</div>
-                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">2. Check the base domain</div>
-                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">3. Add & link to request items</div>
                                     </div>
                                 </div>
 
-                                <div class="max-h-[34rem] space-y-3 overflow-y-auto p-4">
+                                <div class="divide-y divide-gray-100 bg-white">
                                     @foreach ($unresolvedRetailers as $loopIndex => $retailer)
-                                        <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                                            <div class="min-w-0">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-gray-400">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
+                                                <h4 class="mt-1 truncate text-base font-black text-gray-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
+                                                <p class="mt-1 text-sm text-gray-600">
+                                                    Found on <span class="font-black text-gray-900">{{ $retailer['items_count'] ?? 1 }}</span> request item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}
+                                                    @if (! empty($retailer['urls']))
+                                                        · {{ count($retailer['urls']) }} source link{{ count($retailer['urls']) === 1 ? '' : 's' }}
+                                                    @endif
+                                                </p>
+                                            </div>
+                                            <button type="button" @click="open({{ $loopIndex }})" class="rounded-2xl bg-gray-900 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2">
+                                                Review
+                                            </button>
+                                        </div>
+                                    @endforeach
+                                </div>
+
+                                <div x-cloak x-show="isOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
+                                    <div @click.away="close()" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl ring-1 ring-gray-200">
+                                        <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="p-5 sm:p-6">
                                             @csrf
-                                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div class="flex items-start justify-between gap-4">
                                                 <div>
-                                                    <p class="text-xs font-black uppercase tracking-wide text-gray-500">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
-                                                    <h4 class="mt-1 text-base font-black text-gray-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
-                                                    <p class="mt-1 text-xs text-gray-500">
-                                                        Found on {{ $retailer['items_count'] ?? 1 }} request item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}.
+                                                    <p class="text-xs font-black uppercase tracking-wide text-amber-700" x-text="currentLabel"></p>
+                                                    <h3 class="mt-1 text-xl font-black text-gray-950">Unknown retailer</h3>
+                                                    <p class="mt-1 text-sm text-gray-600">
+                                                        Check the display name and base domain, then add it to the retailer table and link matching request items.
                                                     </p>
                                                 </div>
-                                                <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">
-                                                    Add & link
-                                                </button>
+                                                <button type="button" @click="close()" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-gray-200 bg-white text-xl font-black text-gray-500 hover:bg-gray-50" aria-label="Close retailer review">×</button>
                                             </div>
 
-                                            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                                            <div class="mt-5 space-y-4">
                                                 <div>
-                                                    <label class="text-[11px] font-black uppercase tracking-wide text-gray-500">Retailer display name</label>
-                                                    <input name="name" required value="{{ old('name', $retailer['name']) }}" placeholder="Mobiquip" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 focus:border-amber-500 focus:ring-amber-500">
-                                                    <p class="mt-1 text-xs text-gray-500">This is what staff will see in drafts and purchasing.</p>
+                                                    <label class="block text-[11px] font-black uppercase tracking-wide text-gray-500">Retailer name</label>
+                                                    <input name="name" required :value="current?.name || ''" placeholder="Mobiquip" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
+                                                    <p class="mt-1 text-xs text-gray-500">This is the name staff will see in drafts and purchasing.</p>
                                                 </div>
+
                                                 <div>
-                                                    <label class="text-[11px] font-black uppercase tracking-wide text-gray-500">Base domain used for matching</label>
-                                                    <input name="base_url" required value="{{ old('base_url', $retailer['base_url']) }}" placeholder="mobiquip.co.uk" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 focus:border-amber-500 focus:ring-amber-500">
+                                                    <label class="block text-[11px] font-black uppercase tracking-wide text-gray-500">Base domain</label>
+                                                    <input name="base_url" required :value="current?.base_url || ''" placeholder="mobiquip.co.uk" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
                                                     <p class="mt-1 text-xs text-gray-500">Use only the shop domain, not the full product page.</p>
                                                 </div>
                                             </div>
 
-                                            @if (! empty($retailer['urls']))
-                                                <details class="mt-3 rounded-2xl border border-gray-200 bg-white p-3">
-                                                    <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-gray-500">Show source link{{ count($retailer['urls']) === 1 ? '' : 's' }}</summary>
-                                                    <div class="mt-2 space-y-1">
-                                                        @foreach ($retailer['urls'] as $sourceUrl)
-                                                            <p class="break-all text-xs text-gray-600">{{ $sourceUrl }}</p>
-                                                        @endforeach
-                                                    </div>
-                                                </details>
-                                            @endif
+                                            <details class="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                                                <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-gray-500">
+                                                    Source links (<span x-text="sourceCount"></span>)
+                                                </summary>
+                                                <div class="mt-3 space-y-2">
+                                                    <template x-for="sourceUrl in (current?.urls || [])" :key="sourceUrl">
+                                                        <div class="flex items-start gap-2 rounded-xl bg-white p-2 ring-1 ring-gray-100">
+                                                            <a :href="sourceUrl" target="_blank" rel="noopener noreferrer" aria-label="Open source link" title="Open source link" class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
+                                                            <span class="min-w-0 break-all text-xs leading-5 text-gray-600" x-text="sourceUrl"></span>
+                                                        </div>
+                                                    </template>
+                                                    <p x-show="sourceCount === 0" class="text-xs text-gray-500">No source URL was supplied for this item.</p>
+                                                </div>
+                                            </details>
+
+                                            <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                                <button type="button" @click="close()" class="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-black text-gray-700 hover:bg-gray-50">Cancel</button>
+                                                <button type="submit" class="rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2">
+                                                    Add & link retailer
+                                                </button>
+                                            </div>
                                         </form>
-                                    @endforeach
+                                    </div>
                                 </div>
                             </section>
+
+                            <script>
+                                document.addEventListener('alpine:init', () => {
+                                    Alpine.data('retailerReviewQueue', (retailers) => ({
+                                        retailers: retailers || [],
+                                        currentIndex: null,
+                                        get isOpen() { return this.currentIndex !== null; },
+                                        get current() { return this.currentIndex === null ? null : this.retailers[this.currentIndex]; },
+                                        get sourceCount() { return (this.current?.urls || []).length; },
+                                        get currentLabel() { return this.currentIndex === null ? '' : `Unknown retailer ${this.currentIndex + 1} of ${this.retailers.length}`; },
+                                        open(index) { this.currentIndex = index; },
+                                        close() { this.currentIndex = null; },
+                                    }));
+                                });
+                            </script>
                         @endif
 
                         <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-gray-200 p-4">
@@ -426,7 +469,7 @@
                             </div>
 
                             @if ($hasUnresolvedRetailers)
-                                <button type="button" disabled class="w-full cursor-not-allowed rounded-2xl bg-gray-300 px-4 py-3 text-sm font-black text-white shadow-sm">Add unknown retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }} before converting</button>
+                                <a href="#retailer-review-queue" class="block w-full rounded-2xl bg-amber-600 px-4 py-3 text-center text-sm font-black text-white shadow-sm hover:bg-amber-700">Resolve {{ $unresolvedRetailers->count() }} retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }} before conversion</a>
                             @else
                                 <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>
                             @endif

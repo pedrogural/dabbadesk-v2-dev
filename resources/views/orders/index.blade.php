@@ -29,16 +29,23 @@
                     </select>
                 </div>
 
-                <div class="lg:col-span-1">
+                <div class="lg:col-span-1 space-y-2">
                     <label class="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
                         <input type="checkbox" name="mine" value="1" @checked(! empty($filters['mine'])) onchange="this.form.submit()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                         Mine
                     </label>
                 </div>
 
-                <div class="lg:col-span-2 flex gap-2">
+                <div class="lg:col-span-1">
+                    <label class="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
+                        <input type="checkbox" name="show_history" value="1" @checked(! empty($filters['show_history'])) onchange="this.form.submit()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        History
+                    </label>
+                </div>
+
+                <div class="lg:col-span-1 flex gap-2">
                     <button type="submit" class="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">Search</button>
-                    @if ($filters['q'] || $filters['status'] || ! empty($filters['mine']))
+                    @if ($filters['q'] || $filters['status'] || ! empty($filters['mine']) || ! empty($filters['show_history']))
                         <a href="{{ route('orders.index') }}" class="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-200">Clear</a>
                     @endif
                 </div>
@@ -62,6 +69,11 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h3 class="text-lg font-black text-slate-950">Request #{{ $order->order_number }}</h3>
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
+                                    @if (($order->revision_state ?? 'current') === 'superseded')
+                                        <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">Superseded</span>
+                                    @elseif (($order->revision_state ?? 'current') === 'current_revision')
+                                        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">Current revision</span>
+                                    @endif
                                 </div>
                                 <p class="mt-1 text-sm font-black text-slate-700">
                                     <a href="{{ route('customers.show', $order->customer_id) }}" class="hover:text-indigo-700 hover:underline">{{ $customerName }}</a>
@@ -97,7 +109,7 @@
                             </div>
 
                             <div class="xl:col-span-2 flex flex-wrap justify-start gap-2 xl:justify-end">
-                                <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open request</a>
+                                <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open order</a>
                                 <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl bg-emerald-100 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-200">Finance</a>
                             </div>
                         </div>

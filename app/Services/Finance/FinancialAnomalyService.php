@@ -37,6 +37,15 @@ class FinancialAnomalyService
             ->leftJoinSub($settlementSubquery, 'settlement_totals', function ($join) {
                 $join->on('settlement_totals.order_id', '=', 'orders.id');
             })
+            ->whereNotExists(function ($newerOrder) {
+                $newerOrder
+                    ->select(DB::raw(1))
+                    ->from('orders as newer_orders')
+                    ->whereColumn('newer_orders.order_number', 'orders.order_number')
+                    ->whereColumn('newer_orders.id', '>', 'orders.id')
+                    ->whereNull('newer_orders.cancelled_at')
+                    ->whereNotIn('newer_orders.status', ['cancelled', 'superseded']);
+            })
             ->select([
                 'orders.id',
                 'orders.order_number',
@@ -66,6 +75,15 @@ class FinancialAnomalyService
             ->leftJoinSub($settlementSubquery, 'settlement_totals', function ($join) {
                 $join->on('settlement_totals.order_id', '=', 'orders.id');
             })
+            ->whereNotExists(function ($newerOrder) {
+                $newerOrder
+                    ->select(DB::raw(1))
+                    ->from('orders as newer_orders')
+                    ->whereColumn('newer_orders.order_number', 'orders.order_number')
+                    ->whereColumn('newer_orders.id', '>', 'orders.id')
+                    ->whereNull('newer_orders.cancelled_at')
+                    ->whereNotIn('newer_orders.status', ['cancelled', 'superseded']);
+            })
             ->select([
                 'orders.id',
                 'orders.order_number',
@@ -92,6 +110,15 @@ class FinancialAnomalyService
             ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
             ->join('customers', 'customers.id', '=', 'draft_orders.customer_id')
             ->leftJoin('order_transactions', 'order_transactions.order_id', '=', 'orders.id')
+            ->whereNotExists(function ($newerOrder) {
+                $newerOrder
+                    ->select(DB::raw(1))
+                    ->from('orders as newer_orders')
+                    ->whereColumn('newer_orders.order_number', 'orders.order_number')
+                    ->whereColumn('newer_orders.id', '>', 'orders.id')
+                    ->whereNull('newer_orders.cancelled_at')
+                    ->whereNotIn('newer_orders.status', ['cancelled', 'superseded']);
+            })
             ->select([
                 'orders.id',
                 'orders.order_number',

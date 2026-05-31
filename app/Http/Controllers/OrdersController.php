@@ -14,6 +14,7 @@ class OrdersController extends Controller
             'q' => trim((string) $request->query('q', '')),
             'status' => trim((string) $request->query('status', '')),
             'mine' => $request->boolean('mine'),
+            'show_history' => $request->boolean('show_history'),
             'user_id' => Auth::id(),
         ];
 

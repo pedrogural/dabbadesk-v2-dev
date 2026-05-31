@@ -24,6 +24,7 @@ class OrdersReadOnlyService
         $queryText = trim((string) ($filters['q'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
         $mineOnly = ! empty($filters['mine']);
+        $showHistory = ! empty($filters['show_history']);
         $userId = (int) ($filters['user_id'] ?? 0);
 
         $settlementSubquery = DB::table('order_transactions')
@@ -35,16 +36,32 @@ class OrdersReadOnlyService
             ->select('order_id', DB::raw('COUNT(*) as item_count'), DB::raw('SUM(quantity) as total_qty'))
             ->groupBy('order_id');
 
-        $purchaseSubquery = DB::table('order_item_purchases')
-            ->select('order_id', DB::raw('SUM(qty) as purchased_qty'))
+        $purchaseByRootSubquery = DB::table('order_item_purchases')
+            ->select('root_item_id', DB::raw('SUM(qty) as purchased_qty'))
             ->whereIn('status', ['purchased', 'ordered', 'received'])
             ->whereNull('cancelled_at')
-            ->groupBy('order_id');
+            ->whereNotNull('root_item_id')
+            ->groupBy('root_item_id');
 
-        $arrivalSubquery = DB::table('purchase_arrival_assignments')
-            ->select('order_id', DB::raw('SUM(qty) as arrived_qty'))
+        $purchaseSubquery = DB::table('order_items')
+            ->leftJoinSub($purchaseByRootSubquery, 'purchase_by_root', function ($join) {
+                $join->on('purchase_by_root.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->select('order_items.order_id', DB::raw('SUM(LEAST(order_items.quantity, COALESCE(purchase_by_root.purchased_qty, 0))) as purchased_qty'))
+            ->groupBy('order_items.order_id');
+
+        $arrivalByRootSubquery = DB::table('purchase_arrival_assignments')
+            ->select('root_item_id', DB::raw('SUM(qty) as arrived_qty'))
             ->whereNull('undone_at')
-            ->groupBy('order_id');
+            ->whereNotNull('root_item_id')
+            ->groupBy('root_item_id');
+
+        $arrivalSubquery = DB::table('order_items')
+            ->leftJoinSub($arrivalByRootSubquery, 'arrival_by_root', function ($join) {
+                $join->on('arrival_by_root.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->select('order_items.order_id', DB::raw('SUM(LEAST(order_items.quantity, COALESCE(arrival_by_root.arrived_qty, 0))) as arrived_qty'))
+            ->groupBy('order_items.order_id');
 
         return DB::table('orders')
             ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
@@ -76,6 +93,8 @@ class OrdersReadOnlyService
                 'orders.paid_at',
                 'orders.purchased_at',
                 'orders.completed_at',
+                'orders.parent_order_id',
+                'orders.cancel_reason',
                 'customers.id as customer_id',
                 'customers.first_name',
                 'customers.last_name',
@@ -88,7 +107,15 @@ class OrdersReadOnlyService
                 DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
                 DB::raw('COALESCE(settlement_totals.settled_total, 0) as settled_total'),
                 DB::raw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) as balance_due'),
+                DB::raw("CASE WHEN orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
             ])
+            ->when(! $showHistory, function ($query) {
+                $query->where(function ($historyQuery) {
+                    $historyQuery
+                        ->whereNull('orders.cancel_reason')
+                        ->orWhere('orders.cancel_reason', '!=', 'superseded');
+                });
+            })
             ->when($status !== '', function ($query) use ($status) {
                 $query->where('orders.status', $status);
             })
@@ -120,12 +147,18 @@ class OrdersReadOnlyService
                         ->orWhereExists(function ($purchaseQuery) use ($queryText) {
                             $purchaseQuery
                                 ->select(DB::raw(1))
-                                ->from('order_item_purchases')
-                                ->whereColumn('order_item_purchases.order_id', 'orders.id')
-                                ->where(function ($purchaseSearch) use ($queryText) {
-                                    $purchaseSearch
-                                        ->where('order_item_purchases.retailer_order_reference', 'like', "%{$queryText}%")
-                                        ->orWhere('order_item_purchases.marketplace_seller', 'like', "%{$queryText}%");
+                                ->from('order_items as purchase_lookup_items')
+                                ->whereColumn('purchase_lookup_items.order_id', 'orders.id')
+                                ->whereExists(function ($purchaseMatch) use ($queryText) {
+                                    $purchaseMatch
+                                        ->select(DB::raw(1))
+                                        ->from('order_item_purchases')
+                                        ->whereRaw('order_item_purchases.root_item_id = COALESCE(purchase_lookup_items.root_item_id, purchase_lookup_items.id)')
+                                        ->where(function ($purchaseSearch) use ($queryText) {
+                                            $purchaseSearch
+                                                ->where('order_item_purchases.retailer_order_reference', 'like', "%{$queryText}%")
+                                                ->orWhere('order_item_purchases.marketplace_seller', 'like', "%{$queryText}%");
+                                        });
                                 });
                         });
                 });
@@ -237,40 +270,65 @@ class OrdersReadOnlyService
 
     public function progressSummary(int $orderId): array
     {
-        $itemQty = (int) DB::table('order_items')
-            ->where('order_id', $orderId)
-            ->sum('quantity');
+        $items = $this->items($orderId);
+        $itemQty = (int) $items->sum('quantity');
 
-        $purchasedQty = (int) DB::table('order_item_purchases')
-            ->where('order_id', $orderId)
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->sum('qty');
+        if ($items->isEmpty()) {
+            return [
+                'item_qty' => 0,
+                'purchased_qty' => 0,
+                'remaining_purchase_qty' => 0,
+                'arrived_qty' => 0,
+                'ready_qty' => 0,
+                'collected_qty' => 0,
+            ];
+        }
 
-        $arrivedQty = (int) DB::table('purchase_arrival_assignments')
-            ->where('order_id', $orderId)
-            ->whereNull('undone_at')
-            ->sum('qty');
+        $rootItemIds = $items
+            ->map(fn ($item) => (int) ($item->root_item_id ?? $item->id))
+            ->filter()
+            ->unique()
+            ->values();
 
-        $readyQty = (int) DB::table('purchase_arrival_assignments')
-            ->where('order_id', $orderId)
-            ->whereNull('undone_at')
-            ->whereIn('status', ['ready_for_collection', 'for_delivery'])
-            ->sum('qty');
+        $readyQty = 0;
+        $collectedQty = 0;
 
-        $collectedQty = (int) DB::table('purchase_arrival_assignments')
-            ->where('order_id', $orderId)
-            ->whereNull('undone_at')
-            ->whereIn('status', ['collected', 'delivered'])
-            ->sum('qty');
+        if ($rootItemIds->isNotEmpty()) {
+            $readyByRoot = DB::table('purchase_arrival_assignments')
+                ->select('root_item_id', DB::raw('SUM(qty) as qty'))
+                ->whereIn('root_item_id', $rootItemIds->all())
+                ->whereNull('undone_at')
+                ->whereIn('status', ['ready_for_collection', 'for_delivery'])
+                ->groupBy('root_item_id')
+                ->pluck('qty', 'root_item_id');
+
+            $collectedByRoot = DB::table('purchase_arrival_assignments')
+                ->select('root_item_id', DB::raw('SUM(qty) as qty'))
+                ->whereIn('root_item_id', $rootItemIds->all())
+                ->whereNull('undone_at')
+                ->whereIn('status', ['collected', 'delivered'])
+                ->groupBy('root_item_id')
+                ->pluck('qty', 'root_item_id');
+
+            foreach ($items as $item) {
+                $rootId = (int) ($item->root_item_id ?? $item->id);
+                $qty = (int) $item->quantity;
+
+                $readyQty += min($qty, (int) ($readyByRoot[$rootId] ?? 0));
+                $collectedQty += min($qty, (int) ($collectedByRoot[$rootId] ?? 0));
+            }
+        }
+
+        $purchasedQty = (int) $items->sum('purchased_qty');
+        $arrivedQty = (int) $items->sum('arrived_qty');
 
         return [
             'item_qty' => $itemQty,
-            'purchased_qty' => $purchasedQty,
+            'purchased_qty' => min($itemQty, $purchasedQty),
             'remaining_purchase_qty' => max(0, $itemQty - $purchasedQty),
-            'arrived_qty' => $arrivedQty,
-            'ready_qty' => $readyQty,
-            'collected_qty' => $collectedQty,
+            'arrived_qty' => min($itemQty, $arrivedQty),
+            'ready_qty' => min($itemQty, $readyQty),
+            'collected_qty' => min($itemQty, $collectedQty),
         ];
     }
 
@@ -304,34 +362,36 @@ class OrdersReadOnlyService
     {
         $purchaseSubquery = DB::table('order_item_purchases')
             ->select(
-                'order_item_id',
+                'root_item_id',
                 DB::raw('SUM(qty) as purchased_qty'),
                 DB::raw('MAX(retailer_order_reference) as latest_retailer_order_reference'),
                 DB::raw('MAX(expected_uk_hub_at) as latest_expected_uk_hub_at'),
                 DB::raw('MAX(marketplace_seller) as latest_marketplace_seller')
             )
+            ->whereIn('status', ['purchased', 'ordered', 'received'])
             ->whereNull('cancelled_at')
-            ->groupBy('order_item_id');
+            ->groupBy('root_item_id');
 
         $arrivalSubquery = DB::table('purchase_arrival_assignments')
             ->select(
-                'order_item_id',
+                'root_item_id',
                 DB::raw('SUM(qty) as arrived_qty'),
                 DB::raw('MAX(status) as latest_arrival_status'),
                 DB::raw('MAX(matched_at) as latest_matched_at')
             )
             ->whereNull('undone_at')
-            ->groupBy('order_item_id');
+            ->groupBy('root_item_id');
 
         return DB::table('order_items')
             ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
-                $join->on('purchase_totals.order_item_id', '=', 'order_items.id');
+                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
             })
             ->leftJoinSub($arrivalSubquery, 'arrival_totals', function ($join) {
-                $join->on('arrival_totals.order_item_id', '=', 'order_items.id');
+                $join->on('arrival_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
             })
             ->select([
                 'order_items.id',
+                'order_items.root_item_id',
                 'order_items.item_name',
                 'order_items.description',
                 'order_items.product_code',
@@ -369,6 +429,8 @@ class OrdersReadOnlyService
                 $item->retailer_host = $host ?: 'Unknown retailer';
                 $item->retailer_display_name = $seller ?: ($host ?: 'Unknown retailer');
                 $item->retailer_group_key = Str::slug($item->retailer_display_name ?: 'unknown-retailer');
+                $item->purchased_qty = min((int) $item->quantity, (int) $item->purchased_qty);
+                $item->arrived_qty = min((int) $item->quantity, (int) $item->arrived_qty);
                 $item->purchase_remaining_qty = max(0, (int) $item->quantity - (int) $item->purchased_qty);
                 $item->arrival_remaining_qty = max(0, (int) $item->quantity - (int) $item->arrived_qty);
 
@@ -378,6 +440,12 @@ class OrdersReadOnlyService
 
     public function purchases(int $orderId): Collection
     {
+        $rootItemIds = $this->rootItemIdsForOrder($orderId);
+
+        if ($rootItemIds->isEmpty()) {
+            return collect();
+        }
+
         return DB::table('order_item_purchases')
             ->join('order_items', 'order_items.id', '=', 'order_item_purchases.order_item_id')
             ->select([
@@ -406,7 +474,8 @@ class OrdersReadOnlyService
                 'order_item_purchases.internal_notes',
                 'order_item_purchases.created_at',
             ])
-            ->where('order_item_purchases.order_id', $orderId)
+            ->whereIn('order_item_purchases.root_item_id', $rootItemIds->all())
+            ->whereNull('order_item_purchases.cancelled_at')
             ->orderByDesc('order_item_purchases.created_at')
             ->limit(80)
             ->get();
@@ -414,6 +483,12 @@ class OrdersReadOnlyService
 
     public function arrivals(int $orderId): Collection
     {
+        $rootItemIds = $this->rootItemIdsForOrder($orderId);
+
+        if ($rootItemIds->isEmpty()) {
+            return collect();
+        }
+
         return DB::table('purchase_arrival_assignments')
             ->join('order_items', 'order_items.id', '=', 'purchase_arrival_assignments.order_item_id')
             ->join('order_item_purchases', 'order_item_purchases.id', '=', 'purchase_arrival_assignments.order_item_purchase_id')
@@ -430,7 +505,8 @@ class OrdersReadOnlyService
                 'order_item_purchases.retailer_order_reference',
                 'order_item_purchases.requires_marking_attention',
             ])
-            ->where('purchase_arrival_assignments.order_id', $orderId)
+            ->whereIn('purchase_arrival_assignments.root_item_id', $rootItemIds->all())
+            ->whereNull('purchase_arrival_assignments.undone_at')
             ->orderByDesc('purchase_arrival_assignments.matched_at')
             ->limit(80)
             ->get();
@@ -469,6 +545,17 @@ class OrdersReadOnlyService
             ->limit(40)
             ->get();
     }
+    private function rootItemIdsForOrder(int $orderId): Collection
+    {
+        return DB::table('order_items')
+            ->where('order_id', $orderId)
+            ->selectRaw('COALESCE(root_item_id, id) as root_item_id')
+            ->pluck('root_item_id')
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
     private function hostFromUrl(string $url): string
     {
         $url = trim($url);

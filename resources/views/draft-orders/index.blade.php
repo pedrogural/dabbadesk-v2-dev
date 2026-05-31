@@ -98,7 +98,7 @@
                             </div>
 
                             <div class="xl:col-span-2 flex justify-start xl:justify-end">
-                                <a href="{{ route('draft-orders.show', $draft->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open request draft</a>
+                                <a href="{{ route('draft-orders.show', $draft->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open Draft</a>
                             </div>
                         </div>
                     </div>
