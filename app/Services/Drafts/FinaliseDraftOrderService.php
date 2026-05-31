@@ -45,13 +45,21 @@ class FinaliseDraftOrderService
                 ->lockForUpdate()
                 ->first();
 
+            // Reload items after recalculation so the version guard and order snapshot use fresh totals.
+            $items = DB::table('draft_order_items')
+                ->where('draft_order_id', $draftId)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
             $retailerSummaries = DB::table('draft_order_retailers')
                 ->where('draft_order_id', $draftId)
                 ->get()
                 ->keyBy('retailer_id');
 
-            if ($previousOrderId && ! $this->draftHasChangedSinceOrder($draft, $items, $retailerSummaries, $previousOrderId)) {
-                throw new RuntimeException('No changes were found since the last order version. Make a change before creating a new order version.');
+            if ($previousOrderId && ! $this->draftHasChangedSincePreviousOrder($draft, $items, $previousOrderId)) {
+                throw new RuntimeException('No new order version was created because this draft has not changed since the current order version. Make a real draft change first, then finalise again.');
             }
 
             $customer = DB::table('customers')->where('id', $draft->customer_id)->first();
@@ -157,6 +165,134 @@ class FinaliseDraftOrderService
     }
 
 
+    private function draftHasChangedSincePreviousOrder(object $draft, Collection $items, int $previousOrderId): bool
+    {
+        $previousOrder = DB::table('orders')->where('id', $previousOrderId)->first();
+        if (! $previousOrder) {
+            return true;
+        }
+
+        return $this->draftVersionSignature($draft, $items) !== $this->orderVersionSignature($previousOrder);
+    }
+
+    private function draftVersionSignature(object $draft, Collection $items): array
+    {
+        return [
+            'fee_mode' => $this->normaliseScalar((string) ($draft->fee_mode ?? 'standard')),
+            'dabba_fee_level' => $this->normaliseScalar((string) ($draft->dabba_fee_level ?? '')),
+            'dabba_fee_rate' => $this->normaliseMoney($draft->dabba_fee_rate ?? 0),
+            'dabba_fee_min' => $this->normaliseMoney($draft->dabba_fee_min ?? 0),
+            'home_delivery_requested' => (int) ((bool) ($draft->home_delivery_requested ?? false)),
+            'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
+            'retailer_delivery_fee_total' => $this->normaliseMoney($draft->retailer_delivery_total ?? 0),
+            'dabba_fee_amount' => $this->normaliseMoney($draft->dabba_fee_total ?? 0),
+            'grand_total' => $this->normaliseMoney($draft->grand_total ?? 0),
+            'retailers' => $this->draftRetailerSignature((int) $draft->id),
+            'items' => $items
+                ->values()
+                ->map(fn ($item) => [
+                    'retailer_id' => (int) ($item->retailer_id ?? 0),
+                    'product_code' => $this->normaliseScalar((string) ($item->product_code ?? $item->sku ?? '')),
+                    'url' => $this->normaliseUrlForMatch((string) ($item->url ?? '')),
+                    'description' => $this->normaliseScalar((string) ($item->description ?? '')),
+                    'qty' => (int) ($item->qty ?? 1),
+                    'unit_price' => $this->normaliseMoney($item->unit_price ?? 0),
+                    'item_retailer_delivery_fee' => $this->normaliseMoney($item->item_retailer_delivery_fee ?? $item->item_delivery_fee ?? 0),
+                    'line_subtotal' => $this->normaliseMoney($item->line_subtotal ?? 0),
+                    'sort_order' => (int) ($item->sort_order ?? 0),
+                ])
+                ->all(),
+        ];
+    }
+
+    private function orderVersionSignature(object $order): array
+    {
+        $items = DB::table('order_items as oi')
+            ->leftJoin('order_retailers as orr', 'orr.id', '=', 'oi.order_retailer_id')
+            ->where('oi.order_id', $order->id)
+            ->orderBy('oi.sort_order')
+            ->orderBy('oi.id')
+            ->select('oi.*', 'orr.retailer_id')
+            ->get();
+
+        return [
+            'fee_mode' => $this->normaliseScalar((string) ($order->fee_mode ?? 'standard')),
+            'dabba_fee_level' => $this->normaliseScalar((string) ($order->dabba_fee_level ?? '')),
+            'dabba_fee_rate' => $this->normaliseMoney($this->normaliseRateForComparison($order->dabba_fee_rate ?? 0)),
+            'dabba_fee_min' => $this->normaliseMoney($order->dabba_fee_min ?? 0),
+            'home_delivery_requested' => (int) ((bool) ($order->home_delivery_requested ?? false)),
+            'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
+            'retailer_delivery_fee_total' => $this->normaliseMoney($order->retailer_delivery_fee_total ?? 0),
+            'dabba_fee_amount' => $this->normaliseMoney($order->dabba_fee_amount ?? 0),
+            'grand_total' => $this->normaliseMoney($order->grand_total ?? 0),
+            'retailers' => $this->orderRetailerSignature((int) $order->id),
+            'items' => $items
+                ->values()
+                ->map(fn ($item) => [
+                    'retailer_id' => (int) ($item->retailer_id ?? 0),
+                    'product_code' => $this->normaliseScalar((string) ($item->product_code ?? '')),
+                    'url' => $this->normaliseUrlForMatch((string) ($item->product_url ?? '')),
+                    'description' => $this->normaliseScalar((string) ($item->description ?? '')),
+                    'qty' => (int) ($item->quantity ?? 1),
+                    'unit_price' => $this->normaliseMoney($item->unit_price ?? 0),
+                    'item_retailer_delivery_fee' => $this->normaliseMoney($item->item_retailer_delivery_fee ?? 0),
+                    'line_subtotal' => $this->normaliseMoney($item->line_subtotal ?? 0),
+                    'sort_order' => (int) ($item->sort_order ?? 0),
+                ])
+                ->all(),
+        ];
+    }
+
+    private function draftRetailerSignature(int $draftId): array
+    {
+        return DB::table('draft_order_retailers')
+            ->where('draft_order_id', $draftId)
+            ->orderBy('retailer_id')
+            ->get()
+            ->map(fn ($row) => [
+                'retailer_id' => (int) ($row->retailer_id ?? 0),
+                'retailer_subtotal' => $this->normaliseMoney($row->retailer_subtotal ?? 0),
+                'retailer_delivery_fee_total' => $this->normaliseMoney($row->retailer_delivery_fee_total ?? 0),
+                'dabba_fee' => $this->normaliseMoney($row->dabba_fee ?? 0),
+            ])
+            ->all();
+    }
+
+    private function orderRetailerSignature(int $orderId): array
+    {
+        return DB::table('order_retailers')
+            ->where('order_id', $orderId)
+            ->orderBy('retailer_id')
+            ->get()
+            ->map(fn ($row) => [
+                'retailer_id' => (int) ($row->retailer_id ?? 0),
+                'retailer_subtotal' => $this->normaliseMoney($row->retailer_subtotal ?? 0),
+                'retailer_delivery_fee_total' => $this->normaliseMoney($row->retailer_delivery_fee_total ?? 0),
+                'dabba_fee' => $this->normaliseMoney($row->dabba_fee ?? 0),
+            ])
+            ->all();
+    }
+
+    private function normaliseMoney(mixed $value): string
+    {
+        return number_format(round((float) $value, 2), 2, '.', '');
+    }
+
+    private function normaliseRateForComparison(mixed $value): float
+    {
+        $rate = (float) $value;
+
+        return $rate > 0 && $rate <= 1 ? round($rate * 100, 4) : $rate;
+    }
+
+    private function normaliseScalar(string $value): string
+    {
+        $value = mb_strtolower(trim($value));
+        $value = preg_replace('/\s+/', ' ', $value) ?: '';
+
+        return $value;
+    }
+
     private function businessOrderNumber(object $draft, ?int $previousOrderId): string
     {
         if ($previousOrderId) {
@@ -238,133 +374,6 @@ class FinaliseDraftOrderService
                 'updated_at' => now(),
             ]);
         }
-    }
-
-
-    private function draftHasChangedSinceOrder(object $draft, Collection $items, Collection $retailerSummaries, int $previousOrderId): bool
-    {
-        $previousOrder = DB::table('orders')->where('id', $previousOrderId)->first();
-
-        if (! $previousOrder) {
-            return true;
-        }
-
-        return $this->normalisedDraftSignature($draft, $items, $retailerSummaries) !== $this->normalisedOrderSignature($previousOrderId, $previousOrder);
-    }
-
-    private function normalisedDraftSignature(object $draft, Collection $items, Collection $retailerSummaries): string
-    {
-        $retailers = $retailerSummaries
-            ->sortBy('retailer_id')
-            ->map(function ($retailer) {
-                return [
-                    'retailer_id' => (int) ($retailer->retailer_id ?? 0),
-                    'subtotal' => $this->moneyForSignature($retailer->retailer_items_subtotal ?? 0),
-                    'delivery' => $this->moneyForSignature($retailer->retailer_delivery_fee_total ?? 0),
-                    'fee' => $this->moneyForSignature($retailer->dabba_fee ?? 0),
-                ];
-            })
-            ->values()
-            ->all();
-
-        $draftItems = $items
-            ->sortBy(fn ($item) => sprintf('%08d-%08d', (int) ($item->sort_order ?? 0), (int) ($item->id ?? 0)))
-            ->map(function ($item) {
-                return [
-                    'retailer_id' => (int) ($item->retailer_id ?? 0),
-                    'description' => $this->signatureText($item->description ?? ''),
-                    'product_code' => $this->signatureText($item->product_code ?? $item->sku ?? ''),
-                    'url' => $this->normaliseUrlForMatch((string) ($item->url ?? '')),
-                    'qty' => (int) ($item->qty ?? 1),
-                    'unit_price' => $this->moneyForSignature($item->unit_price ?? 0),
-                    'line_subtotal' => $this->moneyForSignature($item->line_subtotal ?? 0),
-                    'item_delivery' => $this->moneyForSignature($item->item_retailer_delivery_fee ?? $item->item_delivery_fee ?? 0),
-                ];
-            })
-            ->values()
-            ->all();
-
-        return json_encode([
-            'customer_id' => (int) ($draft->customer_id ?? 0),
-            'fee_level' => (string) ($draft->dabba_fee_level ?? ''),
-            'fee_rate' => $this->moneyForSignature($draft->dabba_fee_rate ?? 0),
-            'fee_min' => $this->moneyForSignature($draft->dabba_fee_min ?? 0),
-            'fee_mode' => (string) ($draft->fee_mode ?? 'standard'),
-            'subtotal' => $this->moneyForSignature($draft->items_subtotal ?? 0),
-            'delivery' => $this->moneyForSignature($draft->retailer_delivery_total ?? 0),
-            'fee_total' => $this->moneyForSignature($draft->dabba_fee_total ?? 0),
-            'grand_total' => $this->moneyForSignature($draft->grand_total ?? 0),
-            'retailers' => $retailers,
-            'items' => $draftItems,
-        ]);
-    }
-
-    private function normalisedOrderSignature(int $orderId, object $order): string
-    {
-        $orderRetailers = DB::table('order_retailers')
-            ->where('order_id', $orderId)
-            ->orderBy('retailer_id')
-            ->get()
-            ->map(function ($retailer) {
-                return [
-                    'retailer_id' => (int) ($retailer->retailer_id ?? 0),
-                    'subtotal' => $this->moneyForSignature($retailer->retailer_items_subtotal ?? 0),
-                    'delivery' => $this->moneyForSignature($retailer->retailer_delivery_fee_total ?? 0),
-                    'fee' => $this->moneyForSignature($retailer->dabba_fee ?? 0),
-                ];
-            })
-            ->values()
-            ->all();
-
-        $orderRetailerMap = DB::table('order_retailers')
-            ->where('order_id', $orderId)
-            ->pluck('retailer_id', 'id')
-            ->map(fn ($retailerId) => (int) $retailerId)
-            ->all();
-
-        $orderItems = DB::table('order_items')
-            ->where('order_id', $orderId)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get()
-            ->map(function ($item) use ($orderRetailerMap) {
-                return [
-                    'retailer_id' => (int) ($orderRetailerMap[(int) ($item->order_retailer_id ?? 0)] ?? 0),
-                    'description' => $this->signatureText($item->description ?? $item->item_name ?? ''),
-                    'product_code' => $this->signatureText($item->product_code ?? ''),
-                    'url' => $this->normaliseUrlForMatch((string) ($item->product_url ?? '')),
-                    'qty' => (int) ($item->quantity ?? 1),
-                    'unit_price' => $this->moneyForSignature($item->unit_price ?? 0),
-                    'line_subtotal' => $this->moneyForSignature($item->line_subtotal ?? 0),
-                    'item_delivery' => $this->moneyForSignature($item->item_retailer_delivery_fee ?? 0),
-                ];
-            })
-            ->values()
-            ->all();
-
-        return json_encode([
-            'customer_id' => (int) DB::table('draft_orders')->where('id', $order->draft_order_id)->value('customer_id'),
-            'fee_level' => (string) ($order->dabba_fee_level ?? ''),
-            'fee_rate' => $this->moneyForSignature($order->dabba_fee_rate ?? 0),
-            'fee_min' => $this->moneyForSignature($order->dabba_fee_min ?? 0),
-            'fee_mode' => (string) ($order->fee_mode ?? 'standard'),
-            'subtotal' => $this->moneyForSignature($order->subtotal ?? 0),
-            'delivery' => $this->moneyForSignature($order->retailer_delivery_fee_total ?? 0),
-            'fee_total' => $this->moneyForSignature($order->dabba_fee_amount ?? 0),
-            'grand_total' => $this->moneyForSignature($order->grand_total ?? 0),
-            'retailers' => $orderRetailers,
-            'items' => $orderItems,
-        ]);
-    }
-
-    private function moneyForSignature(mixed $value): string
-    {
-        return number_format(round((float) $value, 2), 2, '.', '');
-    }
-
-    private function signatureText(mixed $value): string
-    {
-        return preg_replace('/\s+/', ' ', mb_strtolower(trim((string) $value))) ?: '';
     }
 
     private function createOrderRetailers(int $orderId, Collection $retailerSummaries, int $userId): array
