@@ -39,6 +39,7 @@ class OrdersController extends Controller
             'arrivals' => $orders->arrivals($order),
             'notes' => $orders->notes($orderProfile),
             'progress' => $orders->progressSummary($order),
+            'revisionHistory' => $orders->revisionHistory($orderProfile),
         ]);
     }
 }

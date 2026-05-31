@@ -189,7 +189,7 @@
                     </h2>
 
                     <p class="mt-1 hidden text-sm text-slate-500 sm:block">
-                        DabbaDesk v2 preview environment
+                        DabbaDesk operations
                     </p>
                 </div>
 

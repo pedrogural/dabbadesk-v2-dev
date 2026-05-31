@@ -3,25 +3,37 @@
 
     <div class="space-y-6">
         <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-900">Orders</h1>
-                    <p class="mt-1 text-sm text-slate-500">Read-only order desk for finding orders, checking progress, finance position, purchasing and arrival status.</p>
+                    <p class="mt-1 text-sm text-slate-500">Find orders, check revision status, progress, finance position, purchasing and arrivals.</p>
                 </div>
-                <span class="inline-flex w-fit rounded-full bg-amber-100 px-4 py-2 text-sm font-semibold text-amber-700">Read-only mode</span>
+                <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Current revisions shown by default
+                </p>
             </div>
         </div>
 
         <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-            <form method="GET" action="{{ route('orders.index') }}" class="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:items-end">
-                <div class="lg:col-span-6">
-                    <label for="q" class="text-sm font-semibold text-slate-700">Search orders</label>
-                    <input id="q" name="q" value="{{ $filters['q'] }}" type="text" placeholder="Request/order number, customer, email, item, SKU, retailer ref or tracking" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+            <form method="GET" action="{{ route('orders.index') }}" data-live-search-form class="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-start">
+                <div class="xl:col-span-6">
+                    <label for="q" class="block text-sm font-semibold text-slate-700">Search orders</label>
+                    <input
+                        id="q"
+                        name="q"
+                        value="{{ $filters['q'] }}"
+                        type="text"
+                        autocomplete="off"
+                        placeholder="Order number, customer, email, item, SKU, retailer ref or tracking"
+                        data-live-search-input
+                        class="mt-2 h-[48px] w-full rounded-2xl border-slate-300 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                    >
+                    <p class="mt-2 text-xs text-slate-400">Search updates automatically after a short pause.</p>
                 </div>
 
-                <div class="lg:col-span-3">
-                    <label for="status" class="text-sm font-semibold text-slate-700">Status</label>
-                    <select id="status" name="status" class="mt-2 w-full rounded-2xl border-slate-300 px-4 py-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" onchange="this.form.submit()">
+                <div class="xl:col-span-2">
+                    <label for="status" class="block text-sm font-semibold text-slate-700">Status</label>
+                    <select id="status" name="status" class="mt-2 h-[48px] w-full rounded-2xl border-slate-300 px-4 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500" data-live-search-submit>
                         <option value="">All statuses</option>
                         @foreach ($statusOptions as $status)
                             <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ str_replace('_', ' ', ucfirst($status)) }}</option>
@@ -29,32 +41,46 @@
                     </select>
                 </div>
 
-                <div class="lg:col-span-1 space-y-2">
-                    <label class="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
-                        <input type="checkbox" name="mine" value="1" @checked(! empty($filters['mine'])) onchange="this.form.submit()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <div class="xl:col-span-1">
+                    <span class="block text-sm font-semibold text-transparent select-none">Mine</span>
+                    <label class="mt-2 flex h-[48px] items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 shadow-sm">
+                        <input type="checkbox" name="mine" value="1" @checked(! empty($filters['mine'])) data-live-search-submit class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                         Mine
                     </label>
                 </div>
 
-                <div class="lg:col-span-1">
-                    <label class="flex min-h-[48px] items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-700 shadow-sm">
-                        <input type="checkbox" name="show_history" value="1" @checked(! empty($filters['show_history'])) onchange="this.form.submit()" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                <div class="xl:col-span-1">
+                    <span class="block text-sm font-semibold text-transparent select-none">History</span>
+                    <label class="mt-2 flex h-[48px] items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 shadow-sm">
+                        <input type="checkbox" name="show_history" value="1" @checked(! empty($filters['show_history'])) data-live-search-submit class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                         History
                     </label>
                 </div>
 
-                <div class="lg:col-span-1 flex gap-2">
-                    <button type="submit" class="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">Search</button>
-                    @if ($filters['q'] || $filters['status'] || ! empty($filters['mine']) || ! empty($filters['show_history']))
-                        <a href="{{ route('orders.index') }}" class="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-200">Clear</a>
-                    @endif
+                <div class="xl:col-span-2">
+                    <span class="block text-sm font-semibold text-transparent select-none">Actions</span>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        <button type="submit" class="h-[48px] rounded-2xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700">Search</button>
+                        @if ($filters['q'] || $filters['status'] || ! empty($filters['mine']) || ! empty($filters['show_history']))
+                            <a href="{{ route('orders.index') }}" class="flex h-[48px] items-center justify-center rounded-2xl bg-slate-100 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-200">Clear</a>
+                        @else
+                            <span class="hidden xl:block"></span>
+                        @endif
+                    </div>
                 </div>
             </form>
         </div>
 
         <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <h2 class="text-lg font-bold text-slate-900">Order results</h2>
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900">Order results</h2>
+                    @if (empty($filters['show_history']))
+                        <p class="mt-1 text-xs text-slate-500">Showing current/latest revisions only. Tick History to include superseded snapshots.</p>
+                    @else
+                        <p class="mt-1 text-xs text-amber-700">History mode is on: superseded revisions are included for audit.</p>
+                    @endif
+                </div>
                 <p class="text-sm text-slate-500">Showing {{ $orders->firstItem() ?? 0 }}–{{ $orders->lastItem() ?? 0 }} of {{ $orders->total() }}</p>
             </div>
 
@@ -62,13 +88,14 @@
                 @forelse ($orders as $order)
                     @php
                         $customerName = $order->bill_to_name ?: (trim(($order->first_name ?? '') . ' ' . ($order->last_name ?? '')) ?: ($order->company_name ?: 'Unknown customer'));
+                        $revisionTotal = max(1, (int) ($order->revision_total ?? 1));
                     @endphp
                     <div class="rounded-3xl border border-slate-200 p-5 hover:border-indigo-200 hover:bg-indigo-50/30">
                         <div class="grid grid-cols-1 gap-4 xl:grid-cols-12 xl:items-center">
                             <div class="xl:col-span-4">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h3 class="text-lg font-black text-slate-950">Order #{{ $order->order_number }}</h3>
-                                    <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">Rev {{ $order->revision_number ?? 1 }}</span>
+                                    <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">Rev {{ $order->revision_number ?? 1 }} of {{ $revisionTotal }}</span>
                                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
                                     @if (($order->revision_state ?? 'current') === 'superseded')
                                         <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-bold text-rose-700">Superseded</span>
@@ -126,4 +153,31 @@
             <div class="mt-6">{{ $orders->links() }}</div>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const form = document.querySelector('[data-live-search-form]');
+            const input = document.querySelector('[data-live-search-input]');
+            if (!form || !input) return;
+
+            let timer = null;
+            let lastValue = input.value || '';
+            const submit = function () {
+                if (input.value === lastValue && document.activeElement === input) return;
+                lastValue = input.value;
+                form.requestSubmit ? form.requestSubmit() : form.submit();
+            };
+
+            input.addEventListener('input', function () {
+                clearTimeout(timer);
+                timer = setTimeout(submit, 1200);
+            });
+
+            form.querySelectorAll('[data-live-search-submit]').forEach(function (field) {
+                field.addEventListener('change', function () {
+                    form.requestSubmit ? form.requestSubmit() : form.submit();
+                });
+            });
+        });
+    </script>
 </x-app-layout>

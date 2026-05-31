@@ -1,6 +1,6 @@
 <x-app-layout>
     <x-slot name="header">
-        Order #{{ $order->order_number }} · Rev {{ $order->revision_number ?? 1 }}
+        Order #{{ $order->order_number }} · Rev {{ $order->revision_number ?? 1 }}@if(($order->revision_total ?? 1) > 1) of {{ $order->revision_total }}@endif
     </x-slot>
 
     @php
@@ -28,7 +28,7 @@
                         </span>
 
                         <span class="rounded-full bg-indigo-50 px-3 py-1 text-sm font-black text-indigo-700">
-                            Rev {{ $order->revision_number ?? 1 }}
+                            Rev {{ $order->revision_number ?? 1 }}@if(($order->revision_total ?? 1) > 1) of {{ $order->revision_total }}@endif
                         </span>
 
                         @if (($order->revision_state ?? 'current') === 'superseded')
@@ -454,29 +454,42 @@
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
             <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-                <h2 class="text-lg font-bold text-slate-950">Arrival / collection events</h2>
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-950">Arrival / collection events</h2>
+                        <p class="mt-1 text-sm text-slate-500">Key lifecycle dates for received goods.</p>
+                    </div>
+                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{{ $arrivals->count() }} event{{ $arrivals->count() === 1 ? '' : 's' }}</span>
+                </div>
 
                 <div class="mt-5 space-y-3">
-                    @forelse ($arrivals->take(8) as $arrival)
+                    @forelse ($arrivals->take(12) as $arrival)
                         <div class="rounded-2xl border border-slate-200 p-4 {{ $arrival->requires_marking_attention ? 'border-purple-300 bg-purple-50/60' : '' }}">
-                            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                <div>
-                                    <p class="font-semibold text-slate-900">{{ $arrival->item_name }}</p>
-                                    <p class="mt-1 text-sm text-slate-500">
-                                        Qty {{ $arrival->qty }} · {{ str_replace('_', ' ', $arrival->status) }}
-                                    </p>
+                            <p class="font-semibold text-slate-900">{{ $arrival->item_name }}</p>
+                            <p class="mt-1 text-sm text-slate-500">Qty {{ $arrival->qty }} · Current status: {{ str_replace('_', ' ', $arrival->status) }}</p>
 
-                                    @if ($arrival->notes)
-                                        <p class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
-                                            {{ $arrival->notes }}
-                                        </p>
-                                    @endif
+                            <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                                <div class="rounded-2xl bg-sky-50 px-3 py-3 ring-1 ring-sky-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-sky-700">Arrived</p>
+                                    <p class="mt-1 text-sm font-bold text-slate-900">{{ $arrival->matched_at ? \Carbon\Carbon::parse($arrival->matched_at)->format('d M Y') : 'Not recorded' }}</p>
                                 </div>
 
-                                <p class="text-xs text-slate-400">
-                                    {{ $arrival->matched_at ? \Carbon\Carbon::parse($arrival->matched_at)->format('d M Y') : 'No date' }}
-                                </p>
+                                <div class="rounded-2xl bg-purple-50 px-3 py-3 ring-1 ring-purple-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-purple-700">Informed / ready</p>
+                                    <p class="mt-1 text-sm font-bold text-slate-900">{{ ! empty($arrival->informed_at) ? \Carbon\Carbon::parse($arrival->informed_at)->format('d M Y') : 'Not recorded' }}</p>
+                                </div>
+
+                                <div class="rounded-2xl bg-emerald-50 px-3 py-3 ring-1 ring-emerald-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-emerald-700">{{ $arrival->completion_label ?? 'Collected / delivered' }}</p>
+                                    <p class="mt-1 text-sm font-bold text-slate-900">{{ ! empty($arrival->completed_at) ? \Carbon\Carbon::parse($arrival->completed_at)->format('d M Y') : 'Not recorded' }}</p>
+                                </div>
                             </div>
+
+                            @if ($arrival->notes)
+                                <p class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                                    {{ $arrival->notes }}
+                                </p>
+                            @endif
                         </div>
                     @empty
                         <div class="rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
@@ -521,9 +534,56 @@
             </div>
         </div>
 
-        <div class="rounded-3xl border border-indigo-200 bg-indigo-50 px-5 py-4 text-sm font-semibold text-indigo-800">
-            Read-only view. No changes can be made to orders from this screen.
-        </div>
+        @if (($revisionHistory ?? collect())->count() > 1)
+            <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Revision history</p>
+                        <h2 class="mt-1 text-lg font-black text-slate-950">Order #{{ $order->order_number }} has {{ ($revisionHistory ?? collect())->count() }} saved revision snapshots</h2>
+                    </div>
+                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">Audit trail</span>
+                </div>
+
+                <div class="mt-5 space-y-3">
+                    @foreach ($revisionHistory as $revision)
+                        @php
+                            $isCurrentRevision = (int) $revision->id === (int) $order->id;
+                            $isSupersededRevision = ($revision->revision_state ?? '') === 'superseded';
+                        @endphp
+                        <div class="flex flex-col gap-3 rounded-2xl border {{ $isCurrentRevision ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50' }} px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="font-black text-slate-950">Rev {{ $revision->revision_number }} of {{ $revision->revision_total }}</p>
+                                    @if ($isCurrentRevision)
+                                        <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">Viewing now</span>
+                                    @elseif ($isSupersededRevision)
+                                        <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-black text-rose-700">Superseded</span>
+                                    @else
+                                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">Current</span>
+                                    @endif
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-600">{{ str_replace('_', ' ', $revision->status) }}</span>
+                                </div>
+                                <p class="mt-1 text-xs text-slate-500">
+                                    Created {{ $revision->created_at ? \Carbon\Carbon::parse($revision->created_at)->format('d M Y H:i') : 'date unknown' }} · Total £{{ number_format($revision->grand_total ?? 0, 2) }}
+                                </p>
+                                @if (! empty($revision->revision_note))
+                                    <p class="mt-1 text-xs text-slate-500 line-clamp-2">{{ $revision->revision_note }}</p>
+                                @endif
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                @if (! $isCurrentRevision)
+                                    <a href="{{ route('orders.show', $revision->id) }}" class="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-indigo-50 hover:text-indigo-700">View snapshot</a>
+                                @endif
+                                @if (! empty($revision->draft_order_id))
+                                    <a href="{{ route('draft-orders.show', $revision->draft_order_id) }}" class="rounded-2xl bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-slate-100">Open Draft</a>
+                                @endif
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
+
 
     </div>
 </x-app-layout>

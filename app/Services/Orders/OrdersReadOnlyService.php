@@ -109,16 +109,26 @@ class OrdersReadOnlyService
                 DB::raw('COALESCE(settlement_totals.settled_total, 0) as settled_total'),
                 DB::raw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) as balance_due'),
                 DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
-                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number) as revision_total"),
+                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' OR EXISTS (SELECT 1 FROM orders newer_orders WHERE newer_orders.order_number = orders.order_number AND newer_orders.id > orders.id AND newer_orders.status != 'superseded' AND (newer_orders.cancel_reason IS NULL OR newer_orders.cancel_reason != 'superseded')) THEN 'superseded' WHEN (SELECT COUNT(*) FROM orders revision_orders WHERE revision_orders.order_number = orders.order_number) > 1 THEN 'current_revision' ELSE 'current' END as revision_state"),
             ])
             ->when(! $showHistory, function ($query) {
-                $query->where(function ($historyQuery) {
-                    $historyQuery
-                        ->where(function ($activeQuery) {
-                            $activeQuery->whereNull('orders.cancel_reason')->orWhere('orders.cancel_reason', '!=', 'superseded');
-                        })
-                        ->where('orders.status', '!=', 'superseded');
-                });
+                $query
+                    ->where('orders.status', '!=', 'superseded')
+                    ->where(function ($activeQuery) {
+                        $activeQuery->whereNull('orders.cancel_reason')->orWhere('orders.cancel_reason', '!=', 'superseded');
+                    })
+                    ->whereNotExists(function ($newerQuery) {
+                        $newerQuery
+                            ->select(DB::raw(1))
+                            ->from('orders as newer_orders')
+                            ->whereColumn('newer_orders.order_number', 'orders.order_number')
+                            ->whereColumn('newer_orders.id', '>', 'orders.id')
+                            ->where('newer_orders.status', '!=', 'superseded')
+                            ->where(function ($newerActive) {
+                                $newerActive->whereNull('newer_orders.cancel_reason')->orWhere('newer_orders.cancel_reason', '!=', 'superseded');
+                            });
+                    });
             })
             ->when($status !== '', function ($query) use ($status) {
                 $query->where('orders.status', $status);
@@ -183,7 +193,8 @@ class OrdersReadOnlyService
                 'orders.source_draft_order_id',
                 'orders.parent_order_id',
                 DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
-                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' THEN 'superseded' WHEN orders.parent_order_id IS NOT NULL THEN 'current_revision' ELSE 'current' END as revision_state"),
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number) as revision_total"),
+                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' OR EXISTS (SELECT 1 FROM orders newer_orders WHERE newer_orders.order_number = orders.order_number AND newer_orders.id > orders.id AND newer_orders.status != 'superseded' AND (newer_orders.cancel_reason IS NULL OR newer_orders.cancel_reason != 'superseded')) THEN 'superseded' WHEN (SELECT COUNT(*) FROM orders revision_orders WHERE revision_orders.order_number = orders.order_number) > 1 THEN 'current_revision' ELSE 'current' END as revision_state"),
                 'orders.order_type',
                 'orders.order_number',
                 'orders.draft_order_id',
@@ -215,6 +226,27 @@ class OrdersReadOnlyService
             ])
             ->where('orders.id', $orderId)
             ->first();
+    }
+
+    public function revisionHistory(object $order): Collection
+    {
+        return DB::table('orders')
+            ->select([
+                'orders.id',
+                'orders.draft_order_id',
+                'orders.order_number',
+                'orders.status',
+                'orders.grand_total',
+                'orders.created_at',
+                'orders.cancel_reason',
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
+                DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number) as revision_total"),
+                DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' OR EXISTS (SELECT 1 FROM orders newer_orders WHERE newer_orders.order_number = orders.order_number AND newer_orders.id > orders.id AND newer_orders.status != 'superseded' AND (newer_orders.cancel_reason IS NULL OR newer_orders.cancel_reason != 'superseded')) THEN 'superseded' WHEN (SELECT COUNT(*) FROM orders revision_orders WHERE revision_orders.order_number = orders.order_number) > 1 THEN 'current_revision' ELSE 'current' END as revision_state"),
+                DB::raw("(SELECT body FROM activity_logs WHERE activity_logs.subject_type = 'order' AND activity_logs.subject_id = orders.id AND activity_logs.type = 'system_note' ORDER BY activity_logs.id ASC LIMIT 1) as revision_note"),
+            ])
+            ->where('orders.order_number', $order->order_number)
+            ->orderBy('orders.id')
+            ->get();
     }
 
     public function financeSummary(int $orderId): array
@@ -378,6 +410,8 @@ class OrdersReadOnlyService
             ->groupBy('root_item_id');
 
         return DB::table('order_items')
+            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
+            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
             ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
                 $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
             })
@@ -404,6 +438,11 @@ class OrdersReadOnlyService
                 'order_items.tracking_reference',
                 'order_items.ordered_at',
                 'order_items.arrived_at',
+                'order_retailers.retailer_id',
+                'order_retailers.retailer_name as order_retailer_name',
+                'order_retailers.retailer_base_url as order_retailer_base_url',
+                'retailers.name as master_retailer_name',
+                'retailers.base_url as master_retailer_base_url',
                 DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
                 DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
                 'purchase_totals.latest_retailer_order_reference',
@@ -417,12 +456,13 @@ class OrdersReadOnlyService
             ->orderBy('order_items.id')
             ->get()
             ->map(function ($item) {
-                $host = $this->hostFromUrl((string) $item->product_url);
+                $host = $this->hostFromUrl((string) ($item->master_retailer_base_url ?: $item->order_retailer_base_url ?: $item->product_url));
+                $retailerName = trim((string) ($item->master_retailer_name ?: $item->order_retailer_name));
                 $seller = trim((string) ($item->latest_marketplace_seller ?: $item->marketplace_seller));
 
-                $item->retailer_host = $host ?: 'Unknown retailer';
-                $item->retailer_display_name = $seller ?: ($host ?: 'Unknown retailer');
-                $item->retailer_group_key = Str::slug($item->retailer_display_name ?: 'unknown-retailer');
+                $item->retailer_host = $host ?: $this->hostFromUrl((string) $item->product_url);
+                $item->retailer_display_name = $retailerName ?: ($seller ?: ($item->retailer_host ?: 'Unknown retailer'));
+                $item->retailer_group_key = $item->retailer_id ? 'retailer-' . (int) $item->retailer_id : Str::slug($item->retailer_display_name ?: 'unknown-retailer');
                 $item->purchased_qty = min((int) $item->quantity, (int) $item->purchased_qty);
                 $item->arrived_qty = min((int) $item->quantity, (int) $item->arrived_qty);
                 $item->purchase_remaining_qty = max(0, (int) $item->quantity - (int) $item->purchased_qty);
@@ -498,12 +538,30 @@ class OrdersReadOnlyService
                 'purchase_arrival_assignments.undone_at',
                 'order_item_purchases.retailer_order_reference',
                 'order_item_purchases.requires_marking_attention',
+                DB::raw("(SELECT MIN(COALESCE(al.occurred_at, al.created_at)) FROM activity_logs al WHERE al.subject_type = 'purchase_arrival_assignment' AND al.subject_id = purchase_arrival_assignments.id AND al.deleted_at IS NULL AND (al.body LIKE '%to ready_for_collection%' OR al.body LIKE '%to for_delivery%')) as informed_at"),
+                DB::raw("(SELECT MAX(COALESCE(al.occurred_at, al.created_at)) FROM activity_logs al WHERE al.subject_type = 'purchase_arrival_assignment' AND al.subject_id = purchase_arrival_assignments.id AND al.deleted_at IS NULL AND (al.body LIKE '%to collected%' OR al.body LIKE '%to delivered%')) as completed_at_from_logs"),
             ])
             ->whereIn('purchase_arrival_assignments.root_item_id', $rootItemIds->all())
             ->whereNull('purchase_arrival_assignments.undone_at')
             ->orderByDesc('purchase_arrival_assignments.matched_at')
             ->limit(80)
-            ->get();
+            ->get()
+            ->map(function ($arrival) {
+                $status = (string) ($arrival->status ?? '');
+
+                if (empty($arrival->informed_at) && in_array($status, ['ready_for_collection', 'for_delivery'], true)) {
+                    $arrival->informed_at = $arrival->status_updated_at ?: $arrival->matched_at;
+                }
+
+                $arrival->completed_at = $arrival->completed_at_from_logs;
+                if (empty($arrival->completed_at) && in_array($status, ['collected', 'delivered'], true)) {
+                    $arrival->completed_at = $arrival->status_updated_at ?: $arrival->matched_at;
+                }
+
+                $arrival->completion_label = $status === 'delivered' ? 'Delivered' : (in_array($status, ['collected', 'ready_for_collection', 'for_delivery'], true) ? 'Collected' : 'Completed');
+
+                return $arrival;
+            });
     }
 
     public function notes(object $order): Collection

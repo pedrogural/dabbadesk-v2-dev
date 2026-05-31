@@ -185,23 +185,24 @@ class FinaliseDraftOrderService
 
     private function draftCommercialSignature(object $draft, Collection $items): array
     {
-        // Duplicate-version guard: compare the commercial meaning of the draft,
-        // not every stored snapshot column. Rev 1 orders may have been created by
-        // older code with different per-line subtotal/delivery snapshot fields.
-        // Totals catch money changes. The item fingerprint below catches basket
-        // changes using stable fields only.
         return [
+            'customer_id' => (int) ($draft->customer_id ?? 0),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($draft->retailer_delivery_total ?? 0),
                 'dabba_fee_amount' => $this->normaliseMoney($draft->dabba_fee_total ?? 0),
                 'grand_total' => $this->normaliseMoney($draft->grand_total ?? 0),
             ],
-            'items' => $items
-                ->sortBy([['sort_order', 'asc'], ['id', 'asc']])
-                ->values()
-                ->map(fn ($item) => $this->draftItemCommercialFingerprint($item))
-                ->all(),
+            'items' => $this->canonicalCommercialItems($items->map(fn ($item) => [
+                'retailer_id' => (int) ($item->retailer_id ?? 0),
+                'product_code' => (string) ($item->product_code ?? $item->sku ?? ''),
+                'url' => (string) ($item->url ?? ''),
+                'description' => (string) ($item->description ?? ''),
+                'fallback_name' => (string) ($item->description ?? ''),
+                'qty' => (int) ($item->qty ?? 1),
+                'unit_price' => $item->unit_price ?? 0,
+                'item_retailer_delivery_fee' => $item->item_retailer_delivery_fee ?? $item->item_delivery_fee ?? 0,
+            ])),
         ];
     }
 
@@ -210,58 +211,71 @@ class FinaliseDraftOrderService
         $items = DB::table('order_items as oi')
             ->leftJoin('order_retailers as orr', 'orr.id', '=', 'oi.order_retailer_id')
             ->where('oi.order_id', $order->id)
-            ->orderBy('oi.sort_order')
-            ->orderBy('oi.id')
-            ->select('oi.*', 'orr.retailer_id')
+            ->select([
+                'oi.*',
+                'orr.retailer_id',
+            ])
             ->get();
 
+        $customerId = DB::table('draft_orders')
+            ->where('id', $order->draft_order_id)
+            ->value('customer_id');
+
         return [
+            'customer_id' => (int) ($customerId ?? 0),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($order->retailer_delivery_fee_total ?? 0),
                 'dabba_fee_amount' => $this->normaliseMoney($order->dabba_fee_amount ?? 0),
                 'grand_total' => $this->normaliseMoney($order->grand_total ?? 0),
             ],
-            'items' => $items
-                ->values()
-                ->map(fn ($item) => $this->orderItemCommercialFingerprint($item))
-                ->all(),
+            'items' => $this->canonicalCommercialItems($items->map(fn ($item) => [
+                'retailer_id' => (int) ($item->retailer_id ?? 0),
+                'product_code' => (string) ($item->product_code ?? ''),
+                'url' => (string) ($item->product_url ?? ''),
+                'description' => (string) ($item->description ?? ''),
+                'fallback_name' => (string) ($item->item_name ?? ''),
+                'qty' => (int) ($item->quantity ?? 1),
+                'unit_price' => $item->unit_price ?? 0,
+                'item_retailer_delivery_fee' => $item->item_retailer_delivery_fee ?? 0,
+            ])),
         ];
     }
 
-    private function draftItemCommercialFingerprint(object $item): array
+    private function canonicalCommercialItems(Collection $rows): array
     {
-        $qty = max(1, (int) ($item->qty ?? 1));
-        $unitPrice = round((float) ($item->unit_price ?? 0), 2);
-        $productCode = (string) ($item->product_code ?? $item->sku ?? '');
+        return $rows
+            ->map(function (array $row): array {
+                $qty = max(1, (int) ($row['qty'] ?? 1));
+                $unitPrice = $this->normaliseMoney($row['unit_price'] ?? 0);
+                $description = trim((string) ($row['description'] ?? ''));
+                if ($description === '') {
+                    $description = trim((string) ($row['fallback_name'] ?? ''));
+                }
 
-        return [
-            'retailer_id' => (int) ($item->retailer_id ?? 0),
-            'product_code' => $this->normaliseScalar($productCode),
-            'url' => $this->normaliseUrlForMatch((string) ($item->url ?? '')),
-            'description' => $this->normaliseComparableDescription((string) ($item->description ?? ''), $productCode),
-            'qty' => $qty,
-            'unit_price' => $this->normaliseMoney($unitPrice),
-            'basket_value' => $this->normaliseMoney($qty * $unitPrice),
-        ];
-    }
-
-    private function orderItemCommercialFingerprint(object $item): array
-    {
-        $qty = max(1, (int) ($item->quantity ?? 1));
-        $unitPrice = round((float) ($item->unit_price ?? 0), 2);
-        $productCode = (string) ($item->product_code ?? '');
-        $description = (string) ($item->description ?? $item->item_name ?? '');
-
-        return [
-            'retailer_id' => (int) ($item->retailer_id ?? 0),
-            'product_code' => $this->normaliseScalar($productCode),
-            'url' => $this->normaliseUrlForMatch((string) ($item->product_url ?? '')),
-            'description' => $this->normaliseComparableDescription($description, $productCode),
-            'qty' => $qty,
-            'unit_price' => $this->normaliseMoney($unitPrice),
-            'basket_value' => $this->normaliseMoney($qty * $unitPrice),
-        ];
+                return [
+                    'retailer_id' => (int) ($row['retailer_id'] ?? 0),
+                    'product_code' => $this->normaliseScalar((string) ($row['product_code'] ?? '')),
+                    'url' => $this->normaliseUrlForMatch((string) ($row['url'] ?? '')),
+                    'description' => $this->normaliseComparableDescription($description, (string) ($row['product_code'] ?? '')),
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'item_retailer_delivery_fee' => $this->normaliseMoney($row['item_retailer_delivery_fee'] ?? 0),
+                    'calculated_item_subtotal' => $this->normaliseMoney(((float) ($row['unit_price'] ?? 0)) * $qty),
+                ];
+            })
+            ->sortBy(fn (array $row) => implode('|', [
+                $row['retailer_id'],
+                $row['product_code'],
+                $row['url'],
+                $row['description'],
+                $row['qty'],
+                $row['unit_price'],
+                $row['item_retailer_delivery_fee'],
+                $row['calculated_item_subtotal'],
+            ]))
+            ->values()
+            ->all();
     }
 
     private function draftVersionSignature(object $draft, Collection $items): array
