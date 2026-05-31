@@ -25,6 +25,7 @@
         $existingAddressCountry = old('address_country_id', $requestRow->customer_address_country_id ?? $selectedCustomer->address_country_id ?? '');
         $isConverted = ! empty($requestRow->converted_at) || ($requestRow->status ?? '') === 'converted';
         $isCancelled = ($requestRow->status ?? '') === 'cancelled';
+        $hasUnresolvedRetailers = isset($unresolvedRetailers) && $unresolvedRetailers->isNotEmpty();
     @endphp
 
     <div class="space-y-5">
@@ -124,7 +125,7 @@
                                         </td>
                                         <td class="px-4 py-3 align-top text-sm text-gray-700">
                                             <div class="font-bold">{{ $item->matched_retailer_name ?: ($item->retailer_name ?: 'Needs review') }}</div>
-                                            @if (! $item->matched_retailer_name)<div class="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">Auto-create if needed</div>@endif
+                                            @if (! $item->matched_retailer_name)<div class="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">Needs retailer setup</div>@endif
                                         </td>
                                         <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-bold text-gray-900">{{ $item->quantity }}</td>
                                         <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm text-gray-700">£{{ number_format((float) $item->unit_price, 2) }}</td>
@@ -182,6 +183,81 @@
                                 <button type="submit" class="w-full rounded-2xl bg-rose-600 px-4 py-3 text-sm font-black text-white hover:bg-rose-700">Cancel order request</button>
                             </form>
                         </details>
+
+                        @if ($hasUnresolvedRetailers)
+                            <section class="mt-4 overflow-hidden rounded-3xl border border-amber-300 bg-white shadow-sm">
+                                <div class="border-b border-amber-200 bg-amber-50 p-5">
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                        <div class="max-w-2xl">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="rounded-full bg-amber-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-white">Action needed</span>
+                                                <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800 ring-1 ring-amber-200">
+                                                    {{ $unresolvedRetailers->count() }} unknown retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }}
+                                                </span>
+                                            </div>
+                                            <h3 class="mt-3 text-lg font-black text-gray-950">Resolve retailers before creating the draft</h3>
+                                            <p class="mt-1 text-sm leading-6 text-amber-900">
+                                                The draft is blocked so DabbaDesk does not create vague retailers like bare domains automatically. Review each unknown retailer below, edit the suggested name/domain if needed, then click <span class="font-black">Add & link</span>. When this queue is empty, the convert button will unlock.
+                                            </p>
+                                        </div>
+                                        <div class="rounded-2xl bg-white px-4 py-3 text-center ring-1 ring-amber-200">
+                                            <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Conversion status</p>
+                                            <p class="mt-1 text-sm font-black text-gray-950">Paused safely</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 grid gap-2 text-xs font-semibold text-amber-950 sm:grid-cols-3">
+                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">1. Check the retailer name</div>
+                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">2. Check the base domain</div>
+                                        <div class="rounded-2xl bg-white p-3 ring-1 ring-amber-100">3. Add & link to request items</div>
+                                    </div>
+                                </div>
+
+                                <div class="max-h-[34rem] space-y-3 overflow-y-auto p-4">
+                                    @foreach ($unresolvedRetailers as $loopIndex => $retailer)
+                                        <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                                            @csrf
+                                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                                <div>
+                                                    <p class="text-xs font-black uppercase tracking-wide text-gray-500">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
+                                                    <h4 class="mt-1 text-base font-black text-gray-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
+                                                    <p class="mt-1 text-xs text-gray-500">
+                                                        Found on {{ $retailer['items_count'] ?? 1 }} request item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}.
+                                                    </p>
+                                                </div>
+                                                <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">
+                                                    Add & link
+                                                </button>
+                                            </div>
+
+                                            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                                                <div>
+                                                    <label class="text-[11px] font-black uppercase tracking-wide text-gray-500">Retailer display name</label>
+                                                    <input name="name" required value="{{ old('name', $retailer['name']) }}" placeholder="Mobiquip" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 focus:border-amber-500 focus:ring-amber-500">
+                                                    <p class="mt-1 text-xs text-gray-500">This is what staff will see in drafts and purchasing.</p>
+                                                </div>
+                                                <div>
+                                                    <label class="text-[11px] font-black uppercase tracking-wide text-gray-500">Base domain used for matching</label>
+                                                    <input name="base_url" required value="{{ old('base_url', $retailer['base_url']) }}" placeholder="mobiquip.co.uk" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 focus:border-amber-500 focus:ring-amber-500">
+                                                    <p class="mt-1 text-xs text-gray-500">Use only the shop domain, not the full product page.</p>
+                                                </div>
+                                            </div>
+
+                                            @if (! empty($retailer['urls']))
+                                                <details class="mt-3 rounded-2xl border border-gray-200 bg-white p-3">
+                                                    <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-gray-500">Show source link{{ count($retailer['urls']) === 1 ? '' : 's' }}</summary>
+                                                    <div class="mt-2 space-y-1">
+                                                        @foreach ($retailer['urls'] as $sourceUrl)
+                                                            <p class="break-all text-xs text-gray-600">{{ $sourceUrl }}</p>
+                                                        @endforeach
+                                                    </div>
+                                                </details>
+                                            @endif
+                                        </form>
+                                    @endforeach
+                                </div>
+                            </section>
+                        @endif
 
                         <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-gray-200 p-4">
                             <label class="text-xs font-black uppercase tracking-wide text-gray-500">Search customer base</label>
@@ -349,7 +425,11 @@
                                 Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. For existing customers, saved customer details are only changed when you choose the update option above.
                             </div>
 
-                            <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>
+                            @if ($hasUnresolvedRetailers)
+                                <button type="button" disabled class="w-full cursor-not-allowed rounded-2xl bg-gray-300 px-4 py-3 text-sm font-black text-white shadow-sm">Add unknown retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }} before converting</button>
+                            @else
+                                <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>
+                            @endif
                         </form>
                     @endif
                 </div>

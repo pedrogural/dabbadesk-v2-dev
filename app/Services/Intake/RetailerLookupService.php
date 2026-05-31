@@ -6,6 +6,7 @@ use DabbaDirect\IntakeTools\HostRetailerGuesser;
 use DabbaDirect\IntakeTools\ProductUrlResolver;
 use DabbaDirect\IntakeTools\RetailerTableMatcher;
 use DabbaDirect\IntakeTools\UrlTools;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -26,7 +27,7 @@ class RetailerLookupService
         $resolved = $this->resolver->resolve($url);
         $finalUrl = $resolved?->finalUrl() ?: ($url !== '' ? $url : null);
         $cleanUrl = $resolved?->cleanUrl ?: $finalUrl;
-        $host = $resolved?->host ?: $this->urlTools->hostFromUrl($url);
+        $host = $this->normaliseHost($resolved?->host ?: $finalUrl ?: $url);
 
         $matched = null;
         $confidence = 'none';
@@ -40,7 +41,9 @@ class RetailerLookupService
             }
         }
 
-        if (! $matched && $retailerName !== '') {
+        // Only fall back to a name match when no usable URL host exists.
+        // A typed/guessed retailer name must never override a real product domain.
+        if (! $matched && $host === '' && $retailerName !== '') {
             $matched = $this->findByName($retailerName);
             if ($matched) {
                 $confidence = 'medium';
@@ -49,7 +52,7 @@ class RetailerLookupService
         }
 
         if ($matched) {
-            $matchedHost = $this->urlTools->hostFromUrl((string) ($matched->base_url ?? '')) ?: $host;
+            $matchedHost = $this->normaliseHost((string) ($matched->base_url ?? '')) ?: $host;
 
             return [
                 'matched' => true,
@@ -76,7 +79,9 @@ class RetailerLookupService
         }
 
         if ($url !== '') {
-            $fallbackName = $this->hostGuesser->guess($host) ?: 'Unknown retailer';
+            $fallbackName = $retailerName !== ''
+                ? $retailerName
+                : ($this->hostGuesser->guess($host) ?: $this->friendlyNameFromHost($host) ?: 'Unknown retailer');
 
             return [
                 'matched' => false,
@@ -137,9 +142,9 @@ class RetailerLookupService
             'host' => $host ?: null,
             'final_host' => $host ?: null,
             'final_url' => $finalUrl,
-                'finalUrl' => $finalUrl,
-                'clean_url' => $cleanUrl,
-                'cleanUrl' => $cleanUrl,
+            'finalUrl' => $finalUrl,
+            'clean_url' => $cleanUrl,
+            'cleanUrl' => $cleanUrl,
             'logo_path' => null,
             'active' => false,
             'requires_manual_review' => true,
@@ -149,8 +154,10 @@ class RetailerLookupService
 
     private function findByHost(string $host): ?object
     {
-        $host = $this->urlTools->normaliseHost($host);
-        if ($host === '') return null;
+        $host = $this->normaliseHost($host);
+        if ($host === '') {
+            return null;
+        }
 
         $query = DB::table('retailers')
             ->select(array_values(array_filter([
@@ -171,7 +178,32 @@ class RetailerLookupService
             $query->where('active', 1);
         }
 
-        return $this->matcher->bestHostMatch($query->get(), $host);
+        return $this->bestHostMatch($query->get(), $host);
+    }
+
+    private function bestHostMatch(Collection $retailers, string $host): ?object
+    {
+        $best = null;
+        $bestLength = -1;
+
+        foreach ($retailers as $retailer) {
+            $baseHost = $this->normaliseHost((string) ($retailer->base_url ?? ''));
+            if ($baseHost === '') {
+                continue;
+            }
+
+            if ($host !== $baseHost && ! str_ends_with($host, '.' . $baseHost)) {
+                continue;
+            }
+
+            $length = strlen($baseHost);
+            if ($length > $bestLength) {
+                $best = $retailer;
+                $bestLength = $length;
+            }
+        }
+
+        return $best;
     }
 
     private function findByName(string $name): ?object
@@ -199,10 +231,39 @@ class RetailerLookupService
         }
 
         return $query
-            ->where(function ($query) use ($name) {
-                $query->where('name', $name)->orWhere('name', 'like', '%' . $name . '%');
-            })
-            ->orderByRaw('CASE WHEN name = ? THEN 0 ELSE 1 END', [$name])
+            ->where('name', $name)
             ->first();
+    }
+
+    private function normaliseHost(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (! str_contains($value, '://')) {
+            $value = 'https://' . $value;
+        }
+
+        $host = parse_url($value, PHP_URL_HOST) ?: $value;
+        $host = strtolower(trim((string) $host));
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+        $host = trim($host, " \t\n\r\0\x0B/");
+
+        return $host;
+    }
+
+    private function friendlyNameFromHost(string $host): string
+    {
+        $host = $this->normaliseHost($host);
+        if ($host === '') {
+            return '';
+        }
+
+        $first = explode('.', $host)[0] ?? '';
+        $first = str_replace(['-', '_'], ' ', $first);
+
+        return trim(ucwords($first));
     }
 }

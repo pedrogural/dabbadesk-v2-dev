@@ -7,6 +7,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Throwable;
@@ -93,6 +95,8 @@ class OrderRequestsController extends Controller
             ])
             ->get();
 
+        $unresolvedRetailers = $this->unresolvedRetailersForItems($items);
+
         $attachments = DB::table('order_request_attachments')
             ->where('order_request_id', $orderRequest)
             ->orderBy('id')
@@ -117,6 +121,7 @@ class OrderRequestsController extends Controller
         return view('order-requests.show', [
             'requestRow' => $requestRow,
             'items' => $items,
+            'unresolvedRetailers' => $unresolvedRetailers,
             'attachments' => $attachments,
             'cancellationLog' => $cancellationLog,
             'customerMatches' => $customerMatches,
@@ -202,6 +207,74 @@ class OrderRequestsController extends Controller
         return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Order request cancelled.');
     }
 
+    public function storeRetailerForRequest(Request $request, int $orderRequest): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:191'],
+            'base_url' => ['required', 'string', 'max:191'],
+        ]);
+
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        if ($requestRow->converted_at || ($requestRow->status ?? '') === 'converted') {
+            return back()->withErrors(['retailer' => 'This request has already been converted.']);
+        }
+
+        $baseUrl = $this->cleanRetailerBaseUrl((string) $validated['base_url']);
+        $name = trim((string) $validated['name']);
+
+        if ($baseUrl === '') {
+            return back()->withInput()->withErrors(['base_url' => 'Enter a valid retailer domain before adding it.']);
+        }
+
+        $retailer = DB::table('retailers')
+            ->whereRaw('LOWER(TRIM(base_url)) = ?', [$baseUrl])
+            ->when(Schema::hasColumn('retailers', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
+            ->first();
+
+        if (! $retailer) {
+            $insert = [
+                'name' => Str::limit($name, 191, ''),
+                'base_url' => $baseUrl,
+            ];
+
+            if (Schema::hasColumn('retailers', 'is_active')) $insert['is_active'] = 1;
+            if (Schema::hasColumn('retailers', 'active')) $insert['active'] = 1;
+            if (Schema::hasColumn('retailers', 'code')) $insert['code'] = Str::slug($name) ?: Str::slug($baseUrl);
+            if (Schema::hasColumn('retailers', 'retailer_code')) $insert['retailer_code'] = Str::slug($name) ?: Str::slug($baseUrl);
+            if (Schema::hasColumn('retailers', 'internal_note')) $insert['internal_note'] = 'Added from order request retailer review before draft conversion.';
+            if (Schema::hasColumn('retailers', 'created_by_user_id')) $insert['created_by_user_id'] = (int) auth()->id();
+            if (Schema::hasColumn('retailers', 'updated_by_user_id')) $insert['updated_by_user_id'] = (int) auth()->id();
+            if (Schema::hasColumn('retailers', 'created_at')) $insert['created_at'] = now();
+            if (Schema::hasColumn('retailers', 'updated_at')) $insert['updated_at'] = now();
+
+            $retailerId = DB::table('retailers')->insertGetId($insert);
+        } else {
+            $retailerId = (int) $retailer->id;
+        }
+
+        $itemIds = DB::table('order_request_items')
+            ->where('order_request_id', $orderRequest)
+            ->whereNull('deleted_at')
+            ->get(['id', 'retailer_url'])
+            ->filter(fn ($item) => $this->cleanRetailerBaseUrl((string) $item->retailer_url) === $baseUrl)
+            ->pluck('id')
+            ->values()
+            ->all();
+
+        if (! empty($itemIds)) {
+            DB::table('order_request_items')
+                ->whereIn('id', $itemIds)
+                ->update([
+                    'retailer_id' => $retailerId,
+                    'updated_at' => now(),
+                ]);
+        }
+
+        return back()->with('status', 'Retailer added and linked to matching request item' . (count($itemIds) === 1 ? '' : 's') . '.');
+    }
+
     public function convert(Request $request, ConvertOrderRequestService $converter, int $orderRequest): RedirectResponse
     {
         $validated = $request->validate([
@@ -249,7 +322,7 @@ class OrderRequestsController extends Controller
             return back()
                 ->withInput()
                 ->withErrors([
-                    'convert' => 'Failed to convert order request.',
+                    'convert' => $exception->getMessage() ?: 'Failed to convert order request.',
                 ]);
         }
 
@@ -261,6 +334,62 @@ class OrderRequestsController extends Controller
     public function counter(): JsonResponse
     {
         return response()->json(['ok' => true, 'count' => $this->newRequestCount()]);
+    }
+
+    private function unresolvedRetailersForItems($items)
+    {
+        return $items
+            ->filter(fn ($item) => empty($item->retailer_id) || empty($item->matched_retailer_name))
+            ->map(function ($item) {
+                $host = $this->cleanRetailerBaseUrl((string) ($item->retailer_url ?? ''));
+                $name = trim((string) ($item->retailer_name ?? ''));
+                $suggested = $name !== ''
+                    ? Str::title($name)
+                    : ($host !== '' ? Str::title(str_replace(['-', '.'], ' ', preg_replace('/\.co\.uk$|\.com$|\.net$|\.org$/', '', $host))) : 'Unknown Retailer');
+
+                return [
+                    'key' => $host !== '' ? 'host:' . $host : 'name:' . strtolower($suggested),
+                    'name' => $suggested,
+                    'base_url' => $host,
+                    'item_id' => (int) $item->id,
+                    'url' => (string) ($item->retailer_url ?? ''),
+                ];
+            })
+            ->groupBy('key')
+            ->map(function ($rows) {
+                $first = $rows->first();
+
+                return [
+                    'key' => $first['key'],
+                    'name' => $first['name'],
+                    'base_url' => $first['base_url'],
+                    'item_id' => $first['item_id'],
+                    'url' => $first['url'],
+                    'urls' => $rows->pluck('url')->filter()->unique()->values()->all(),
+                    'item_ids' => $rows->pluck('item_id')->unique()->values()->all(),
+                    'items_count' => $rows->pluck('item_id')->unique()->count(),
+                ];
+            })
+            ->values();
+    }
+
+    private function cleanRetailerBaseUrl(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (! str_starts_with($value, 'http://') && ! str_starts_with($value, 'https://')) {
+            $value = 'https://' . $value;
+        }
+
+        $host = parse_url($value, PHP_URL_HOST) ?: $value;
+        $host = strtolower(trim((string) $host));
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+        $host = preg_replace('/[^a-z0-9.\-]/', '', $host) ?: '';
+
+        return Str::limit($host, 191, '');
     }
 
     private function logOrderRequestActivity(int $orderRequestId, string $type, string $title, string $body, int $userId): void

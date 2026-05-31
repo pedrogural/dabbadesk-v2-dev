@@ -36,6 +36,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/order-requests/counter', [OrderRequestsController::class, 'counter'])->name('order-requests.counter');
     Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed'])->name('order-requests.review');
     Route::post('/order-requests/{orderRequest}/cancel', [OrderRequestsController::class, 'cancel'])->name('order-requests.cancel');
+    Route::post('/order-requests/{orderRequest}/retailers', [OrderRequestsController::class, 'storeRetailerForRequest'])->name('order-requests.retailers.store');
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
     Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
 

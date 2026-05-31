@@ -311,32 +311,30 @@ class ConvertOrderRequestService
             return (int) $item->retailer_id;
         }
 
-        $name = trim((string) ($item->retailer_name ?: 'Unknown Retailer'));
-        $baseUrl = $this->hostFromUrl((string) $item->retailer_url);
+        $host = $this->hostFromUrl((string) $item->retailer_url);
 
-        if ($baseUrl === '') {
-            $baseUrl = Str::slug($name) ?: 'unknown-retailer';
+        if ($host !== '') {
+            $existing = DB::table('retailers')
+                ->whereRaw('LOWER(TRIM(base_url)) = ?', [$host])
+                ->value('id');
+
+            if ($existing) {
+                DB::table('order_request_items')
+                    ->where('id', $item->id)
+                    ->update([
+                        'retailer_id' => (int) $existing,
+                        'updated_at' => now(),
+                    ]);
+
+                return (int) $existing;
+            }
         }
 
-        $existing = DB::table('retailers')
-            ->where('base_url', $baseUrl)
-            ->orWhere('name', $name)
-            ->value('id');
+        $label = trim((string) ($item->retailer_name ?: $host ?: 'unknown retailer'));
 
-        if ($existing) {
-            return (int) $existing;
-        }
-
-        return (int) DB::table('retailers')->insertGetId([
-            'base_url' => $baseUrl,
-            'name' => Str::limit($name, 191, ''),
-            'is_active' => 1,
-            'internal_note' => 'Created automatically during order request conversion. Please review retailer details.',
-            'created_by_user_id' => $userId,
-            'updated_by_user_id' => $userId,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        throw new RuntimeException(
+            'Cannot convert this request yet. Add the unknown retailer "' . $label . '" before creating the draft.'
+        );
     }
 
     private function recalculateDraftTotals(int $draftId, int $userId): void

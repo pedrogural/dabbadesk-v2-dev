@@ -7,6 +7,7 @@ use DabbaDirect\IntakeTools\ProductUrlResolver;
 use DabbaDirect\IntakeTools\RetailerDetectionResult;
 use DabbaDirect\IntakeTools\RetailerTableMatcher;
 use DabbaDirect\IntakeTools\UrlTools;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -32,7 +33,7 @@ class DraftRetailerDetectionService
             );
         }
 
-        $host = $this->urlTools->normaliseHost($resolved->host ?: $this->urlTools->hostFromUrl($resolved->finalUrl()));
+        $host = $this->normaliseHost($resolved->host ?: $resolved->finalUrl() ?: (string) $url);
         $matched = $this->matchRetailerFromHost($host);
 
         if ($matched !== null) {
@@ -54,55 +55,33 @@ class DraftRetailerDetectionService
             );
         }
 
-        $guessedName = $this->hostGuesser->guess($host);
-        if ($guessedName !== null) {
-            return new RetailerDetectionResult(
-                name: $guessedName,
-                host: $host ?: null,
-                finalUrl: $resolved->finalUrl(),
-                confidence: 0.75,
-                source: 'host_fallback',
-                warning: $resolved->warning,
-                productId: $resolved->productId,
-                productIdType: $resolved->productIdType,
-                requiresManualReview: true,
-                cleanUrl: $resolved->cleanUrl,
-                message: 'Retailer was guessed from the URL but was not found in the retailer table.',
-            );
-        }
-
-        if ($manualRetailerName !== '') {
-            return new RetailerDetectionResult(
-                name: $manualRetailerName,
-                host: $host ?: null,
-                finalUrl: $resolved->finalUrl(),
-                confidence: 1.0,
-                source: 'manual',
-                warning: $resolved->warning,
-                productId: $resolved->productId,
-                productIdType: $resolved->productIdType,
-                cleanUrl: $resolved->cleanUrl,
-            );
-        }
+        $guessedName = $manualRetailerName !== ''
+            ? $manualRetailerName
+            : ($this->hostGuesser->guess($host) ?: $this->friendlyNameFromHost($host));
 
         return new RetailerDetectionResult(
-            name: null,
+            name: $guessedName ?: null,
             host: $host ?: null,
             finalUrl: $resolved->finalUrl(),
-            confidence: 0.0,
-            source: 'unknown',
+            confidence: $guessedName ? 0.75 : 0.0,
+            source: $guessedName ? 'host_fallback' : 'unknown',
             warning: $resolved->warning,
             productId: $resolved->productId,
             productIdType: $resolved->productIdType,
             requiresManualReview: true,
-            message: 'No retailer could be detected.',
             cleanUrl: $resolved->cleanUrl,
+            message: $guessedName
+                ? 'Retailer was guessed from the URL but was not found in the retailer table.'
+                : 'No retailer could be detected.',
         );
     }
 
     protected function matchRetailerFromHost(string $host): ?object
     {
-        if ($host === '') return null;
+        $host = $this->normaliseHost($host);
+        if ($host === '') {
+            return null;
+        }
 
         $query = DB::table('retailers')
             ->select(array_values(array_filter([
@@ -122,6 +101,65 @@ class DraftRetailerDetectionService
             $query->whereNull('deleted_at');
         }
 
-        return $this->matcher->bestHostMatch($query->get(), $host);
+        return $this->bestHostMatch($query->get(), $host);
+    }
+
+    private function bestHostMatch(Collection $retailers, string $host): ?object
+    {
+        $host = $this->normaliseHost($host);
+        $best = null;
+        $bestLength = -1;
+
+        foreach ($retailers as $retailer) {
+            $baseHost = $this->normaliseHost((string) ($retailer->base_url ?? ''));
+            if ($baseHost === '') {
+                continue;
+            }
+
+            $isMatch = $host === $baseHost || str_ends_with($host, '.' . $baseHost);
+            if (! $isMatch) {
+                continue;
+            }
+
+            $length = strlen($baseHost);
+            if ($length > $bestLength) {
+                $best = $retailer;
+                $bestLength = $length;
+            }
+        }
+
+        return $best;
+    }
+
+    private function normaliseHost(string $value): string
+    {
+        $value = strtolower(trim($value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (! str_contains($value, '://')) {
+            $value = 'https://' . $value;
+        }
+
+        $host = parse_url($value, PHP_URL_HOST) ?: $value;
+        $host = strtolower(trim((string) $host));
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+        $host = trim($host, " \t\n\r\0\x0B/");
+
+        return $host;
+    }
+
+    private function friendlyNameFromHost(string $host): string
+    {
+        $host = $this->normaliseHost($host);
+        if ($host === '') {
+            return '';
+        }
+
+        $first = explode('.', $host)[0] ?? '';
+        $first = str_replace(['-', '_'], ' ', $first);
+
+        return trim(ucwords($first));
     }
 }
