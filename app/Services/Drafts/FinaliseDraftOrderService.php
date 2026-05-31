@@ -45,7 +45,7 @@ class FinaliseDraftOrderService
                 ->lockForUpdate()
                 ->first();
 
-            // Reload items after recalculation so the version guard and order snapshot use fresh totals.
+            // Reload items after recalculation so both the guard and snapshot compare fresh totals.
             $items = DB::table('draft_order_items')
                 ->where('draft_order_id', $draftId)
                 ->orderBy('sort_order')
@@ -107,13 +107,15 @@ class FinaliseDraftOrderService
             $itemMap = $this->createOrderItems($orderId, $items, $retailerSummaries, $orderRetailerIds, $previousOrderId, $userId);
 
             if ($previousOrderId) {
-                $this->carryForwardOperationalState($previousOrderId, $orderId, $itemMap, $userId);
+                $this->carryForwardSettlementToNewRevision($previousOrderId, $orderId, (int) $draft->customer_id, $userId);
 
                 DB::table('orders')
                     ->where('id', $previousOrderId)
                     ->whereNotIn('status', ['cancelled', 'superseded'])
                     ->update([
                         'status' => 'superseded',
+                        'cancel_reason' => 'superseded',
+                        'cancelled_at' => now(),
                         'updated_by_user_id' => $userId,
                         'updated_at' => now(),
                     ]);
@@ -136,7 +138,7 @@ class FinaliseDraftOrderService
                 'type' => 'system_note',
                 'title' => $previousOrderId ? 'New order version created' : 'Draft consumed',
                 'body' => $previousOrderId
-                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded.'
+                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.'
                     : 'Draft consumed into Order/Request #' . $orderNumber . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
@@ -165,6 +167,7 @@ class FinaliseDraftOrderService
     }
 
 
+
     private function draftHasChangedSincePreviousOrder(object $draft, Collection $items, int $previousOrderId): bool
     {
         $previousOrder = DB::table('orders')->where('id', $previousOrderId)->first();
@@ -172,7 +175,93 @@ class FinaliseDraftOrderService
             return true;
         }
 
-        return $this->draftVersionSignature($draft, $items) !== $this->orderVersionSignature($previousOrder);
+        // Guard against duplicate versions using only stable commercial data.
+        // Older Rev 1 orders may not have every newer retailer-summary column populated,
+        // so retailer summary rows are deliberately not part of this duplicate guard.
+        // If the customer-facing totals and item basket are identical, creating another
+        // order version would only duplicate history and confuse finance/operations.
+        return $this->draftCommercialSignature($draft, $items) !== $this->orderCommercialSignature($previousOrder);
+    }
+
+    private function draftCommercialSignature(object $draft, Collection $items): array
+    {
+        // Duplicate-version guard: compare the commercial meaning of the draft,
+        // not every stored snapshot column. Rev 1 orders may have been created by
+        // older code with different per-line subtotal/delivery snapshot fields.
+        // Totals catch money changes. The item fingerprint below catches basket
+        // changes using stable fields only.
+        return [
+            'totals' => [
+                'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
+                'retailer_delivery_fee_total' => $this->normaliseMoney($draft->retailer_delivery_total ?? 0),
+                'dabba_fee_amount' => $this->normaliseMoney($draft->dabba_fee_total ?? 0),
+                'grand_total' => $this->normaliseMoney($draft->grand_total ?? 0),
+            ],
+            'items' => $items
+                ->sortBy([['sort_order', 'asc'], ['id', 'asc']])
+                ->values()
+                ->map(fn ($item) => $this->draftItemCommercialFingerprint($item))
+                ->all(),
+        ];
+    }
+
+    private function orderCommercialSignature(object $order): array
+    {
+        $items = DB::table('order_items as oi')
+            ->leftJoin('order_retailers as orr', 'orr.id', '=', 'oi.order_retailer_id')
+            ->where('oi.order_id', $order->id)
+            ->orderBy('oi.sort_order')
+            ->orderBy('oi.id')
+            ->select('oi.*', 'orr.retailer_id')
+            ->get();
+
+        return [
+            'totals' => [
+                'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
+                'retailer_delivery_fee_total' => $this->normaliseMoney($order->retailer_delivery_fee_total ?? 0),
+                'dabba_fee_amount' => $this->normaliseMoney($order->dabba_fee_amount ?? 0),
+                'grand_total' => $this->normaliseMoney($order->grand_total ?? 0),
+            ],
+            'items' => $items
+                ->values()
+                ->map(fn ($item) => $this->orderItemCommercialFingerprint($item))
+                ->all(),
+        ];
+    }
+
+    private function draftItemCommercialFingerprint(object $item): array
+    {
+        $qty = max(1, (int) ($item->qty ?? 1));
+        $unitPrice = round((float) ($item->unit_price ?? 0), 2);
+        $productCode = (string) ($item->product_code ?? $item->sku ?? '');
+
+        return [
+            'retailer_id' => (int) ($item->retailer_id ?? 0),
+            'product_code' => $this->normaliseScalar($productCode),
+            'url' => $this->normaliseUrlForMatch((string) ($item->url ?? '')),
+            'description' => $this->normaliseComparableDescription((string) ($item->description ?? ''), $productCode),
+            'qty' => $qty,
+            'unit_price' => $this->normaliseMoney($unitPrice),
+            'basket_value' => $this->normaliseMoney($qty * $unitPrice),
+        ];
+    }
+
+    private function orderItemCommercialFingerprint(object $item): array
+    {
+        $qty = max(1, (int) ($item->quantity ?? 1));
+        $unitPrice = round((float) ($item->unit_price ?? 0), 2);
+        $productCode = (string) ($item->product_code ?? '');
+        $description = (string) ($item->description ?? $item->item_name ?? '');
+
+        return [
+            'retailer_id' => (int) ($item->retailer_id ?? 0),
+            'product_code' => $this->normaliseScalar($productCode),
+            'url' => $this->normaliseUrlForMatch((string) ($item->product_url ?? '')),
+            'description' => $this->normaliseComparableDescription($description, $productCode),
+            'qty' => $qty,
+            'unit_price' => $this->normaliseMoney($unitPrice),
+            'basket_value' => $this->normaliseMoney($qty * $unitPrice),
+        ];
     }
 
     private function draftVersionSignature(object $draft, Collection $items): array
@@ -180,7 +269,7 @@ class FinaliseDraftOrderService
         return [
             'fee_mode' => $this->normaliseScalar((string) ($draft->fee_mode ?? 'standard')),
             'dabba_fee_level' => $this->normaliseScalar((string) ($draft->dabba_fee_level ?? '')),
-            'dabba_fee_rate' => $this->normaliseMoney($draft->dabba_fee_rate ?? 0),
+            'dabba_fee_rate' => $this->normaliseRate($draft->dabba_fee_rate ?? 0),
             'dabba_fee_min' => $this->normaliseMoney($draft->dabba_fee_min ?? 0),
             'home_delivery_requested' => (int) ((bool) ($draft->home_delivery_requested ?? false)),
             'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
@@ -194,7 +283,7 @@ class FinaliseDraftOrderService
                     'retailer_id' => (int) ($item->retailer_id ?? 0),
                     'product_code' => $this->normaliseScalar((string) ($item->product_code ?? $item->sku ?? '')),
                     'url' => $this->normaliseUrlForMatch((string) ($item->url ?? '')),
-                    'description' => $this->normaliseScalar((string) ($item->description ?? '')),
+                    'description' => $this->normaliseComparableDescription((string) ($item->description ?? ''), (string) ($item->product_code ?? $item->sku ?? '')),
                     'qty' => (int) ($item->qty ?? 1),
                     'unit_price' => $this->normaliseMoney($item->unit_price ?? 0),
                     'item_retailer_delivery_fee' => $this->normaliseMoney($item->item_retailer_delivery_fee ?? $item->item_delivery_fee ?? 0),
@@ -218,7 +307,7 @@ class FinaliseDraftOrderService
         return [
             'fee_mode' => $this->normaliseScalar((string) ($order->fee_mode ?? 'standard')),
             'dabba_fee_level' => $this->normaliseScalar((string) ($order->dabba_fee_level ?? '')),
-            'dabba_fee_rate' => $this->normaliseMoney($this->normaliseRateForComparison($order->dabba_fee_rate ?? 0)),
+            'dabba_fee_rate' => $this->normaliseRate($order->dabba_fee_rate ?? 0),
             'dabba_fee_min' => $this->normaliseMoney($order->dabba_fee_min ?? 0),
             'home_delivery_requested' => (int) ((bool) ($order->home_delivery_requested ?? false)),
             'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
@@ -253,6 +342,9 @@ class FinaliseDraftOrderService
                 'retailer_id' => (int) ($row->retailer_id ?? 0),
                 'retailer_subtotal' => $this->normaliseMoney($row->retailer_subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($row->retailer_delivery_fee_total ?? 0),
+                'dabba_fee_rate' => $this->normaliseRate($row->dabba_fee_rate ?? 0),
+                'dabba_fee_min' => $this->normaliseMoney($row->dabba_fee_min ?? 0),
+                'dabba_fee_is_disabled' => (int) ($row->dabba_fee_is_disabled ?? 0),
                 'dabba_fee' => $this->normaliseMoney($row->dabba_fee ?? 0),
             ])
             ->all();
@@ -266,8 +358,11 @@ class FinaliseDraftOrderService
             ->get()
             ->map(fn ($row) => [
                 'retailer_id' => (int) ($row->retailer_id ?? 0),
-                'retailer_subtotal' => $this->normaliseMoney($row->retailer_subtotal ?? 0),
+                'retailer_subtotal' => $this->normaliseMoney($row->retailer_items_subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($row->retailer_delivery_fee_total ?? 0),
+                'dabba_fee_rate' => $this->normaliseRate($row->dabba_fee_rate ?? 0),
+                'dabba_fee_min' => $this->normaliseMoney($row->dabba_fee_min ?? 0),
+                'dabba_fee_is_disabled' => (int) ($row->dabba_fee_is_disabled ?? 0),
                 'dabba_fee' => $this->normaliseMoney($row->dabba_fee ?? 0),
             ])
             ->all();
@@ -278,11 +373,24 @@ class FinaliseDraftOrderService
         return number_format(round((float) $value, 2), 2, '.', '');
     }
 
-    private function normaliseRateForComparison(mixed $value): float
+    private function normaliseRate(mixed $value): string
     {
         $rate = (float) $value;
+        if ($rate > 1) {
+            $rate = $rate / 100;
+        }
 
-        return $rate > 0 && $rate <= 1 ? round($rate * 100, 4) : $rate;
+        return number_format(round($rate, 4), 4, '.', '');
+    }
+
+    private function normaliseComparableDescription(string $description, string $productCode): string
+    {
+        $description = trim($description);
+        if ($description === '') {
+            $description = $this->itemNameFromDescription('', $productCode);
+        }
+
+        return $this->normaliseScalar($description);
     }
 
     private function normaliseScalar(string $value): string
@@ -314,19 +422,187 @@ class FinaliseDraftOrderService
 
     private function previousOrderId(object $draft): ?int
     {
-        if (! empty($draft->finalized_order_id)) {
-            return (int) $draft->finalized_order_id;
-        }
-
-        $row = DB::table('orders')
+        $linkedOrder = DB::table('orders')
             ->where(function ($query) use ($draft) {
                 $query->where('draft_order_id', $draft->id)
                     ->orWhere('source_draft_order_id', $draft->id);
             })
+            ->orderByRaw("CASE WHEN status NOT IN ('cancelled', 'superseded') THEN 0 ELSE 1 END")
             ->orderByDesc('id')
             ->first(['id']);
 
-        return $row ? (int) $row->id : null;
+        if ($linkedOrder) {
+            return (int) $linkedOrder->id;
+        }
+
+        if (! empty($draft->finalized_order_id)) {
+            return (int) $draft->finalized_order_id;
+        }
+
+        return null;
+    }
+
+
+    private function carryForwardSettlementToNewRevision(int $previousOrderId, int $newOrderId, int $customerId, int $userId): void
+    {
+        $previousSettled = $this->orderSettledTotal($previousOrderId);
+
+        if ($previousSettled <= 0) {
+            return;
+        }
+
+        $newOrder = DB::table('orders')
+            ->where('id', $newOrderId)
+            ->first(['id', 'grand_total', 'status']);
+
+        if (! $newOrder) {
+            return;
+        }
+
+        $creditId = $this->ensureSupersededOrderCredit($previousOrderId, $customerId, $previousSettled, $userId);
+
+        $available = (float) DB::table('customer_credits')
+            ->where('id', $creditId)
+            ->value('remaining_amount');
+
+        if ($available <= 0) {
+            return;
+        }
+
+        $alreadyApplied = (float) DB::table('credit_applications')
+            ->where('customer_credit_id', $creditId)
+            ->where('order_id', $newOrderId)
+            ->sum('amount_applied');
+
+        $newTotal = max(0.0, round((float) ($newOrder->grand_total ?? 0), 2));
+        $alreadySettled = $this->orderSettledTotal($newOrderId);
+        $balanceDue = max(0.0, round($newTotal - $alreadySettled, 2));
+        $amountToApply = max(0.0, min($available, $balanceDue));
+
+        if ($amountToApply <= 0 || $alreadyApplied > 0) {
+            $this->refreshOrderPaymentStatus($newOrderId, $userId);
+            return;
+        }
+
+        $applicationId = (int) DB::table('credit_applications')->insertGetId([
+            'customer_credit_id' => $creditId,
+            'order_id' => $newOrderId,
+            'invoice_version_id' => null,
+            'amount_applied' => $amountToApply,
+            'currency' => 'GBP',
+            'applied_at' => now(),
+            'applied_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('order_transactions')->insert([
+            'order_id' => $newOrderId,
+            'invoice_version_id' => null,
+            'payment_type_id' => null,
+            'type' => 'credit_application',
+            'amount' => $amountToApply,
+            'currency' => 'GBP',
+            'status' => 'recorded',
+            'received_at' => now(),
+            'method' => 'wallet',
+            'channel' => 'internal',
+            'provider' => 'DabbaDesk',
+            'reference' => 'CA#' . $applicationId,
+            'note' => 'Wallet credit carried forward from superseded Order ID #' . $previousOrderId . '.',
+            'created_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $newRemaining = max(0.0, round($available - $amountToApply, 2));
+        DB::table('customer_credits')
+            ->where('id', $creditId)
+            ->update([
+                'remaining_amount' => $newRemaining,
+                'status' => $newRemaining > 0 ? 'open' : 'used',
+                'updated_at' => now(),
+            ]);
+
+        $this->refreshOrderPaymentStatus($newOrderId, $userId);
+
+        DB::table('activity_logs')->insert([
+            'subject_type' => 'order',
+            'subject_id' => $newOrderId,
+            'type' => 'system_note',
+            'title' => 'Superseded balance carried forward',
+            'body' => '£' . number_format($amountToApply, 2) . ' was applied from wallet credit created from superseded Order ID #' . $previousOrderId . '.',
+            'occurred_at' => now(),
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function ensureSupersededOrderCredit(int $previousOrderId, int $customerId, float $amount, int $userId): int
+    {
+        $existing = DB::table('customer_credits')
+            ->where('source_type', 'superseded_order_balance')
+            ->where('source_id', $previousOrderId)
+            ->first(['id']);
+
+        if ($existing) {
+            return (int) $existing->id;
+        }
+
+        return (int) DB::table('customer_credits')->insertGetId([
+            'customer_id' => $customerId,
+            'order_id' => $previousOrderId,
+            'source_type' => 'superseded_order_balance',
+            'source_id' => $previousOrderId,
+            'source_invoice_version_id' => null,
+            'amount' => $amount,
+            'remaining_amount' => $amount,
+            'status' => 'open',
+            'notes' => 'Settled balance moved from superseded order revision.',
+            'currency' => 'GBP',
+            'created_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function orderSettledTotal(int $orderId): float
+    {
+        return round((float) DB::table('order_transactions')
+            ->where('order_id', $orderId)
+            ->where('status', 'recorded')
+            ->whereIn('type', [
+                'payment',
+                'credit_application',
+                'payment_void',
+                'credit_application_void',
+                'refund',
+                'refund_void',
+            ])
+            ->sum('amount'), 2);
+    }
+
+    private function refreshOrderPaymentStatus(int $orderId, int $userId): void
+    {
+        $order = DB::table('orders')->where('id', $orderId)->first(['id', 'grand_total', 'status']);
+
+        if (! $order) {
+            return;
+        }
+
+        $settled = $this->orderSettledTotal($orderId);
+        $total = round((float) ($order->grand_total ?? 0), 2);
+
+        if ($total > 0 && $settled + 0.01 >= $total) {
+            DB::table('orders')->where('id', $orderId)->update([
+                'status' => in_array((string) $order->status, ['ready', 'created'], true) ? 'paid' : $order->status,
+                'paid_at' => now(),
+                'updated_by_user_id' => $userId,
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function copyCustomerRequestNotesToOrder(int $draftId, int $orderId, int $userId): void
