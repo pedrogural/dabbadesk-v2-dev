@@ -156,6 +156,10 @@ class DraftOrdersController extends Controller
         $draft = $drafts->find($draftOrder);
         abort_if(! $draft, 404);
 
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
             return $response;
         }
@@ -184,6 +188,10 @@ class DraftOrdersController extends Controller
 
     public function updateFees(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
             return $response;
         }
@@ -203,6 +211,10 @@ class DraftOrdersController extends Controller
 
     public function updateItem(int $draftOrder, int $item, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)
     {
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
             return $response;
         }
@@ -331,6 +343,10 @@ class DraftOrdersController extends Controller
 
     public function addItem(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts, DraftRetailerDetectionService $detector)
     {
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
             return $response;
         }
@@ -367,6 +383,10 @@ class DraftOrdersController extends Controller
 
     public function updateRetailerDelivery(int $draftOrder, int $retailer, Request $request, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, $request, $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, $request, $drafts)) {
             return $response;
         }
@@ -391,6 +411,10 @@ class DraftOrdersController extends Controller
 
     public function deleteItem(int $draftOrder, int $item, DraftOrderWorkspaceService $drafts)
     {
+        if ($response = $this->guardCancelledDraftMutation($draftOrder, request(), $drafts)) {
+            return $response;
+        }
+
         if ($response = $this->guardConsumedDraftMutation($draftOrder, request(), $drafts)) {
             return $response;
         }
@@ -409,6 +433,12 @@ class DraftOrdersController extends Controller
     {
         $draft = $drafts->find($draftOrder);
         abort_if(! $draft, 404);
+
+        if ($this->isCancelledDraft($draft)) {
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors(['draft' => 'This draft is cancelled and cannot be finalised. Reopen it first if a new order is required.']);
+        }
 
         $isConsumed = ! empty($draft->finalized_order_id);
 
@@ -439,6 +469,35 @@ class DraftOrdersController extends Controller
         return redirect()->route('draft-orders.show', $draftOrder)->with('success', 'Note added.');
     }
 
+
+    private function guardCancelledDraftMutation(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
+    {
+        $draft = $drafts->find($draftOrder);
+        abort_if(! $draft, 404);
+
+        if (! $this->isCancelledDraft($draft)) {
+            return null;
+        }
+
+        $message = 'This draft is cancelled and is locked for editing. Change the draft status back to open before making product, fee, customer, or delivery changes.';
+
+        if ($request->expectsJson() || $request->ajax()) {
+            return response()->json([
+                'ok' => false,
+                'message' => $message,
+            ], 423);
+        }
+
+        return redirect()
+            ->route('draft-orders.show', $draftOrder)
+            ->withErrors(['draft' => $message]);
+    }
+
+    private function isCancelledDraft(object $draft): bool
+    {
+        return in_array((string) ($draft->status ?? ''), ['cancelled', 'canceled'], true)
+            || in_array((string) ($draft->state ?? ''), ['cancelled', 'canceled'], true);
+    }
 
     private function guardConsumedDraftMutation(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
     {

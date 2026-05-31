@@ -17,6 +17,8 @@
         $requestRef = $draft->request_ref ?: $draftNo;
         $hasChildOrder = ! empty($draft->finalized_order_id);
         $isConsumedDraft = in_array((string) ($draft->status ?? ''), ['consumed', 'finalised'], true) || in_array((string) ($draft->state ?? ''), ['consumed', 'finalised'], true);
+        $isCancelledDraft = in_array((string) ($draft->status ?? ''), ['cancelled', 'canceled'], true) || in_array((string) ($draft->state ?? ''), ['cancelled', 'canceled'], true);
+        $isDraftEditable = ! $isCancelledDraft;
         $isReopenedVersionDraft = $hasChildOrder && ! $isConsumedDraft;
         $finalizedOrderLabel = $draft->finalized_order_number ? ('Order #' . $draft->finalized_order_number) : ($draft->finalized_order_id ? ('Order ID #' . $draft->finalized_order_id) : null);
         $retailerLogoUrl = function ($logoPath) {
@@ -666,6 +668,7 @@
             csrf: '{{ csrf_token() }}',
             initialTab: '{{ $activeTab }}',
             isConsumedDraft: @js($isConsumedDraft),
+            isCancelledDraft: @js($isCancelledDraft),
             hasChildOrder: @js($hasChildOrder),
             finalizedOrderLabel: @js($finalizedOrderLabel),
             finalizedOrderUrl: @js($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null)
@@ -739,6 +742,20 @@
             </div>
         @endif
 
+        @if ($isCancelledDraft)
+            <section class="rounded-3xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
+                <div class="flex items-start gap-4">
+                    <div class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-rose-600 shadow-sm">✕</div>
+                    <div>
+                        <h2 class="text-lg font-black text-rose-950">Cancelled draft is locked</h2>
+                        <p class="mt-1 text-sm font-semibold leading-6 text-rose-800">
+                            Products, prices, customer details, fees and delivery charges cannot be changed while this draft is cancelled. Change the status back to open first if the draft needs to be worked on again.
+                        </p>
+                    </div>
+                </div>
+            </section>
+        @endif
+
         {{-- Header --}}
         <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div class="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -772,11 +789,20 @@
                             class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"
                         >Open {{ $finalizedOrderLabel }}</a>
                     @endif
-                    <button
-                        type="button"
-                        @click="openFinaliseModal()"
-                        class="rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-purple-700"
-                    >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
+                    @if ($isCancelledDraft)
+                        <button
+                            type="button"
+                            disabled
+                            class="cursor-not-allowed rounded-2xl bg-slate-200 px-4 py-2.5 text-sm font-black text-slate-500"
+                            title="Cancelled drafts must be reopened before they can be finalised."
+                        >Finalise locked</button>
+                    @else
+                        <button
+                            type="button"
+                            @click="openFinaliseModal()"
+                            class="rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-purple-700"
+                        >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
+                    @endif
                 </div>
             </div>
             <div class="flex gap-1 border-t border-slate-100 px-5 py-2">
@@ -802,6 +828,14 @@
                     class="space-y-4"
                 >
                     {{-- Better add product panel --}}
+                    @if ($isCancelledDraft)
+                        <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                            <h2 class="text-xl font-black text-slate-950">Add product</h2>
+                            <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
+                                This draft is cancelled, so adding products is disabled. Reopen the draft from Draft settings before adding or changing items.
+                            </div>
+                        </section>
+                    @else
                     <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                         <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -909,6 +943,7 @@
                             ></div>
                         </form>
                     </section>
+                    @endif
 
                     {{-- Basket --}}
                     <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -1639,6 +1674,7 @@
                     <form
                         method="POST"
                         action="{{ route('draft-orders.update', $draft->id) }}"
+                        data-allow-cancelled-submit="1"
                         class="mt-4 space-y-3"
                     >
                         @csrf
@@ -1897,11 +1933,16 @@
     </div>
 
     <script>
+        window.dabbaCancelledDraft = @js($isCancelledDraft);
         window.dabbaConsumedDraft = @js($isConsumedDraft);
         window.dabbaConsumedDraftEditAcknowledged = false;
 
         window.dabbaDraftAutosave = async function(form) {
             const debugPayload = {};
+
+            if (window.dabbaCancelledDraft) {
+                return { ok: false, message: 'This draft is cancelled and locked. Reopen it before making changes.' };
+            }
 
             if (window.dabbaConsumedDraft && !window.dabbaConsumedDraftEditAcknowledged) {
                 if (form instanceof HTMLFormElement) form.dataset.autosaveRetry = '1';
@@ -2050,9 +2091,24 @@
             console.error('Draft page unhandled promise rejection', event.reason);
         });
 
+        window.addEventListener('draft-toast', function(event) {
+            const detail = event.detail || {};
+            const root = document.querySelector('[x-data^="draftWorkspace"]');
+            if (root && root.__x && typeof root.__x.$data?.showToast === 'function') {
+                root.__x.$data.showToast(detail.title || 'Draft is locked', detail.message || 'This draft cannot be changed.');
+            } else {
+                alert((detail.title || 'Draft is locked') + '\n' + (detail.message || 'This draft cannot be changed.'));
+            }
+        });
+
         document.addEventListener('submit', function(event) {
             const form = event.target;
             if (!(form instanceof HTMLFormElement)) return;
+            if (window.dabbaCancelledDraft && form.dataset.allowCancelledSubmit !== '1') {
+                event.preventDefault();
+                window.dispatchEvent(new CustomEvent('draft-toast', { detail: { title: 'Draft is cancelled', message: 'Reopen the draft before making changes.' } }));
+                return;
+            }
             if (!window.dabbaConsumedDraft || window.dabbaConsumedDraftEditAcknowledged) return;
             if (form.dataset.allowConsumedSubmit === '1') return;
             if (form.action && form.action.includes('/finalise')) return;
@@ -2098,6 +2154,7 @@
                     pendingDelete: false
                 },
                 isConsumedDraft: !!config.isConsumedDraft,
+                isCancelledDraft: !!config.isCancelledDraft,
                 hasChildOrder: !!config.hasChildOrder,
 
                 boot() {
@@ -2122,6 +2179,10 @@
                 },
 
                 openFinaliseModal() {
+                    if (this.isCancelledDraft) {
+                        this.showToast('Draft is cancelled', 'Reopen the draft before finalising it.');
+                        return;
+                    }
                     this.finaliseModal.open = true;
                 },
 
