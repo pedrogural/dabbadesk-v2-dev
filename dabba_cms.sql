@@ -2386,7 +2386,7 @@ CREATE TABLE `cache` (
 LOCK TABLES `cache` WRITE;
 /*!40000 ALTER TABLE `cache` DISABLE KEYS */;
 INSERT INTO `cache` VALUES
-('dabba-direct-cms-cache-sidebar.order_requests.unconverted_count','i:16;',1780214121),
+('dabba-direct-cms-cache-sidebar.order_requests.unconverted_count','i:16;',1780218371),
 ('laravel-cache-047fed6628a30f881eb5683c981e2702dcb4d32f','i:1;',1779111892),
 ('laravel-cache-047fed6628a30f881eb5683c981e2702dcb4d32f:timer','i:1779111892;',1779111892),
 ('laravel-cache-fce98a41478d97e8b1a1d6807fba5692a4fff995','i:2;',1780160629),
@@ -32307,7 +32307,7 @@ LOCK TABLES `users` WRITE;
 INSERT INTO `users` VALUES
 (2,'Sharan Mohinani','sharan@dabbadirect.com','staff',NULL,'$2y$12$OUspE9vb0gbc13ybzFSdvex7TtXr31.XY/ZMsXUatP.VKIgab5Mo6','NpMCtCZE1LzWnXF0Po9nXeA1L3ggf0hp4lFZrjshNbGp8i7s8M8ILjfia2u1',0,NULL,NULL,NULL,5,'2025-12-30 05:23:54','2026-01-02 02:20:07',NULL),
 (4,'System Administrator   ','webmaster@dabbadirect.com','admin',NULL,'$2y$12$q3WB7f/aSr9PzMytug0HKO4bcHN9hoLxWmpEFPk4UYHvRFm8RgCU6','8Eep2nm0uA5SCMmj8N4aPM2y5pWwV8H7CX71tkrVd1YsV7Oe7skwtyItWbF7',0,NULL,NULL,NULL,5,'2025-12-30 05:33:18','2026-01-09 20:06:25',NULL),
-(5,'Peter Gural','peter@dabbadirect.com','admin',NULL,'$2y$12$dbL9iMmTWrRF/IiWabEAZ.sCip99jF4k/ptJ8c5w0kum3Qyv1i9HW','hAnJdLaWsYLDo83GtGvy6OBaUXgK7E3Indojg58VGcuadwOtobI9V3nG3sm2',0,NULL,NULL,NULL,4,'2025-12-30 13:42:19','2026-01-02 23:14:33',NULL),
+(5,'Peter Gural','peter@dabbadirect.com','admin',NULL,'$2y$12$dbL9iMmTWrRF/IiWabEAZ.sCip99jF4k/ptJ8c5w0kum3Qyv1i9HW','5U4T72ovzXbIpq6G5HK5Iilm1pXa0GMuzULoMhaO3eJ0WnzSxMN4Y4dCwWhJ',0,NULL,NULL,NULL,4,'2025-12-30 13:42:19','2026-01-02 23:14:33',NULL),
 (6,'Jai Mirpuri','jai@freight-it.gi','staff',NULL,'$2y$12$UcGQrCCRnbTBFTIjZz25t.rcaEl/xRrrb/ou6y/bm8A5D6csg7AJK',NULL,0,NULL,NULL,NULL,NULL,'2026-03-18 16:12:31','2026-03-18 16:14:08',NULL);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -32596,4 +32596,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-05-31  8:33:07
+-- Dump completed on 2026-05-31 11:29:16
