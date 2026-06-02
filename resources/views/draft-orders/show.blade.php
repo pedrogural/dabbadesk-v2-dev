@@ -856,6 +856,7 @@
                                     <label class="field-label">Product URL / code</label>
                                     <div class="flex gap-2">
                                         <input
+                                            id="draft-product-url-input"
                                             name="url"
                                             x-model="newItem.url"
                                             @blur.debounce.300ms="detectRetailer()"

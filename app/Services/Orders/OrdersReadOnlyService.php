@@ -2,6 +2,7 @@
 
 namespace App\Services\Orders;
 
+use App\Support\Search\SmartSearch;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -137,41 +138,68 @@ class OrdersReadOnlyService
                 $query->where('orders.created_by_user_id', $userId);
             })
             ->when($queryText !== '', function ($query) use ($queryText) {
-                $query->where(function ($subQuery) use ($queryText) {
+                SmartSearch::apply($query, $queryText, function ($subQuery, SmartSearch $search) {
+                    $like = $search->phraseLike();
+
                     $subQuery
-                        ->where('orders.order_number', 'like', "%{$queryText}%")
-                        ->orWhere('orders.bill_to_name', 'like', "%{$queryText}%")
-                        ->orWhere('orders.bill_to_email', 'like', "%{$queryText}%")
-                        ->orWhere('customers.first_name', 'like', "%{$queryText}%")
-                        ->orWhere('customers.last_name', 'like', "%{$queryText}%")
-                        ->orWhere('customers.company_name', 'like', "%{$queryText}%")
-                        ->orWhereExists(function ($itemQuery) use ($queryText) {
+                        ->where('orders.order_number', 'like', $like)
+                        ->orWhere('orders.bill_to_name', 'like', $like)
+                        ->orWhere('orders.bill_to_email', 'like', $like)
+                        ->orWhere('orders.bill_to_phone', 'like', $like)
+                        ->orWhere('customers.first_name', 'like', $like)
+                        ->orWhere('customers.last_name', 'like', $like)
+                        ->orWhere('customers.company_name', 'like', $like)
+                        ->orWhereRaw("CONCAT_WS(' ', customers.first_name, customers.last_name) like ?", [$like])
+                        ->orWhereRaw("CONCAT_WS(' ', customers.last_name, customers.first_name) like ?", [$like]);
+
+                    $search->orWhereAllTokensAcross($subQuery, [
+                        'orders.bill_to_name',
+                        'orders.bill_to_email',
+                        'customers.first_name',
+                        'customers.last_name',
+                        'customers.company_name',
+                    ]);
+
+                    if ($search->digits !== '') {
+                        $digitsLike = $search->digitsLike();
+                        $subQuery->orWhereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(orders.bill_to_phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') like ?", [$digitsLike]);
+                    }
+
+                    $subQuery
+                        ->orWhereExists(function ($itemQuery) use ($like, $search) {
                             $itemQuery
                                 ->select(DB::raw(1))
                                 ->from('order_items')
                                 ->whereColumn('order_items.order_id', 'orders.id')
-                                ->where(function ($itemSearch) use ($queryText) {
+                                ->where(function ($itemSearch) use ($like, $search) {
                                     $itemSearch
-                                        ->where('order_items.item_name', 'like', "%{$queryText}%")
-                                        ->orWhere('order_items.product_code', 'like', "%{$queryText}%")
-                                        ->orWhere('order_items.retailer_order_reference', 'like', "%{$queryText}%")
-                                        ->orWhere('order_items.tracking_reference', 'like', "%{$queryText}%");
+                                        ->where('order_items.item_name', 'like', $like)
+                                        ->orWhere('order_items.product_code', 'like', $like)
+                                        ->orWhere('order_items.retailer_order_reference', 'like', $like)
+                                        ->orWhere('order_items.tracking_reference', 'like', $like);
+
+                                    $search->orWhereAllTokensAcross($itemSearch, [
+                                        'order_items.item_name',
+                                        'order_items.product_code',
+                                        'order_items.retailer_order_reference',
+                                        'order_items.tracking_reference',
+                                    ]);
                                 });
                         })
-                        ->orWhereExists(function ($purchaseQuery) use ($queryText) {
+                        ->orWhereExists(function ($purchaseQuery) use ($like) {
                             $purchaseQuery
                                 ->select(DB::raw(1))
                                 ->from('order_items as purchase_lookup_items')
                                 ->whereColumn('purchase_lookup_items.order_id', 'orders.id')
-                                ->whereExists(function ($purchaseMatch) use ($queryText) {
+                                ->whereExists(function ($purchaseMatch) use ($like) {
                                     $purchaseMatch
                                         ->select(DB::raw(1))
                                         ->from('order_item_purchases')
                                         ->whereRaw('order_item_purchases.root_item_id = COALESCE(purchase_lookup_items.root_item_id, purchase_lookup_items.id)')
-                                        ->where(function ($purchaseSearch) use ($queryText) {
+                                        ->where(function ($purchaseSearch) use ($like) {
                                             $purchaseSearch
-                                                ->where('order_item_purchases.retailer_order_reference', 'like', "%{$queryText}%")
-                                                ->orWhere('order_item_purchases.marketplace_seller', 'like', "%{$queryText}%");
+                                                ->where('order_item_purchases.retailer_order_reference', 'like', $like)
+                                                ->orWhere('order_item_purchases.marketplace_seller', 'like', $like);
                                         });
                                 });
                         });

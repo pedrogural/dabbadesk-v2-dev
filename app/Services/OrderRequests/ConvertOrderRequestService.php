@@ -10,9 +10,9 @@ use RuntimeException;
 
 class ConvertOrderRequestService
 {
-    public function convert(int $orderRequestId, string $customerMode, ?int $selectedCustomerId, array $customerPayload, int $userId, string $existingCustomerAction = 'keep'): int
+    public function convert(int $orderRequestId, string $customerMode, ?int $selectedCustomerId, array $customerPayload, int $userId, string $existingCustomerAction = 'keep', bool $allowEmptyBasket = false): int
     {
-        return DB::transaction(function () use ($orderRequestId, $customerMode, $selectedCustomerId, $customerPayload, $userId, $existingCustomerAction): int {
+        return DB::transaction(function () use ($orderRequestId, $customerMode, $selectedCustomerId, $customerPayload, $userId, $existingCustomerAction, $allowEmptyBasket): int {
             $request = DB::table('order_requests')
                 ->where('id', $orderRequestId)
                 ->lockForUpdate()
@@ -33,7 +33,7 @@ class ConvertOrderRequestService
                 ->orderBy('id')
                 ->get();
 
-            if ($items->isEmpty()) {
+            if ($items->isEmpty() && ! $allowEmptyBasket) {
                 throw new RuntimeException('This request has no items to convert.');
             }
 

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\OrderRequests\ConvertOrderRequestService;
+use App\Services\Intake\OrderRequestAttachmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ class OrderRequestsController extends Controller
                 'customer_company_name',
                 'customer_email',
                 'notes',
+                'source',
                 'status',
                 'estimated_total',
                 'submitted_at',
@@ -64,6 +66,125 @@ class OrderRequestsController extends Controller
             'search' => $search,
             'status' => $status,
         ]);
+    }
+
+    public function createManual(Request $request): View
+    {
+        $customerSearch = trim((string) $request->query('customer_q', ''));
+        $customerOptions = $customerSearch !== '' ? $this->customerSearchResults($customerSearch) : collect();
+
+        return view('order-requests.create-manual', [
+            'customerSearch' => $customerSearch,
+            'customerOptions' => $customerOptions,
+            'countries' => $this->countryOptions(),
+            'newRequestCount' => $this->newRequestCount(),
+        ]);
+    }
+
+    public function storeManual(Request $request, ConvertOrderRequestService $converter, OrderRequestAttachmentService $attachments): RedirectResponse
+    {
+        $validated = $request->validate([
+            'source' => ['required', Rule::in(['office', 'email', 'whatsapp', 'phone', 'other'])],
+            'notes' => ['nullable', 'string', 'max:5000'],
+            'customer_mode' => ['required', Rule::in(['existing', 'create'])],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'first_name' => ['nullable', 'string', 'max:50'],
+            'last_name' => ['nullable', 'string', 'max:50'],
+            'company_name' => ['nullable', 'string', 'max:150'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'phone_country_id' => ['nullable', 'integer', 'exists:countries,id'],
+            'phone_digits' => ['nullable', 'string', 'max:40'],
+            'address_line1' => ['nullable', 'string', 'max:191'],
+            'address_postcode' => ['nullable', 'string', 'max:32'],
+            'address_country_id' => ['nullable', 'integer', 'exists:countries,id'],
+            'attachments' => ['nullable', 'array', 'max:8'],
+            'attachments.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,pdf,txt,doc,docx'],
+        ]);
+
+        if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
+            return back()->withInput()->withErrors(['customer_id' => 'Choose an existing customer before creating the draft.']);
+        }
+
+        if ($validated['customer_mode'] === 'create') {
+            $hasName = trim((string) ($validated['first_name'] ?? '')) !== ''
+                || trim((string) ($validated['last_name'] ?? '')) !== ''
+                || trim((string) ($validated['company_name'] ?? '')) !== '';
+
+            if (! $hasName) {
+                return back()->withInput()->withErrors(['first_name' => 'Add a customer name or company name before creating the draft.']);
+            }
+        }
+
+        $userId = (int) auth()->id();
+
+        try {
+            $created = DB::transaction(function () use ($request, $validated, $converter, $attachments, $userId): array {
+                $requestRef = $this->nextRequestRef();
+                $customerSnapshot = $this->manualRequestCustomerSnapshot($validated);
+
+                $orderRequestId = DB::table('order_requests')->insertGetId([
+                    'request_ref' => $requestRef,
+                    'source' => 'manual_' . (string) $validated['source'],
+                    'reference_number' => null,
+                    'customer_first_name' => $customerSnapshot['first_name'],
+                    'customer_last_name' => $customerSnapshot['last_name'],
+                    'customer_company_name' => $customerSnapshot['company_name'],
+                    'customer_email' => $customerSnapshot['email'],
+                    'customer_phone_country_id' => $customerSnapshot['phone_country_id'],
+                    'customer_phone_digits' => $customerSnapshot['phone_digits'],
+                    'customer_address_line1' => $customerSnapshot['address_line1'],
+                    'customer_address_postcode' => $customerSnapshot['address_postcode'],
+                    'customer_address_country_id' => $customerSnapshot['address_country_id'],
+                    'notes' => $validated['notes'] ?? null,
+                    'status' => 'received',
+                    'estimated_total' => 0,
+                    'disclaimer_accepted_at' => now(),
+                    'submitted_at' => now(),
+                    'submitted_ip' => $request->ip(),
+                    'user_agent' => Str::limit('DabbaDesk manual intake: ' . (string) $validated['source'], 255, ''),
+                    'submission_uuid' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                $incomingAttachments = $request->file('attachments', []);
+                if ($incomingAttachments instanceof \Illuminate\Http\UploadedFile) {
+                    $incomingAttachments = [$incomingAttachments];
+                }
+
+                $attachments->storeForRequest($orderRequestId, $requestRef, array_filter($incomingAttachments));
+
+                $draftId = $converter->convert(
+                    $orderRequestId,
+                    (string) $validated['customer_mode'],
+                    ! empty($validated['customer_id']) ? (int) $validated['customer_id'] : null,
+                    $validated,
+                    $userId,
+                    'keep',
+                    true
+                );
+
+                $this->logOrderRequestActivity(
+                    $orderRequestId,
+                    'manual_request_created',
+                    'Manual request created',
+                    'Created from ' . $this->sourceLabel('manual_' . (string) $validated['source']) . ' and opened as an empty draft.',
+                    $userId
+                );
+
+                return ['order_request_id' => $orderRequestId, 'request_ref' => $requestRef, 'draft_id' => $draftId];
+            });
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withInput()->withErrors([
+                'manual_request' => $exception->getMessage() ?: 'Could not create the manual request and draft.',
+            ]);
+        }
+
+        return redirect()
+            ->route('draft-orders.show', $created['draft_id'])
+            ->with('success', 'Manual request #' . $created['request_ref'] . ' created and opened as an empty draft. Add products in the Draft Workbench.');
     }
 
     public function show(Request $request, int $orderRequest): View
@@ -371,6 +492,64 @@ class OrderRequestsController extends Controller
                 ];
             })
             ->values();
+    }
+
+    private function nextRequestRef(): string
+    {
+        $latest = DB::table('order_requests')
+            ->whereNotNull('request_ref')
+            ->whereRaw("request_ref REGEXP '^[0-9]+$'")
+            ->lockForUpdate()
+            ->max(DB::raw('CAST(request_ref AS UNSIGNED)'));
+
+        return (string) (((int) $latest) + 1);
+    }
+
+    private function manualRequestCustomerSnapshot(array $payload): array
+    {
+        if (($payload['customer_mode'] ?? '') === 'existing' && ! empty($payload['customer_id'])) {
+            $profile = $this->customerProfile((int) $payload['customer_id']);
+            if (! $profile) {
+                throw new \RuntimeException('Selected customer could not be found.');
+            }
+
+            return [
+                'first_name' => $profile->first_name,
+                'last_name' => $profile->last_name,
+                'company_name' => $profile->company_name,
+                'email' => $profile->email,
+                'phone_country_id' => $profile->phone_country_id,
+                'phone_digits' => preg_replace('/\D+/', '', (string) ($profile->phone_digits ?? '')) ?: null,
+                'address_line1' => $profile->address_line1,
+                'address_postcode' => $profile->address_postcode,
+                'address_country_id' => $profile->address_country_id,
+            ];
+        }
+
+        return [
+            'first_name' => Str::title(trim((string) ($payload['first_name'] ?? ''))) ?: null,
+            'last_name' => Str::title(trim((string) ($payload['last_name'] ?? ''))) ?: null,
+            'company_name' => trim((string) ($payload['company_name'] ?? '')) ?: null,
+            'email' => strtolower(trim((string) ($payload['email'] ?? ''))) ?: null,
+            'phone_country_id' => ! empty($payload['phone_country_id']) ? (int) $payload['phone_country_id'] : null,
+            'phone_digits' => preg_replace('/\D+/', '', (string) ($payload['phone_digits'] ?? '')) ?: null,
+            'address_line1' => trim((string) ($payload['address_line1'] ?? '')) ?: null,
+            'address_postcode' => trim((string) ($payload['address_postcode'] ?? '')) ?: null,
+            'address_country_id' => ! empty($payload['address_country_id']) ? (int) $payload['address_country_id'] : null,
+        ];
+    }
+
+    private function sourceLabel(?string $source): string
+    {
+        return match ((string) $source) {
+            'manual_office', 'office' => 'Office',
+            'manual_email', 'email' => 'Email',
+            'manual_whatsapp', 'whatsapp' => 'WhatsApp',
+            'manual_phone', 'phone' => 'Phone',
+            'manual_other', 'other' => 'Other',
+            'order_app_v2', 'public', '' => 'Public',
+            default => Str::headline(str_replace(['manual_', '_'], ['', ' '], (string) $source)),
+        };
     }
 
     private function cleanRetailerBaseUrl(string $value): string

@@ -2,6 +2,7 @@
 
 namespace App\Services\Drafts;
 
+use App\Support\Search\SmartSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -41,38 +42,59 @@ class DraftOrderWorkspaceService
         }
 
         if ($q !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
-            $query->where(function ($inner) use ($like) {
+            SmartSearch::apply($query, $q, function ($inner, SmartSearch $search) {
+                $like = $search->phraseLike();
+
                 $inner->where('d.draft_number', 'like', $like)
                     ->orWhere('r.request_ref', 'like', $like)
                     ->orWhere('c.first_name', 'like', $like)
                     ->orWhere('c.last_name', 'like', $like)
                     ->orWhere('c.company_name', 'like', $like)
-                    ->orWhereExists(function ($sub) use ($like) {
-                        $sub->selectRaw('1')
-                            ->from('customer_emails as ce')
-                            ->join('emails as e', 'e.id', '=', 'ce.email_id')
-                            ->whereColumn('ce.customer_id', 'c.id')
-                            ->where('e.email', 'like', $like);
-                    })
-                    ->orWhereExists(function ($sub) use ($like) {
+                    ->orWhereRaw("CONCAT_WS(' ', c.first_name, c.last_name) like ?", [$like])
+                    ->orWhereRaw("CONCAT_WS(' ', c.last_name, c.first_name) like ?", [$like]);
+
+                $search->orWhereAllTokensAcross($inner, [
+                    'c.first_name',
+                    'c.last_name',
+                    'c.company_name',
+                ]);
+
+                $inner->orWhereExists(function ($sub) use ($like) {
+                    $sub->selectRaw('1')
+                        ->from('customer_emails as ce')
+                        ->join('emails as e', 'e.id', '=', 'ce.email_id')
+                        ->whereColumn('ce.customer_id', 'c.id')
+                        ->where('e.email', 'like', $like);
+                });
+
+                if ($search->digits !== '') {
+                    $digitsLike = $search->digitsLike();
+                    $inner->orWhereExists(function ($sub) use ($digitsLike) {
                         $sub->selectRaw('1')
                             ->from('customer_phones as cp')
                             ->join('phones as p', 'p.id', '=', 'cp.phone_id')
                             ->whereColumn('cp.customer_id', 'c.id')
-                            ->where('p.phone', 'like', $like);
-                    })
-                    ->orWhereExists(function ($sub) use ($like) {
-                        $sub->selectRaw('1')
-                            ->from('draft_order_items as i')
-                            ->whereColumn('i.draft_order_id', 'd.id')
-                            ->where(function ($item) use ($like) {
-                                $item->where('i.description', 'like', $like)
-                                    ->orWhere('i.product_code', 'like', $like)
-                                    ->orWhere('i.sku', 'like', $like)
-                                    ->orWhere('i.url', 'like', $like);
-                            });
+                            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(p.phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') like ?", [$digitsLike]);
                     });
+                }
+
+                $inner->orWhereExists(function ($sub) use ($like, $search) {
+                    $sub->selectRaw('1')
+                        ->from('draft_order_items as i')
+                        ->whereColumn('i.draft_order_id', 'd.id')
+                        ->where(function ($item) use ($like, $search) {
+                            $item->where('i.description', 'like', $like)
+                                ->orWhere('i.product_code', 'like', $like)
+                                ->orWhere('i.sku', 'like', $like)
+                                ->orWhere('i.url', 'like', $like);
+
+                            $search->orWhereAllTokensAcross($item, [
+                                'i.description',
+                                'i.product_code',
+                                'i.sku',
+                            ]);
+                        });
+                });
             });
         }
 

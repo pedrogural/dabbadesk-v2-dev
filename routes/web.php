@@ -34,6 +34,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/orders/{order}', [OrdersController::class, 'show'])->name('orders.show');
 
     Route::get('/order-requests', [OrderRequestsController::class, 'index'])->name('order-requests.index');
+    Route::get('/order-requests/create/manual', [OrderRequestsController::class, 'createManual'])->name('order-requests.create-manual');
+    Route::post('/order-requests/create/manual', [OrderRequestsController::class, 'storeManual'])->name('order-requests.store-manual');
     Route::get('/order-requests/counter', [OrderRequestsController::class, 'counter'])->name('order-requests.counter');
     Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed'])->name('order-requests.review');
     Route::post('/order-requests/{orderRequest}/cancel', [OrderRequestsController::class, 'cancel'])->name('order-requests.cancel');

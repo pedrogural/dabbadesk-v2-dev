@@ -118,22 +118,14 @@
                                 @foreach ($items as $item)
                                     <tr>
                                         <td class="px-4 py-3 align-top">
-                                            <div class="flex items-start gap-3">
-                                                <div class="flex h-9 w-9 flex-none items-center justify-center">
-                                                    @if ($item->retailer_url)
-                                                        <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open product link" title="Open product link" class="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
-                                                    @else
-                                                        <span class="h-8 w-8" aria-hidden="true"></span>
-                                                    @endif
-                                                </div>
-                                                <div class="min-w-0">
-                                                    <div class="max-w-xl text-sm font-bold text-gray-900">{{ $item->description }}</div>
-                                                    @if ($item->product_code)
-                                                        <div class="mt-1 text-xs text-gray-500">Code: {{ $item->product_code }}</div>
-                                                    @endif
-                                                    @if ($item->notes)<div class="mt-2 rounded-xl bg-gray-50 p-2 text-xs text-gray-600">{{ $item->notes }}</div>@endif
-                                                </div>
+                                            <div class="max-w-xl text-sm font-bold text-gray-900">{{ $item->description }}</div>
+                                            <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                                                @if ($item->product_code)<span>Code: {{ $item->product_code }}</span>@endif
+                                                @if ($item->retailer_url)
+                                                    <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open product link" title="Open product link" class="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
+                                                @endif
                                             </div>
+                                            @if ($item->notes)<div class="mt-2 rounded-xl bg-gray-50 p-2 text-xs text-gray-600">{{ $item->notes }}</div>@endif
                                         </td>
                                         <td class="px-4 py-3 align-top text-sm text-gray-700">
                                             <div class="font-bold">{{ $item->matched_retailer_name ?: ($item->retailer_name ?: 'Needs review') }}</div>
@@ -161,16 +153,12 @@
 
                     @if ($isConverted)
                         <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p class="font-black">Already converted</p>
-                                    <p class="mt-1">Draft order ID: {{ $requestRow->converted_draft_order_id }}</p>
-                                    <p class="mt-1 text-xs">Converted at {{ $requestRow->converted_at }}</p>
-                                </div>
-                                @if (! empty($requestRow->converted_draft_order_id))
-                                    <a href="{{ route('draft-orders.show', $requestRow->converted_draft_order_id) }}" class="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-800">Open Draft</a>
-                                @endif
-                            </div>
+                            <p class="font-black">Already converted</p>
+                            <p class="mt-1">Draft order ID: {{ $requestRow->converted_draft_order_id }}</p>
+                            <p class="mt-1 text-xs">Converted at {{ $requestRow->converted_at }}</p>
+                            @if ($requestRow->converted_draft_order_id)
+                                <a href="{{ route('draft-orders.show', $requestRow->converted_draft_order_id) }}" class="mt-3 inline-flex rounded-2xl bg-emerald-600 px-4 py-2 text-xs font-black text-white hover:bg-emerald-700">Open Draft</a>
+                            @endif
                         </div>
                     @elseif ($isCancelled)
                         <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
