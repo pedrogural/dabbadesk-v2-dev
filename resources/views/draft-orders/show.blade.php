@@ -139,7 +139,7 @@
         }
 
         .draft-ui .retailer-stack {
-            padding: 18px;
+            padding: 24px;
             background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
             border-top: 1px solid #e2e8f0
         }
@@ -158,19 +158,23 @@
 
         .draft-ui .retailer-header {
             display: grid;
-            grid-template-columns: minmax(230px, 1fr) 250px minmax(420px, 1.65fr);
-            gap: 24px;
+            grid-template-columns: minmax(280px, 1.25fr) 220px minmax(360px, 1.45fr);
+            gap: 18px;
             align-items: center;
-            padding: 22px 26px;
+            padding: 14px 18px;
             border-bottom: 1px solid #dbeafe;
-            background: linear-gradient(90deg, #eff6ff 0%, #ffffff 45%, #faf5ff 100%)
+            background: linear-gradient(90deg, #eff6ff 0%, #ffffff 48%, #faf5ff 100%)
         }
 
         .draft-ui .retailer-identity {
             display: flex;
             align-items: center;
-            gap: 16px;
-            min-width: 0
+            gap: 12px;
+            min-width: 0;
+            border-radius: 20px;
+            background: rgba(124, 58, 237, .075);
+            border: 1px solid rgba(124, 58, 237, .12);
+            padding: 10px 12px
         }
 
         .draft-ui .retailer-logo {
@@ -183,34 +187,34 @@
         .draft-ui .retailer-initial {
             display: grid;
             place-items: center;
-            height: 64px;
-            width: 64px;
-            border-radius: 22px;
+            height: 48px;
+            width: 48px;
+            border-radius: 17px;
             background: linear-gradient(135deg, #ede9fe, #dbeafe);
             color: #5b21b6;
-            font-size: 24px;
+            font-size: 18px;
             font-weight: 950;
             flex: 0 0 auto
         }
 
         .draft-ui .retailer-name {
-            font-size: 25px;
+            font-size: 18px;
             font-weight: 950;
-            line-height: 1.1;
+            line-height: 1.18;
             color: #6d28d9;
-            letter-spacing: -.025em
+            letter-spacing: -.015em
         }
 
         .draft-ui .retailer-subline {
-            margin-top: 8px;
-            font-size: 14px;
+            margin-top: 5px;
+            font-size: 12px;
             font-weight: 850;
             color: #64748b
         }
 
         .draft-ui .retailer-delivery-panel {
             border-left: 1px solid #e2e8f0;
-            padding-left: 22px
+            padding-left: 16px
         }
 
         .draft-ui .retailer-delivery-form {
@@ -232,12 +236,12 @@
 
         .draft-ui .money-tile-grid {
             display: grid;
-            grid-template-columns: repeat(4, minmax(105px, 1fr));
-            gap: 8px
+            grid-template-columns: repeat(4, minmax(92px, 1fr));
+            gap: 7px
         }
 
         .draft-ui .money-box {
-            border-radius: 16px;
+            border-radius: 14px;
             background: #f8fafc;
             padding: 10px 12px;
             min-height: 58px;
@@ -634,21 +638,21 @@
 
         @media(max-width:1500px) {
             .draft-ui .retailer-header {
-                grid-template-columns: minmax(210px, 1fr) 230px minmax(360px, 1.5fr);
-                gap: 16px;
-                padding: 22px
+                grid-template-columns: minmax(250px, 1.2fr) 210px minmax(330px, 1.35fr);
+                gap: 14px;
+                padding: 14px 16px
             }
 
             .draft-ui .money-tile-grid {
-                gap: 10px
+                gap: 7px
             }
 
             .draft-ui .money-box {
-                padding: 13px 14px
+                padding: 9px 10px
             }
 
             .draft-ui .money-value {
-                font-size: 17px
+                font-size: 14px
             }
 
             .draft-ui .basket-grid {
@@ -790,29 +794,27 @@
                             href="{{ route('draft-orders.index') }}"
                             class="font-semibold text-slate-500 hover:text-slate-950"
                         >← Back to drafts</a>
-                        <span class="hidden text-slate-300 sm:inline">•</span>
-                        <span class="font-black uppercase tracking-wide text-slate-400">Request #{{ $requestRef }}</span>
                     </div>
                     <div class="mt-1.5 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-black tracking-tight text-slate-950">Draft Workbench</h1>
-                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700">Draft {{ $draftNo }}</span>
                         <span class="rounded-full {{ $isConsumedDraft ? 'bg-amber-100 text-amber-700' : ($isCancelledDraft ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') }} px-3 py-1 text-xs font-black uppercase tracking-wide">{{ $draft->status ?: 'open' }}</span>
                     </div>
                     <p class="mt-1 text-sm text-slate-500">
                         {{ $customerName }}
-                        <span class="mx-1">•</span> Draft ID {{ $draft->id }}
+                        <span class="mx-1">•</span> Request #{{ $requestRef }}
+                        <span class="mx-1">•</span> Draft #{{ $draft->id }}
                         @if ($draft->created_at)
                             <span class="mx-1">•</span> Created {{ \Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i') }}
                         @endif
                     </p>
                     @if ($hasChildOrder)
                         <div class="mt-2 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            <span class="font-black uppercase tracking-wide text-amber-700">{{ $isConsumedDraft ? 'Consumed draft' : 'Version draft' }}</span>
+                            <span class="font-black tracking-wide text-amber-700">{{ $isConsumedDraft ? 'Consumed Draft' : 'Version Draft' }}</span>
                             <span class="text-amber-300">•</span>
-                            <span class="font-semibold">Already created {{ $finalizedOrderLabel ?: 'an order' }}.</span>
+                            <span class="font-semibold">Created {{ $finalizedOrderLabel ?: 'an order' }}</span>
                             @if ($isConsumedDraft)
                                 <span class="hidden text-amber-300 md:inline">•</span>
-                                <span class="font-semibold text-amber-800">Editing will prepare a new order version.</span>
+                                <span class="font-semibold text-amber-800">Editing will prepare a new version.</span>
                             @endif
                         </div>
                     @endif
@@ -1069,14 +1071,14 @@
                                             @click="open=!open"
                                             class="retailer-identity text-left"
                                         >
-                                            @if ($logoUrl)
+                                                                            @if ($logoUrl)
                                                 <span
-                                                    style="width:64px;height:64px;min-width:64px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:22px;background:#fff;border:1px solid #e2e8f0;"
+                                                    style="width:48px;height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:17px;background:#fff;border:1px solid #e2e8f0;"
                                                 >
                                                     <img
                                                         src="{{ $logoUrl }}"
                                                         alt="{{ $retailerName }} logo"
-                                                        style="display:block;width:100%;height:100%;object-fit:contain;padding:8px;"
+                                                        style="display:block;width:100%;height:100%;object-fit:contain;padding:6px;"
                                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';"
                                                     >
                                                     <span
@@ -1086,7 +1088,7 @@
                                                 <span class="retailer-initial">{{ $initial }}</span>
                                             @endif
                                             <span class="min-w-0">
-                                                <span class="retailer-name block truncate">{{ $retailerName }}</span>
+                                                <span class="retailer-name block" title="{{ $retailerName }}">{{ $retailerName }}</span>
                                                 <span class="retailer-subline block">
                                                     {{ $retailerItems->count() }}
                                                     {{ Str::plural('item', $retailerItems->count()) }}
@@ -1688,11 +1690,91 @@
                     <section
                         x-show="tab === 'activity'"
                         x-cloak
-                        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                        class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
                     >
-                        <h2 class="text-xl font-black text-slate-950">Activity</h2>
-                        <p class="mt-2 text-sm text-slate-500">Activity timeline will be expanded after finalise
-                            workflow.</p>
+                        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h2 class="text-xl font-black text-slate-950">Activity timeline</h2>
+                                <p class="mt-1 text-sm font-semibold text-slate-500">Meaningful draft events, notes and version history for this workbench.</p>
+                            </div>
+                            <span class="inline-flex w-fit rounded-full bg-purple-50 px-3 py-1 text-xs font-black text-purple-700">
+                                {{ ($activityLogs ?? collect())->count() }} event{{ ($activityLogs ?? collect())->count() === 1 ? '' : 's' }}
+                            </span>
+                        </div>
+
+                        <div class="mt-5">
+                            @forelse (($activityLogs ?? collect()) as $log)
+                                @php
+                                    $activityDate = $log->occurred_at ?: $log->created_at;
+                                    $activityLabel = match ((string) ($log->type ?? '')) {
+                                        'note', 'draft_note' => 'Staff note',
+                                        'system_note' => 'System update',
+                                        'supplier_note' => 'Supplier update',
+                                        'customer_request_note', 'request_note' => 'Order request note',
+                                        'order_version' => 'Version history',
+                                        default => \Illuminate\Support\Str::headline((string) ($log->type ?? 'Activity')),
+                                    };
+                                    $activityTone = match ((string) ($log->type ?? '')) {
+                                        'note', 'draft_note' => 'bg-blue-50 text-blue-700 ring-blue-100',
+                                        'supplier_note' => 'bg-amber-50 text-amber-700 ring-amber-100',
+                                        'customer_request_note', 'request_note' => 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+                                        'order_version' => 'bg-violet-50 text-violet-700 ring-violet-100',
+                                        default => 'bg-purple-50 text-purple-700 ring-purple-100',
+                                    };
+                                    $activityTitle = trim((string) ($log->title ?? '')) ?: $activityLabel;
+                                    $activityBody = trim((string) ($log->body ?? ''));
+                                    if (\Illuminate\Support\Str::startsWith($activityBody, ['{', '['])) {
+                                        $decodedActivity = json_decode($activityBody, true);
+                                        if (json_last_error() === JSON_ERROR_NONE) {
+                                            $activityBody = collect($decodedActivity)
+                                                ->map(fn ($value, $key) => \Illuminate\Support\Str::headline((string) $key) . ': ' . (is_scalar($value) ? (string) $value : json_encode($value)))
+                                                ->implode("
+");
+                                        }
+                                    }
+                                @endphp
+
+                                <div class="relative pl-8 {{ ! $loop->last ? 'pb-5' : '' }}">
+                                    @if (! $loop->last)
+                                        <div class="absolute left-[10px] top-6 h-full w-px bg-slate-200"></div>
+                                    @endif
+                                    <div class="absolute left-0 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white ring-4 ring-purple-50">
+                                        <div class="h-2.5 w-2.5 rounded-full bg-purple-500"></div>
+                                    </div>
+
+                                    <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                            <div class="min-w-0">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <span class="rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ring-1 {{ $activityTone }}">{{ $activityLabel }}</span>
+                                                    <h3 class="text-sm font-black text-slate-950">{{ $activityTitle }}</h3>
+                                                </div>
+                                                @if ($activityBody !== '')
+                                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600">{{ $activityBody }}</p>
+                                                @endif
+                                                @if (($log->type ?? '') === 'order_version' && !empty($log->order_id))
+                                                    <a href="{{ route('orders.show', $log->order_id) }}" class="mt-3 inline-flex items-center rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-700">
+                                                        Open order ↗
+                                                    </a>
+                                                @endif
+                                            </div>
+                                            <div class="shrink-0 text-left text-xs font-bold text-slate-400 sm:text-right">
+                                                <div>{{ $activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('d M Y') : 'Date unknown' }}</div>
+                                                <div>{{ $activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('H:i') : '' }}</div>
+                                            </div>
+                                        </div>
+                                        <div class="mt-3 text-xs font-bold text-slate-400">
+                                            {{ $log->author_name ?: 'DabbaDesk' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            @empty
+                                <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                                    <p class="text-sm font-black text-slate-700">No activity recorded yet.</p>
+                                    <p class="mt-1 text-sm text-slate-500">New meaningful actions on this draft will appear here.</p>
+                                </div>
+                            @endforelse
+                        </div>
                     </section>
             </main>
 
@@ -1807,27 +1889,7 @@
                     </form>
                 </section>
 
-                <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h2 class="text-base font-black text-slate-950">Actions</h2>
-                    <div class="mt-3 grid grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            @click="tab='customer'; window.scrollTo({top: 0, behavior: 'smooth'});"
-                            class="rounded-2xl border border-purple-200 bg-purple-50 px-3 py-2.5 text-xs font-black text-purple-700 hover:bg-purple-100"
-                        >Edit customer</button>
-                        @if ($draft->finalized_order_id)
-                            <a
-                                href="{{ route('orders.show', $draft->finalized_order_id) }}"
-                                class="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-sm font-black text-white hover:bg-emerald-700"
-                            >Open Order</a>
-                        @endif
-                        <button
-                            type="button"
-                            @click="openFinaliseModal()"
-                            class="rounded-2xl bg-purple-600 px-3 py-2.5 text-xs font-black text-white hover:bg-purple-700"
-                        >{{ $hasChildOrder ? 'New Version' : 'Finalise' }}</button>
-                    </div>
-                </section>
+
             </aside>
         </div>
 

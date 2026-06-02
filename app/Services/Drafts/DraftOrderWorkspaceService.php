@@ -6,6 +6,7 @@ use App\Support\Search\SmartSearch;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class DraftOrderWorkspaceService
 {
@@ -158,6 +159,105 @@ class DraftOrderWorkspaceService
             ->get();
     }
 
+
+
+    public function activity(int $draftId, int $limit = 60)
+    {
+        $logs = collect();
+
+        if (Schema::hasTable('activity_logs')) {
+            $logs = DB::table('activity_logs as a')
+                ->leftJoin('users as u', 'u.id', '=', 'a.created_by_user_id')
+                ->where('a.subject_type', 'draft_order')
+                ->where('a.subject_id', $draftId)
+                ->whereNull('a.deleted_at')
+                ->select('a.*', 'u.name as author_name')
+                ->orderByDesc(DB::raw('coalesce(a.occurred_at, a.created_at)'))
+                ->orderByDesc('a.id')
+                ->limit($limit)
+                ->get();
+        }
+
+        return $logs
+            ->merge($this->orderVersionActivity($draftId))
+            ->sortByDesc(function ($row) {
+                return (string) ($row->occurred_at ?: $row->created_at ?: '');
+            })
+            ->take($limit)
+            ->values();
+    }
+
+    protected function orderVersionActivity(int $draftId)
+    {
+        if (! Schema::hasTable('orders') || ! Schema::hasTable('draft_orders')) {
+            return collect();
+        }
+
+        $draft = DB::table('draft_orders')
+            ->where('id', $draftId)
+            ->select('id', 'draft_number', 'created_at', 'finalized_order_id', 'parent_order_id')
+            ->first();
+
+        if (! $draft) {
+            return collect();
+        }
+
+        $query = DB::table('orders as o')
+            ->leftJoin('users as u', 'u.id', '=', 'o.created_by_user_id')
+            ->where(function ($inner) use ($draftId, $draft) {
+                $inner->where('o.draft_order_id', $draftId)
+                    ->orWhere('o.source_draft_order_id', $draftId);
+
+                if (! empty($draft->finalized_order_id)) {
+                    $inner->orWhere('o.id', (int) $draft->finalized_order_id);
+                }
+
+                if (! empty($draft->parent_order_id)) {
+                    $inner->orWhere('o.id', (int) $draft->parent_order_id)
+                        ->orWhere('o.parent_order_id', (int) $draft->parent_order_id);
+                }
+            })
+            ->select([
+                'o.id',
+                'o.order_number',
+                'o.status',
+                'o.parent_order_id',
+                'o.grand_total',
+                'o.created_at',
+                'o.created_by_user_id',
+                'u.name as author_name',
+            ])
+            ->orderBy('o.created_at')
+            ->orderBy('o.id');
+
+        return $query->get()->unique('id')->values()->map(function ($order, $index) use ($draft) {
+            $orderNumber = trim((string) ($order->order_number ?? '')) !== '' ? '#' . $order->order_number : '#' . $order->id;
+            $status = trim((string) ($order->status ?? 'created')) ?: 'created';
+            $total = is_numeric($order->grand_total ?? null) ? number_format((float) $order->grand_total, 2) : null;
+            $isRevision = ! empty($order->parent_order_id) || $index > 0;
+
+            return (object) [
+                'id' => 'order-version-' . $order->id,
+                'subject_type' => 'draft_order',
+                'subject_id' => $draft->id,
+                'type' => 'order_version',
+                'is_pinned' => 0,
+                'title' => $isRevision ? 'New order version created' : 'Draft converted to order',
+                'body' => collect([
+                    'Order ' . $orderNumber,
+                    'Status: ' . str_replace('_', ' ', $status),
+                    $total !== null ? 'Total: £' . $total : null,
+                ])->filter()->implode("\n"),
+                'occurred_at' => $order->created_at,
+                'created_at' => $order->created_at,
+                'created_by_user_id' => $order->created_by_user_id,
+                'author_name' => $order->author_name ?: 'DabbaDesk',
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'order_status' => $status,
+            ];
+        });
+    }
 
     public function requestNotes(int $draftId): array
     {
@@ -488,8 +588,18 @@ class DraftOrderWorkspaceService
             'updated_at' => now(),
         ];
 
+        $reviewChanged = false;
+        $reviewNow = null;
+        $itemBefore = DB::table('draft_order_items')
+            ->where('id', $itemId)
+            ->where('draft_order_id', $draftId)
+            ->first();
+
         if (array_key_exists('reviewed', $data) && Schema::hasColumn('draft_order_items', 'reviewed_at')) {
             $isReviewed = (bool) $data['reviewed'];
+            $wasReviewed = ! empty($itemBefore?->reviewed_at);
+            $reviewChanged = $isReviewed !== $wasReviewed;
+            $reviewNow = $isReviewed;
             $update['reviewed_at'] = $isReviewed ? now() : null;
 
             if (Schema::hasColumn('draft_order_items', 'reviewed_by_user_id')) {
@@ -501,6 +611,16 @@ class DraftOrderWorkspaceService
             ->where('id', $itemId)
             ->where('draft_order_id', $draftId)
             ->update($update);
+
+        if ($reviewChanged) {
+            $description = trim((string) ($update['description'] ?: ($itemBefore?->description ?? 'Draft item')));
+            $this->addSystemNote(
+                $draftId,
+                $reviewNow ? 'Item reviewed' : 'Item review removed',
+                ($reviewNow ? 'Marked reviewed: ' : 'Removed reviewed mark from: ') . Str::limit($description, 160),
+                $userId
+            );
+        }
 
         $this->recalculate($draftId, $userId);
     }
@@ -514,10 +634,12 @@ class DraftOrderWorkspaceService
         $lineTotal = round($subtotal + $delivery, 2);
         $sort = (int) DB::table('draft_order_items')->where('draft_order_id', $draftId)->max('sort_order') + 10;
 
+        $description = trim((string) ($data['description'] ?? 'New item')) ?: 'New item';
+
         $id = DB::table('draft_order_items')->insertGetId([
             'draft_order_id' => $draftId,
             'retailer_id' => (int) $data['retailer_id'],
-            'description' => trim((string) ($data['description'] ?? 'New item')),
+            'description' => $description,
             'url' => trim((string) ($data['url'] ?? '')) ?: null,
             'product_code' => trim((string) ($data['product_code'] ?? '')) ?: null,
             'sku' => trim((string) ($data['sku'] ?? '')) ?: null,
@@ -534,7 +656,12 @@ class DraftOrderWorkspaceService
             'updated_at' => now(),
         ]);
 
-        $this->addSystemNote($draftId, 'Item added', 'A new draft item was added.', $userId);
+        $this->addSystemNote(
+            $draftId,
+            'Item added',
+            'Added item: ' . Str::limit($description, 160) . ' · Qty ' . $qty . ' · Unit £' . number_format($unit, 2) . '.',
+            $userId
+        );
         $this->recalculate($draftId, $userId);
 
         return $id;
@@ -542,8 +669,20 @@ class DraftOrderWorkspaceService
 
     public function deleteItem(int $draftId, int $itemId, int $userId): void
     {
+        $item = DB::table('draft_order_items')
+            ->where('id', $itemId)
+            ->where('draft_order_id', $draftId)
+            ->first();
+
         DB::table('draft_order_items')->where('id', $itemId)->where('draft_order_id', $draftId)->delete();
-        $this->addSystemNote($draftId, 'Item removed', 'A draft item was removed.', $userId);
+
+        $description = trim((string) ($item->description ?? 'Draft item')) ?: 'Draft item';
+        $this->addSystemNote(
+            $draftId,
+            'Item removed',
+            'Removed item: ' . Str::limit($description, 160) . '.',
+            $userId
+        );
         $this->recalculate($draftId, $userId);
     }
 
@@ -572,6 +711,13 @@ class DraftOrderWorkspaceService
     {
         $fee = round(max(0, $fee), 2);
 
+        $before = DB::table('draft_order_retailers as dr')
+            ->leftJoin('retailers as r', 'r.id', '=', 'dr.retailer_id')
+            ->where('dr.draft_order_id', $draftId)
+            ->where('dr.retailer_id', $retailerId)
+            ->select('dr.retailer_delivery_fee_total', 'r.name as retailer_name')
+            ->first();
+
         DB::table('draft_order_retailers')
             ->where('draft_order_id', $draftId)
             ->where('retailer_id', $retailerId)
@@ -580,6 +726,17 @@ class DraftOrderWorkspaceService
                 'updated_by_user_id' => $userId,
                 'updated_at' => now(),
             ]);
+
+        $oldFee = round((float) ($before->retailer_delivery_fee_total ?? 0), 2);
+        if ($oldFee !== $fee) {
+            $retailerName = $before->retailer_name ?? 'Retailer';
+            $this->addSystemNote(
+                $draftId,
+                'Retailer delivery updated',
+                $retailerName . ' delivery fee changed from £' . number_format($oldFee, 2) . ' to £' . number_format($fee, 2) . '.',
+                $userId
+            );
+        }
 
         $this->recalculate($draftId, $userId);
     }

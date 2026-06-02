@@ -45,6 +45,7 @@ class DraftOrdersController extends Controller
             'retailerSummaries' => $drafts->retailerSummaries($draftOrder),
             'notes' => $drafts->notes($draftOrder),
             'requestNotes' => $drafts->requestNotes($draftOrder),
+            'activityLogs' => $drafts->activity($draftOrder),
             'customerDetails' => $drafts->customerDetails((int) $draft->customer_id),
             'countries' => $drafts->countries(),
             'retailers' => $drafts->retailers(),
