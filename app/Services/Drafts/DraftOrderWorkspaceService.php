@@ -472,24 +472,35 @@ class DraftOrderWorkspaceService
         $subtotal = round($qty * $unit, 2);
         $lineTotal = round($subtotal + $delivery, 2);
 
+        $update = [
+            'retailer_id' => (int) $data['retailer_id'],
+            'description' => trim((string) ($data['description'] ?? '')),
+            'url' => trim((string) ($data['url'] ?? '')) ?: null,
+            'product_code' => trim((string) ($data['product_code'] ?? '')) ?: null,
+            'sku' => trim((string) ($data['sku'] ?? '')) ?: null,
+            'qty' => $qty,
+            'unit_price' => $unit,
+            'line_subtotal' => $subtotal,
+            'item_retailer_delivery_fee' => $delivery,
+            'item_delivery_fee' => $delivery,
+            'line_total' => $lineTotal,
+            'updated_by_user_id' => $userId,
+            'updated_at' => now(),
+        ];
+
+        if (array_key_exists('reviewed', $data) && Schema::hasColumn('draft_order_items', 'reviewed_at')) {
+            $isReviewed = (bool) $data['reviewed'];
+            $update['reviewed_at'] = $isReviewed ? now() : null;
+
+            if (Schema::hasColumn('draft_order_items', 'reviewed_by_user_id')) {
+                $update['reviewed_by_user_id'] = $isReviewed ? $userId : null;
+            }
+        }
+
         DB::table('draft_order_items')
             ->where('id', $itemId)
             ->where('draft_order_id', $draftId)
-            ->update([
-                'retailer_id' => (int) $data['retailer_id'],
-                'description' => trim((string) ($data['description'] ?? '')),
-                'url' => trim((string) ($data['url'] ?? '')) ?: null,
-                'product_code' => trim((string) ($data['product_code'] ?? '')) ?: null,
-                'sku' => trim((string) ($data['sku'] ?? '')) ?: null,
-                'qty' => $qty,
-                'unit_price' => $unit,
-                'line_subtotal' => $subtotal,
-                'item_retailer_delivery_fee' => $delivery,
-                'item_delivery_fee' => $delivery,
-                'line_total' => $lineTotal,
-                'updated_by_user_id' => $userId,
-                'updated_at' => now(),
-            ]);
+            ->update($update);
 
         $this->recalculate($draftId, $userId);
     }

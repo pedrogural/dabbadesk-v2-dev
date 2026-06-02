@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\OrderRequests\ConvertOrderRequestService;
+use App\Support\Search\SmartSearch;
 use App\Services\Intake\OrderRequestAttachmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -46,14 +47,37 @@ class OrderRequestsController extends Controller
             })
             ->when($status !== '' && $status !== 'all' && $status !== 'open', fn($query) => $query->where('status', $status))
             ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($inner) use ($search) {
+                SmartSearch::apply($query, $search, function ($inner, SmartSearch $smart) {
+                    $like = $smart->phraseLike();
+
                     $inner
-                        ->where('request_ref', 'like', "%{$search}%")
-                        ->orWhere('customer_first_name', 'like', "%{$search}%")
-                        ->orWhere('customer_last_name', 'like', "%{$search}%")
-                        ->orWhere('customer_company_name', 'like', "%{$search}%")
-                        ->orWhere('customer_email', 'like', "%{$search}%")
-                        ->orWhere('customer_phone_digits', 'like', "%{$search}%");
+                        ->where('request_ref', 'like', $like)
+                        ->orWhere('reference_number', 'like', $like)
+                        ->orWhere('source', 'like', $like)
+                        ->orWhere('customer_first_name', 'like', $like)
+                        ->orWhere('customer_last_name', 'like', $like)
+                        ->orWhere('customer_company_name', 'like', $like)
+                        ->orWhere('customer_email', 'like', $like)
+                        ->orWhere('customer_phone_digits', 'like', $like)
+                        ->orWhere('customer_address_line1', 'like', $like)
+                        ->orWhere('customer_address_postcode', 'like', $like)
+                        ->orWhere('notes', 'like', $like)
+                        ->orWhereRaw("CONCAT_WS(' ', customer_first_name, customer_last_name) like ?", [$like])
+                        ->orWhereRaw("CONCAT_WS(' ', customer_last_name, customer_first_name) like ?", [$like]);
+
+                    $smart->orWhereAllTokensAcross($inner, [
+                        'customer_first_name',
+                        'customer_last_name',
+                        'customer_company_name',
+                        'customer_email',
+                        'customer_address_line1',
+                        'customer_address_postcode',
+                        'notes',
+                    ]);
+
+                    if ($smart->digits !== '') {
+                        $inner->orWhere('customer_phone_digits', 'like', $smart->digitsLike());
+                    }
                 });
             })
             ->orderByDesc('id')

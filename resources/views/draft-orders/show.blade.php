@@ -13,6 +13,12 @@
         $groupedItems = $items->groupBy(fn($item) => $item->retailer_id ?: 0);
         $retailerRows = $retailerSummaries->keyBy('retailer_id');
         $money = fn($value) => '£' . number_format((float) ($value ?? 0), 2);
+        $initialDraftTotals = [
+            'itemsSubtotal' => round((float) ($draft->items_subtotal ?? 0), 2),
+            'retailerDelivery' => round((float) ($draft->retailer_delivery_total ?? 0), 2),
+            'dabbaFee' => round((float) ($draft->dabba_fee_total ?? 0), 2),
+            'grandTotal' => round((float) ($draft->grand_total ?? 0), 2),
+        ];
         $draftNo = $draft->draft_number ?: $draft->id;
         $requestRef = $draft->request_ref ?: $draftNo;
         $hasChildOrder = ! empty($draft->finalized_order_id);
@@ -111,8 +117,22 @@
             background: #f8fafc
         }
 
+        .draft-ui .retailer-stack {
+            padding: 18px;
+            background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+            border-top: 1px solid #e2e8f0
+        }
+
         .draft-ui .retailer-card {
-            background: #fff
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+            border: 1px solid #dbeafe;
+            border-radius: 26px;
+            box-shadow: 0 14px 32px rgba(15, 23, 42, .08);
+            overflow: hidden
+        }
+
+        .draft-ui .retailer-card + .retailer-card {
+            margin-top: 22px
         }
 
         .draft-ui .retailer-header {
@@ -120,8 +140,9 @@
             grid-template-columns: minmax(230px, 1fr) 250px minmax(420px, 1.65fr);
             gap: 24px;
             align-items: center;
-            padding: 24px 28px;
-            border-bottom: 1px solid #e2e8f0
+            padding: 22px 26px;
+            border-bottom: 1px solid #dbeafe;
+            background: linear-gradient(90deg, #eff6ff 0%, #ffffff 45%, #faf5ff 100%)
         }
 
         .draft-ui .retailer-identity {
@@ -144,8 +165,8 @@
             height: 64px;
             width: 64px;
             border-radius: 22px;
-            background: #0f172a;
-            color: #fff;
+            background: linear-gradient(135deg, #ede9fe, #dbeafe);
+            color: #5b21b6;
             font-size: 24px;
             font-weight: 950;
             flex: 0 0 auto
@@ -155,7 +176,7 @@
             font-size: 25px;
             font-weight: 950;
             line-height: 1.1;
-            color: #020617;
+            color: #6d28d9;
             letter-spacing: -.025em
         }
 
@@ -299,7 +320,7 @@
 
         .draft-ui .basket-grid {
             display: grid;
-            grid-template-columns: 56px minmax(340px, 1fr) 96px 146px 160px 138px 62px;
+            grid-template-columns: 56px minmax(340px, 1fr) 96px 146px 160px 138px 92px;
             gap: 16px;
             align-items: start;
             min-width: 1060px
@@ -320,7 +341,13 @@
         .draft-ui .basket-row {
             padding: 20px 28px;
             border-bottom: 1px solid #e2e8f0;
-            background: #fff
+            background: #fff;
+            transition: background .18s ease, box-shadow .18s ease
+        }
+
+        .draft-ui .basket-row.is-reviewed {
+            background: #ecfdf5;
+            box-shadow: inset 5px 0 0 #86efac
         }
 
         .draft-ui .basket-row:last-child {
@@ -341,11 +368,11 @@
         }
 
         .draft-ui .item-description-card {
-            border: 1px solid #cbd5e1;
-            border-radius: 14px;
-            background: #fff;
+            border: 2px solid #c4b5fd;
+            border-radius: 16px;
+            background: #fdfcff;
             padding: 12px 14px;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, .04)
+            box-shadow: 0 6px 18px rgba(88, 28, 135, .08)
         }
 
         .draft-ui .item-description-card:focus-within {
@@ -611,8 +638,8 @@
 
             .draft-ui .basket-row,
             .draft-ui .basket-grid-head {
-                padding-left: 22px;
-                padding-right: 22px
+                padding-left: 18px;
+                padding-right: 18px
             }
         }
 
@@ -671,7 +698,8 @@
             isCancelledDraft: @js($isCancelledDraft),
             hasChildOrder: @js($hasChildOrder),
             finalizedOrderLabel: @js($finalizedOrderLabel),
-            finalizedOrderUrl: @js($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null)
+            finalizedOrderUrl: @js($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null),
+            totals: @js($initialDraftTotals)
         })"
         x-init="boot()"
         @delete-item.window="deleteModal = { open: true, url: $event.detail.url, title: $event.detail.title }"
@@ -681,30 +709,6 @@
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
                 <strong>Something needs checking:</strong> {{ $errors->first() }}
             </div>
-        @endif
-
-        @if ($hasChildOrder)
-            <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm">
-                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                        <p class="text-sm font-black uppercase tracking-widest text-amber-700">{{ $isConsumedDraft ? 'Consumed draft' : 'Version draft' }}</p>
-                        <h2 class="mt-1 text-xl font-black text-amber-950">This draft has already created {{ $finalizedOrderLabel ?: 'an order' }}.</h2>
-                        <p class="mt-2 max-w-3xl text-sm font-semibold leading-6 text-amber-800">
-                            @if ($isConsumedDraft)
-                                The consumed draft should match the child order at the point it was created. If you edit this draft now,
-                                DabbaDesk will reopen it as preparation for a new order version.
-                            @else
-                                This draft has already been reopened for a new order version. The existing child order remains unchanged until this draft is finalised again.
-                            @endif
-                        </p>
-                    </div>
-                    @if ($draft->finalized_order_id)
-                        <a href="{{ route('orders.show', $draft->finalized_order_id) }}" class="inline-flex shrink-0 items-center justify-center rounded-2xl bg-amber-900 px-4 py-3 text-sm font-black text-white hover:bg-amber-950">
-                            Open child order
-                        </a>
-                    @endif
-                </div>
-            </section>
         @endif
 
         @if (session('success'))
@@ -756,31 +760,41 @@
             </section>
         @endif
 
-        {{-- Header --}}
+        {{-- Compact header --}}
         <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
                 <div class="min-w-0">
-                    <a
-                        href="{{ route('draft-orders.index') }}"
-                        class="text-sm font-semibold text-slate-500 hover:text-slate-950"
-                    >← Back to drafts</a>
-                    <div class="mt-2 flex flex-wrap items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                        <a
+                            href="{{ route('draft-orders.index') }}"
+                            class="font-semibold text-slate-500 hover:text-slate-950"
+                        >← Back to drafts</a>
+                        <span class="hidden text-slate-300 sm:inline">•</span>
+                        <span class="font-black uppercase tracking-wide text-slate-400">Request #{{ $requestRef }}</span>
+                    </div>
+                    <div class="mt-1.5 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-black tracking-tight text-slate-950">Draft Workbench</h1>
-                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700">Request #{{ $requestRef }}</span>
-                        <span
-                            class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-amber-700"
-                        >{{ $draft->status ?: 'open' }}</span>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-slate-700">Draft {{ $draftNo }}</span>
+                        <span class="rounded-full {{ $isConsumedDraft ? 'bg-amber-100 text-amber-700' : ($isCancelledDraft ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') }} px-3 py-1 text-xs font-black uppercase tracking-wide">{{ $draft->status ?: 'open' }}</span>
                     </div>
                     <p class="mt-1 text-sm text-slate-500">
                         {{ $customerName }}
                         <span class="mx-1">•</span> Draft ID {{ $draft->id }}
-                        @if ($draftNo && (string) $draftNo !== (string) $draft->id)
-                            <span class="mx-1">•</span> Draft ref {{ $draftNo }}
-                        @endif
                         @if ($draft->created_at)
                             <span class="mx-1">•</span> Created {{ \Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i') }}
                         @endif
                     </p>
+                    @if ($hasChildOrder)
+                        <div class="mt-2 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            <span class="font-black uppercase tracking-wide text-amber-700">{{ $isConsumedDraft ? 'Consumed draft' : 'Version draft' }}</span>
+                            <span class="text-amber-300">•</span>
+                            <span class="font-semibold">Already created {{ $finalizedOrderLabel ?: 'an order' }}.</span>
+                            @if ($isConsumedDraft)
+                                <span class="hidden text-amber-300 md:inline">•</span>
+                                <span class="font-semibold text-amber-800">Editing will prepare a new order version.</span>
+                            @endif
+                        </div>
+                    @endif
                 </div>
                 <div class="flex flex-wrap gap-2">
                     @if ($draft->finalized_order_id)
@@ -820,7 +834,7 @@
             </div>
         </section>
 
-        <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_290px]">
             <main class="space-y-4">
                 <section
                     x-show="tab === 'products'"
@@ -836,7 +850,7 @@
                             </div>
                         </section>
                     @else
-                    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <section class="rounded-3xl border-2 border-purple-200 bg-white p-6 shadow-sm ring-4 ring-purple-50">
                         <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <h2 class="text-xl font-black text-slate-950">Add product</h2>
@@ -974,7 +988,7 @@
                             </div>
                         </div>
 
-                        <div class="divide-y divide-slate-200">
+                        <div class="retailer-stack">
                             @forelse ($groupedItems as $retailerId => $retailerItems)
                                 @php
                                     $first = $retailerItems->first();
@@ -1005,7 +1019,25 @@
                                     );
                                 @endphp
                                 <section
-                                    x-data="{ open: true }"
+                                    x-data="{
+                                        open: true,
+                                        retailerId: @js((string) $retailerId),
+                                        goodsTotal: {{ number_format($goodsTotal, 2, '.', '') }},
+                                        sellerDeliveryTotal: {{ number_format($sellerDeliveryTotal, 2, '.', '') }},
+                                        retailerDeliveryFee: {{ number_format($retailerDeliveryFee, 2, '.', '') }},
+                                        dabbaFee: {{ number_format($dabbaFee, 2, '.', '') }},
+                                        dabbaRate: {{ number_format((float) ($summary->dabba_fee_rate ?? 20), 2, '.', '') }},
+                                        dabbaMin: {{ number_format((float) ($summary->dabba_fee_min ?? 10), 2, '.', '') }},
+                                        dabbaDisabled: @js((bool) ($summary->dabba_fee_is_disabled ?? false)),
+                                        get retailerGrand() { return this.goodsTotal + this.sellerDeliveryTotal + this.retailerDeliveryFee + this.dabbaFee; },
+                                        money(value) { return '£' + Number(value || 0).toFixed(2); },
+                                        calculateDabbaFee() {
+                                            if (this.dabbaDisabled) return 0;
+                                            if (this.goodsTotal <= 0) return 0;
+                                            return Math.max(this.dabbaMin, this.goodsTotal * (this.dabbaRate / 100));
+                                        }
+                                    }"
+                                    @draft-item-repriced.window="if ($event.detail.retailerId === retailerId) { const oldFee = dabbaFee; goodsTotal += Number($event.detail.goodsDelta || 0); sellerDeliveryTotal += Number($event.detail.deliveryDelta || 0); dabbaFee = calculateDabbaFee(); $dispatch('draft-totals-repriced', { goodsDelta: Number($event.detail.goodsDelta || 0), deliveryDelta: Number($event.detail.deliveryDelta || 0), feeDelta: dabbaFee - oldFee }); }"
                                     class="retailer-card"
                                 >
                                     <div class="retailer-header">
@@ -1091,17 +1123,17 @@
                                         <div class="money-tile-grid">
                                             <div class="money-box"><span class="money-label">Goods</span><span
                                                     class="money-value"
-                                                >{{ $money($goodsTotal) }}</span></div>
+                                                 x-text="money(goodsTotal)"></span></div>
                                             <div class="money-box"><span class="money-label">Seller
                                                     delivery</span><span
-                                                    class="money-value">{{ $money($sellerDeliveryTotal) }}</span>
+                                                    class="money-value" x-text="money(sellerDeliveryTotal)"></span>
                                             </div>
                                             <div class="money-box"><span class="money-label">Dabba fee</span><span
                                                     class="money-value"
-                                                >{{ $money($dabbaFee) }}</span></div>
+                                                 x-text="money(dabbaFee)"></span></div>
                                             <div class="money-box money-box-purple"><span class="money-label">Retailer
                                                     total</span><span
-                                                    class="money-value">{{ $money($retailerGrand) }}</span></div>
+                                                    class="money-value" x-text="money(retailerGrand)"></span></div>
                                         </div>
                                     </div>
 
@@ -1119,7 +1151,7 @@
                                                         title="Per-item delivery from marketplace sellers like Amazon/eBay"
                                                     >ⓘ</span></div>
                                                 <div>Line total</div>
-                                                <div class="text-center">Actions</div>
+                                                <div class="text-center">Review</div>
                                             </div>
 
                                             @foreach ($retailerItems as $item)
@@ -1134,16 +1166,21 @@
                                                         ? preg_replace('/^https?:\/\/www\./', '', $item->url)
                                                         : '';
                                                     $isJustAdded = $lastAddedItemId === (int) $item->id;
+                                                    $isReviewed = ! empty($item->reviewed_at);
                                                 @endphp
                                                 <form
                                                     method="POST"
                                                     action="{{ route('draft-orders.items.update', [$draft->id, $item->id]) }}"
                                                     id="item-{{ $item->id }}"
-                                                    class="basket-grid basket-row {{ $isJustAdded ? 'bg-purple-50/70' : '' }}"
+                                                    class="basket-grid basket-row {{ $isJustAdded ? 'bg-purple-50/70' : '' }}" :class="{ 'is-reviewed': reviewed }"
                                                     x-data="{
                                                         qty: {{ (int) $item->qty }},
                                                         unit: {{ number_format((float) $item->unit_price, 2, '.', '') }},
                                                         delivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
+                                                        reviewed: @js($isReviewed),
+                                                        previousSubtotal: {{ number_format((float) (($item->qty ?? 1) * ($item->unit_price ?? 0)), 2, '.', '') }},
+                                                        previousDelivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
+                                                        retailerId: @js((string) $retailerId),
                                                         saveState: 'saved',
                                                         saveMessage: 'Saved',
                                                         saveTimer: null,
@@ -1151,6 +1188,22 @@
                                                         markDirty() {
                                                             this.saveState = 'dirty';
                                                             this.saveMessage = 'Unsaved changes';
+                                                            this.pushLiveTotals();
+                                                        },
+                                                        pushLiveTotals() {
+                                                            const nextSubtotal = (parseFloat(this.qty) || 0) * (parseFloat(this.unit) || 0);
+                                                            const nextDelivery = parseFloat(this.delivery) || 0;
+                                                            const goodsDelta = nextSubtotal - this.previousSubtotal;
+                                                            const deliveryDelta = nextDelivery - this.previousDelivery;
+                                                            if (Math.abs(goodsDelta) < 0.001 && Math.abs(deliveryDelta) < 0.001) return;
+                                                            this.previousSubtotal = nextSubtotal;
+                                                            this.previousDelivery = nextDelivery;
+                                                            this.$dispatch('draft-item-repriced', { retailerId: this.retailerId, goodsDelta, deliveryDelta });
+                                                        },
+                                                        toggleReviewed() {
+                                                            this.reviewed = ! this.reviewed;
+                                                            this.markDirty();
+                                                            this.save();
                                                         },
                                                         queueSave() {
                                                             this.markDirty();
@@ -1169,6 +1222,7 @@
                                                 >
                                                     @csrf
                                                     @method('PATCH')
+                                                    <input type="hidden" name="reviewed" :value="reviewed ? 1 : 0">
                                                     <input
                                                         type="hidden"
                                                         name="retailer_id"
@@ -1296,7 +1350,15 @@
                                                         <p class="micro-help">Qty × unit + delivery</p>
                                                     </div>
 
-                                                    <div class="flex items-start justify-center">
+                                                    <div class="flex flex-col items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            @click.prevent="toggleReviewed()"
+                                                            class="rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition"
+                                                            :class="reviewed ? 'border-emerald-300 bg-emerald-100 text-emerald-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-700'"
+                                                            x-text="reviewed ? 'Reviewed' : 'Review'"
+                                                            title="Mark item as reviewed"
+                                                        ></button>
                                                         <button
                                                             type="button"
                                                             @click.prevent="$dispatch('delete-item', { url: '{{ route('draft-orders.items.destroy', [$draft->id, $item->id]) }}', title: @js(Str::limit($title, 90)) })"
@@ -1332,12 +1394,11 @@
                                             <div
                                                 class="flex flex-wrap items-center gap-6 text-sm font-black text-slate-500">
                                                 <span>{{ $retailerItems->count() }} items</span>
-                                                <span>Goods: {{ $money($goodsTotal) }}</span>
-                                                <span>Seller delivery: {{ $money($sellerDeliveryTotal) }}</span>
+                                                <span>Goods: <span x-text="money(goodsTotal)"></span></span>
+                                                <span>Seller delivery: <span x-text="money(sellerDeliveryTotal)"></span></span>
                                                 <span>Retailer delivery fee: {{ $money($retailerDeliveryFee) }}</span>
-                                                <span>Dabba fee: {{ $money($dabbaFee) }}</span>
-                                                <span class="text-purple-700">Retailer total:
-                                                    {{ $money($retailerGrand) }}</span>
+                                                <span>Dabba fee: <span x-text="money(dabbaFee)"></span></span>
+                                                <span class="text-purple-700">Retailer total: <span x-text="money(retailerGrand)"></span></span>
                                             </div>
                                         </div>
                                     </div>
@@ -1357,7 +1418,7 @@
                     <section
                         x-show="tab === 'customer'"
                         x-cloak
-                        class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                         <div class="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -1473,7 +1534,7 @@
                     <section
                         x-show="tab === 'notes'"
                         x-cloak
-                        class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                         <h2 class="text-xl font-black text-slate-950">Notes</h2>
                         <p class="mt-1 text-sm text-slate-500">Customer request notes are shown first. Internal staff notes are below.</p>
@@ -1532,7 +1593,7 @@
                     <section
                         x-show="tab === 'fees'"
                         x-cloak
-                        class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                         @php
                             $displayRate = (float) ($draft->dabba_fee_rate ?? 0.20);
@@ -1604,7 +1665,7 @@
                     <section
                         x-show="tab === 'activity'"
                         x-cloak
-                        class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
+                        class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
                         <h2 class="text-xl font-black text-slate-950">Activity</h2>
                         <p class="mt-2 text-sm text-slate-500">Activity timeline will be expanded after finalise
@@ -1613,43 +1674,44 @@
             </main>
 
             {{-- Sticky sidebar --}}
-            <aside class="space-y-4 xl:sticky xl:top-4 xl:self-start">
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <aside class="space-y-3 text-[13px] xl:sticky xl:top-4 xl:self-start">
+                <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-lg font-black text-slate-950">Order summary</h2><button
+                        <h2 class="text-base font-black text-slate-950">Order summary</h2><button
                             type="button"
                             disabled
-                            class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-400"
+                            class="rounded-xl border border-slate-200 px-2.5 py-1 text-[11px] font-black text-slate-400"
                         >Details</button>
                     </div>
-                    <div class="mt-4 space-y-3 text-sm">
+                    <div class="mt-3 space-y-2 text-[13px]">
                         <div class="flex justify-between"><span class="text-slate-500">Items
-                                subtotal</span><strong>{{ $money($draft->items_subtotal) }}</strong></div>
+                                subtotal</span><strong x-text="money(totals.itemsSubtotal)"></strong></div>
                         <div class="flex justify-between"><span class="text-slate-500">Delivery
-                                fees</span><strong>{{ $money($draft->retailer_delivery_total) }}</strong></div>
+                                fees</span><strong x-text="money(totals.retailerDelivery)"></strong></div>
                         <div class="flex justify-between"><span class="text-slate-500">Dabba
-                                fee</span><strong>{{ $money($draft->dabba_fee_total) }}</strong></div>
+                                fee</span><strong x-text="money(totals.dabbaFee)"></strong></div>
                     </div>
-                    <div class="mt-4 border-t border-slate-200 pt-4">
+                    <div class="mt-3 border-t border-slate-200 pt-3">
                         <div class="flex items-end justify-between"><span
                                 class="text-sm font-black text-slate-600">Total</span><strong
-                                class="text-3xl font-black text-slate-950"
-                            >{{ $money($draft->grand_total) }}</strong></div>
+                                class="text-2xl font-black text-slate-950"
+                                x-text="money(totals.grandTotal)"
+                            ></strong></div>
                         <span
                             class="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600"
                         >Qty {{ $qtyTotal }}</span>
                     </div>
                 </section>
 
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-lg font-black text-slate-950">Customer</h2><button
+                        <h2 class="text-base font-black text-slate-950">Customer</h2><button
                             type="button"
                             @click="tab='customer'"
-                            class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-600 hover:bg-slate-50"
+                            class="rounded-xl border border-slate-200 px-2.5 py-1 text-[11px] font-black text-slate-600 hover:bg-slate-50"
                         >Edit</button>
                     </div>
-                    <div class="mt-4 space-y-2 text-sm text-slate-600">
+                    <div class="mt-3 space-y-1.5 text-[13px] text-slate-600">
                         <p class="font-black text-slate-950">{{ $customerName }}</p>
                         <p>{{ $customerDetails['phone'] ?? '—' }}</p>
                         <p>{{ $customerDetails['email'] ?? '—' }}</p>
@@ -1664,19 +1726,19 @@
                     </div>
                 </section>
 
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-lg font-black text-slate-950">Draft settings</h2><button
+                        <h2 class="text-base font-black text-slate-950">Draft settings</h2><button
                             type="button"
                             disabled
-                            class="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-400"
+                            class="rounded-xl border border-slate-200 px-2.5 py-1 text-[11px] font-black text-slate-400"
                         >Edit</button>
                     </div>
                     <form
                         method="POST"
                         action="{{ route('draft-orders.update', $draft->id) }}"
                         data-allow-cancelled-submit="1"
-                        class="mt-4 space-y-3"
+                        class="mt-3 space-y-2.5"
                     >
                         @csrf
                         @method('PATCH')
@@ -1717,18 +1779,18 @@
                             > Home delivery requested</label>
                         <button
                             type="submit"
-                            class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800"
+                            class="w-full rounded-2xl bg-slate-950 px-3 py-2.5 text-xs font-black text-white hover:bg-slate-800"
                         >Save draft</button>
                     </form>
                 </section>
 
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h2 class="text-lg font-black text-slate-950">Actions</h2>
-                    <div class="mt-4 grid grid-cols-2 gap-3">
+                <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <h2 class="text-base font-black text-slate-950">Actions</h2>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
                         <button
                             type="button"
                             @click="tab='customer'; window.scrollTo({top: 0, behavior: 'smooth'});"
-                            class="rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3 text-sm font-black text-purple-700 hover:bg-purple-100"
+                            class="rounded-2xl border border-purple-200 bg-purple-50 px-3 py-2.5 text-xs font-black text-purple-700 hover:bg-purple-100"
                         >Edit customer</button>
                         @if ($draft->finalized_order_id)
                             <a
@@ -1739,7 +1801,7 @@
                         <button
                             type="button"
                             @click="openFinaliseModal()"
-                            class="rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white hover:bg-purple-700"
+                            class="rounded-2xl bg-purple-600 px-3 py-2.5 text-xs font-black text-white hover:bg-purple-700"
                         >{{ $hasChildOrder ? 'New Version' : 'Finalise' }}</button>
                     </div>
                 </section>
@@ -2121,6 +2183,8 @@
         function draftWorkspace(config) {
             return {
                 tab: config.initialTab || 'products',
+                totals: config.totals || { itemsSubtotal: 0, retailerDelivery: 0, dabbaFee: 0, grandTotal: 0 },
+                money(value) { return '£' + Number(value || 0).toFixed(2); },
                 basketSearch: '',
                 detectMessage: '',
                 detectedRetailerId: null,
@@ -2159,7 +2223,14 @@
                 hasChildOrder: !!config.hasChildOrder,
 
                 boot() {
-                    const justAdded = document.querySelector('[id^="item-"].bg-purple-50\\/70');
+                    window.addEventListener('draft-totals-repriced', (event) => {
+                        const detail = event.detail || {};
+                        this.totals.itemsSubtotal += Number(detail.goodsDelta || 0);
+                        this.totals.dabbaFee += Number(detail.feeDelta || 0);
+                        this.totals.grandTotal += Number(detail.goodsDelta || 0) + Number(detail.deliveryDelta || 0) + Number(detail.feeDelta || 0);
+                    });
+
+                    const justAdded = document.querySelector('[id^="item-"].bg-purple-50\/70');
                     if (justAdded) setTimeout(() => justAdded.scrollIntoView({
                         behavior: 'smooth',
                         block: 'center'

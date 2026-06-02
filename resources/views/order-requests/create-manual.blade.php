@@ -9,7 +9,7 @@
         </div>
     </x-slot>
 
-    <div class="space-y-6">
+    <div class="space-y-4">
         @if ($errors->any())
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800">
                 <p class="font-black">Please check the form:</p>
@@ -21,15 +21,15 @@
             </div>
         @endif
 
-        <div class="rounded-3xl border border-indigo-100 bg-indigo-50 p-5 text-sm text-indigo-900">
+        <div class="rounded-3xl border border-indigo-100 bg-indigo-50 px-5 py-4 text-sm text-indigo-900">
             <p class="font-black">Fast staff workflow</p>
             <p class="mt-1">This creates an empty order request for audit/source tracking, immediately converts it to a draft, then sends you to Draft Workbench to add products once.</p>
         </div>
 
-        <form method="GET" action="{{ route('order-requests.create-manual') }}" class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+        <form method="GET" action="{{ route('order-requests.create-manual') }}" class="rounded-3xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200">
             <label for="customer_q" class="text-xs font-black uppercase tracking-widest text-slate-500">Find existing customer</label>
             <div class="mt-2 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-                <input id="customer_q" name="customer_q" value="{{ $customerSearch }}" placeholder="Search name, company, email or phone" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold shadow-sm focus:border-purple-500 focus:ring-4 focus:ring-purple-100">
+                <input id="customer_q" name="customer_q" value="{{ $customerSearch }}" placeholder="Search full name, company, email, phone, postcode or address" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold shadow-sm focus:border-purple-500 focus:ring-4 focus:ring-purple-100">
                 <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-700">Search</button>
             </div>
         </form>
@@ -37,31 +37,34 @@
         <form method="POST" action="{{ route('order-requests.store-manual') }}" enctype="multipart/form-data" class="space-y-6">
             @csrf
 
-            <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-                <h3 class="text-lg font-black text-slate-950">Request source</h3>
-                <p class="mt-1 text-sm text-slate-500">Where did this customer request come from?</p>
-
-                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                    @foreach ([
-                        'office' => 'In Office',
-                        'email' => 'Email',
-                        'whatsapp' => 'WhatsApp',
-                        'phone' => 'Phone',
-                        'other' => 'Other',
-                    ] as $value => $label)
-                        <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">
-                            <input type="radio" name="source" value="{{ $value }}" class="text-purple-600 focus:ring-purple-500" @checked(old('source', 'office') === $value)>
-                            <span>{{ $label }}</span>
-                        </label>
-                    @endforeach
+            <section class="rounded-3xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200">
+                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_260px] md:items-end">
+                    <div>
+                        <h3 class="text-lg font-black text-slate-950">Request source</h3>
+                        <p class="mt-1 text-sm text-slate-500">Where did this customer request come from?</p>
+                    </div>
+                    <div>
+                        <label for="source" class="text-xs font-black uppercase tracking-widest text-slate-500">Source</label>
+                        <select id="source" name="source" class="mt-1 w-full rounded-2xl border-slate-300 text-sm font-black text-slate-700 shadow-sm focus:border-purple-500 focus:ring-purple-500">
+                            @foreach ([
+                                'office' => 'In office',
+                                'email' => 'Email',
+                                'whatsapp' => 'WhatsApp',
+                                'phone' => 'Phone',
+                                'other' => 'Other',
+                            ] as $value => $label)
+                                <option value="{{ $value }}" @selected(old('source', 'office') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
             </section>
 
-            <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+            <section class="rounded-3xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200">
                 <h3 class="text-lg font-black text-slate-950">Customer</h3>
                 <p class="mt-1 text-sm text-slate-500">Use an existing customer where possible. New customer fields are only used when “Create new customer” is selected.</p>
 
-                <div class="mt-5 grid gap-5 xl:grid-cols-2">
+                <div class="mt-4 grid gap-4 xl:grid-cols-2">
                     <div class="rounded-2xl border border-slate-200 p-4">
                         <label class="flex items-center gap-3 text-sm font-black text-slate-800">
                             <input type="radio" name="customer_mode" value="existing" class="text-purple-600 focus:ring-purple-500" @checked(old('customer_mode', 'existing') === 'existing')>
@@ -151,7 +154,7 @@
                 </div>
             </section>
 
-            <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+            <section class="rounded-3xl bg-white px-5 py-4 shadow-sm ring-1 ring-gray-200">
                 <h3 class="text-lg font-black text-slate-950">Intake note & attachments</h3>
                 <p class="mt-1 text-sm text-slate-500">Optional. Products will be added once in the Draft Workbench after this draft opens.</p>
 
