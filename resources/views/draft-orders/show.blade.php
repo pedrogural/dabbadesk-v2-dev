@@ -13,11 +13,32 @@
         $groupedItems = $items->groupBy(fn($item) => $item->retailer_id ?: 0);
         $retailerRows = $retailerSummaries->keyBy('retailer_id');
         $money = fn($value) => '£' . number_format((float) ($value ?? 0), 2);
+        $normaliseFeeRate = function ($rate) {
+            $rate = (float) ($rate ?? 0.20);
+            return $rate > 1 ? ($rate / 100) : $rate;
+        };
+        $computedItemsSubtotal = round((float) $items->sum(fn($item) => ((float) ($item->qty ?? 1)) * ((float) ($item->unit_price ?? 0))), 2);
+        $computedSellerDeliveryTotal = round((float) $items->sum(fn($item) => (float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0))), 2);
+        $computedRetailerDeliveryTotal = round((float) $retailerSummaries->sum(fn($summary) => (float) ($summary->retailer_delivery_fee_total ?? 0)), 2);
+        $computedDabbaFeeTotal = round((float) $groupedItems->sum(function ($retailerItems, $retailerId) use ($retailerRows, $draft, $normaliseFeeRate) {
+            $summary = $retailerRows->get($retailerId);
+            if ((bool) ($summary->dabba_fee_is_disabled ?? false)) {
+                return 0;
+            }
+            $goods = (float) $retailerItems->sum(fn($item) => ((float) ($item->qty ?? 1)) * ((float) ($item->unit_price ?? 0)));
+            if ($goods <= 0) {
+                return 0;
+            }
+            $rate = $normaliseFeeRate($summary->dabba_fee_rate ?? $draft->dabba_fee_rate ?? 0.20);
+            $minimum = (float) ($summary->dabba_fee_min ?? $draft->dabba_fee_min ?? 10);
+            return max($minimum, $goods * $rate);
+        }), 2);
+        $computedDeliveryTotal = round($computedSellerDeliveryTotal + $computedRetailerDeliveryTotal, 2);
         $initialDraftTotals = [
-            'itemsSubtotal' => round((float) ($draft->items_subtotal ?? 0), 2),
-            'retailerDelivery' => round((float) ($draft->retailer_delivery_total ?? 0), 2),
-            'dabbaFee' => round((float) ($draft->dabba_fee_total ?? 0), 2),
-            'grandTotal' => round((float) ($draft->grand_total ?? 0), 2),
+            'itemsSubtotal' => $computedItemsSubtotal,
+            'retailerDelivery' => $computedDeliveryTotal,
+            'dabbaFee' => $computedDabbaFeeTotal,
+            'grandTotal' => round($computedItemsSubtotal + $computedDeliveryTotal + $computedDabbaFeeTotal, 2),
         ];
         $draftNo = $draft->draft_number ?: $draft->id;
         $requestRef = $draft->request_ref ?: $draftNo;
@@ -1026,7 +1047,7 @@
                                         sellerDeliveryTotal: {{ number_format($sellerDeliveryTotal, 2, '.', '') }},
                                         retailerDeliveryFee: {{ number_format($retailerDeliveryFee, 2, '.', '') }},
                                         dabbaFee: {{ number_format($dabbaFee, 2, '.', '') }},
-                                        dabbaRate: {{ number_format((float) ($summary->dabba_fee_rate ?? 20), 2, '.', '') }},
+                                        dabbaRate: {{ number_format((float) ($summary->dabba_fee_rate ?? ($draft->dabba_fee_rate ?? 0.20)), 4, '.', '') }},
                                         dabbaMin: {{ number_format((float) ($summary->dabba_fee_min ?? 10), 2, '.', '') }},
                                         dabbaDisabled: @js((bool) ($summary->dabba_fee_is_disabled ?? false)),
                                         get retailerGrand() { return this.goodsTotal + this.sellerDeliveryTotal + this.retailerDeliveryFee + this.dabbaFee; },
@@ -1034,7 +1055,9 @@
                                         calculateDabbaFee() {
                                             if (this.dabbaDisabled) return 0;
                                             if (this.goodsTotal <= 0) return 0;
-                                            return Math.max(this.dabbaMin, this.goodsTotal * (this.dabbaRate / 100));
+                                            const rate = Number(this.dabbaRate || 0.20);
+                                            const multiplier = rate > 1 ? (rate / 100) : rate;
+                                            return Math.max(this.dabbaMin, this.goodsTotal * multiplier);
                                         }
                                     }"
                                     @draft-item-repriced.window="if ($event.detail.retailerId === retailerId) { const oldFee = dabbaFee; goodsTotal += Number($event.detail.goodsDelta || 0); sellerDeliveryTotal += Number($event.detail.deliveryDelta || 0); dabbaFee = calculateDabbaFee(); $dispatch('draft-totals-repriced', { goodsDelta: Number($event.detail.goodsDelta || 0), deliveryDelta: Number($event.detail.deliveryDelta || 0), feeDelta: dabbaFee - oldFee }); }"
@@ -2226,6 +2249,7 @@
                     window.addEventListener('draft-totals-repriced', (event) => {
                         const detail = event.detail || {};
                         this.totals.itemsSubtotal += Number(detail.goodsDelta || 0);
+                        this.totals.retailerDelivery += Number(detail.deliveryDelta || 0);
                         this.totals.dabbaFee += Number(detail.feeDelta || 0);
                         this.totals.grandTotal += Number(detail.goodsDelta || 0) + Number(detail.deliveryDelta || 0) + Number(detail.feeDelta || 0);
                     });
