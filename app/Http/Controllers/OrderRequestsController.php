@@ -541,13 +541,33 @@ class OrderRequestsController extends Controller
 
     private function nextRequestRef(): string
     {
-        $latest = DB::table('order_requests')
+        $counter = DB::table('order_ref_counter')
+            ->where('id', 1)
+            ->lockForUpdate()
+            ->first();
+
+        $latestNumericRef = DB::table('order_requests')
             ->whereNotNull('request_ref')
             ->whereRaw("request_ref REGEXP '^[0-9]+$'")
-            ->lockForUpdate()
             ->max(DB::raw('CAST(request_ref AS UNSIGNED)'));
 
-        return (string) (((int) $latest) + 1);
+        $nextValue = max(
+            (int) ($counter->next_value ?? 0),
+            ((int) $latestNumericRef) + 1
+        );
+
+        if ($counter) {
+            DB::table('order_ref_counter')
+                ->where('id', 1)
+                ->update(['next_value' => $nextValue + 1]);
+        } else {
+            DB::table('order_ref_counter')->insert([
+                'id' => 1,
+                'next_value' => $nextValue + 1,
+            ]);
+        }
+
+        return (string) $nextValue;
     }
 
     private function manualRequestCustomerSnapshot(array $payload): array
