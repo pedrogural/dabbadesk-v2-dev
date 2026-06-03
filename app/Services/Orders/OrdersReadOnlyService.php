@@ -12,12 +12,21 @@ class OrdersReadOnlyService
 {
     public function statusOptions(): Collection
     {
-        return DB::table('orders')
+        $legacyStatuses = DB::table('orders')
             ->select('status')
             ->whereNotNull('status')
             ->distinct()
             ->orderBy('status')
-            ->pluck('status');
+            ->pluck('status')
+            ->reject(fn ($status) => in_array((string) $status, ['paid', 'purchased', 'arrived'], true))
+            ->values();
+
+        return collect([
+            'paid',
+            'unpaid',
+            'purchased',
+            'arrived',
+        ])->merge($legacyStatuses)->unique()->values();
     }
 
     public function search(array $filters): LengthAwarePaginator
@@ -132,7 +141,17 @@ class OrdersReadOnlyService
                     });
             })
             ->when($status !== '', function ($query) use ($status) {
-                $query->where('orders.status', $status);
+                match ($status) {
+                    'paid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) <= 0.004'),
+                    'unpaid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) > 0.004'),
+                    'purchased' => $query
+                        ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                        ->whereRaw('COALESCE(purchase_totals.purchased_qty, 0) >= COALESCE(item_totals.total_qty, 0)'),
+                    'arrived' => $query
+                        ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                        ->whereRaw('COALESCE(arrival_totals.arrived_qty, 0) >= COALESCE(item_totals.total_qty, 0)'),
+                    default => $query->where('orders.status', $status),
+                };
             })
             ->when($mineOnly && $userId > 0, function ($query) use ($userId) {
                 $query->where('orders.created_by_user_id', $userId);

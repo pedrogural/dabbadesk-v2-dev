@@ -38,7 +38,7 @@
                         <select id="status" name="status" class="h-[46px] w-full rounded-2xl border-slate-300 px-4 text-sm font-bold text-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" data-live-search-submit>
                             <option value="">All statuses</option>
                             @foreach ($statusOptions as $status)
-                                <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ str_replace('_', ' ', ucfirst($status)) }}</option>
+                                <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ match($status) { 'paid' => 'Paid', 'unpaid' => 'Unpaid', 'purchased' => 'Purchased', 'arrived' => 'Arrived', default => str_replace('_', ' ', ucfirst($status)) } }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -57,7 +57,7 @@
                         @endif
                     </div>
                 </div>
-                <p class="text-xs font-semibold text-slate-400">Search updates automatically after a short pause. Current revisions are shown unless History is ticked.</p>
+                <p class="text-xs font-semibold text-slate-400">Search updates automatically after a short pause. Paid/unpaid filters are finance-derived; purchased/arrived filters use operational progress.</p>
             </form>
         </div>
 
@@ -79,6 +79,16 @@
                     @php
                         $customerName = $order->bill_to_name ?: (trim(($order->first_name ?? '') . ' ' . ($order->last_name ?? '')) ?: ($order->company_name ?: 'Unknown customer'));
                         $revisionTotal = max(1, (int) ($order->revision_total ?? 1));
+                        $balanceDue = round((float) ($order->balance_due ?? 0), 2);
+                        $settledTotal = round((float) ($order->settled_total ?? 0), 2);
+                        $isPaid = $balanceDue <= 0.004;
+                        $isPartPaid = ! $isPaid && $settledTotal > 0.004;
+                        $paymentLabel = $isPaid ? 'Paid' : ($isPartPaid ? 'Part paid' : 'Unpaid');
+                        $paymentBadgeClass = $isPaid
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : ($isPartPaid ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700');
+                        $legacyStatus = (string) ($order->status ?? '');
+                        $showLegacyException = in_array($legacyStatus, ['cancelled', 'canceled'], true);
                     @endphp
                     <div class="rounded-2xl border border-slate-200 bg-white p-3 transition hover:border-indigo-200 hover:bg-indigo-50/25">
                         <div class="grid grid-cols-1 gap-3 xl:grid-cols-12 xl:items-center">
@@ -86,7 +96,10 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h3 class="text-base font-black text-slate-950">Order #{{ $order->order_number }}</h3>
                                     <span class="rounded-full bg-indigo-50 px-2.5 py-0.5 text-[11px] font-black text-indigo-700">Rev {{ $order->revision_number ?? 1 }}/{{ $revisionTotal }}</span>
-                                    <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
+                                    <span class="rounded-full px-2.5 py-0.5 text-[11px] font-black {{ $paymentBadgeClass }}">{{ $paymentLabel }}</span>
+                                    @if ($showLegacyException)
+                                        <span class="rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">Cancelled</span>
+                                    @endif
                                     @if (($order->revision_state ?? 'current') === 'superseded')
                                         <span class="rounded-full bg-rose-100 px-2.5 py-0.5 text-[11px] font-bold text-rose-700">Superseded</span>
                                     @elseif (($order->revision_state ?? 'current') === 'current_revision')
@@ -120,7 +133,7 @@
                             <div class="xl:col-span-2">
                                 <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Finance</p>
                                 <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format($order->grand_total ?? 0, 2) }}</p>
-                                <p class="text-xs font-bold {{ ($order->balance_due ?? 0) > 0 ? 'text-rose-600' : 'text-emerald-600' }}">Due £{{ number_format($order->balance_due ?? 0, 2) }}</p>
+                                <p class="text-xs font-bold {{ $balanceDue > 0 ? 'text-rose-600' : 'text-emerald-600' }}">Due £{{ number_format($balanceDue, 2) }}</p>
                             </div>
 
                             <div class="xl:col-span-2 flex flex-wrap items-center justify-start gap-2 xl:justify-end">
