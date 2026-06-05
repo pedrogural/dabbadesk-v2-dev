@@ -206,7 +206,7 @@ class FinaliseDraftOrderService
     {
         return [
             'customer_id' => (int) ($draft->customer_id ?? 0),
-            'purchase_mode' => $purchaseMode,
+            'purchase_mode' => $this->normalisePurchaseMode((string) ($draft->purchase_mode ?? 'standard')),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($draft->retailer_delivery_total ?? 0),
