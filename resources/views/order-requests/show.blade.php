@@ -26,6 +26,7 @@
         $isConverted = ! empty($requestRow->converted_at) || ($requestRow->status ?? '') === 'converted';
         $isCancelled = ($requestRow->status ?? '') === 'cancelled';
         $hasUnresolvedRetailers = isset($unresolvedRetailers) && $unresolvedRetailers->isNotEmpty();
+        $isCustomerSelfPurchase = ($requestRow->purchase_mode ?? 'standard') === 'customer_self_purchase';
     @endphp
 
     <style>[x-cloak] { display: none !important; }</style>
@@ -45,6 +46,14 @@
 
         <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
             <section class="space-y-5">
+
+                @if ($isCustomerSelfPurchase)
+                    <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
+                        <p class="text-xs font-black uppercase tracking-[0.18em] text-sky-700">Customer self-purchase request</p>
+                        <p class="mt-1 text-sm font-semibold leading-6 text-sky-900">Company policy: this request must contain only goods the customer will buy/pay for directly. Dabba will charge service/delivery and manage arrival/collection after goods reach Dabba.</p>
+                    </div>
+                @endif
+
                 <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div>
@@ -52,7 +61,14 @@
                             <h3 class="mt-1 text-2xl font-black text-gray-900">{{ $requestName }}</h3>
                             <p class="mt-1 text-sm text-gray-500">{{ $requestRow->customer_email ?: 'No email' }} · {{ $requestRow->customer_phone_digits ?: 'No phone' }}</p>
                         </div>
-                        <span class="rounded-full px-4 py-2 text-sm font-black {{ $requestRow->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">{{ ucfirst($requestRow->status) }}</span>
+                        <div class="flex flex-wrap items-center gap-2">
+                            @if ($isCustomerSelfPurchase)
+                                <span class="rounded-full bg-sky-100 px-4 py-2 text-sm font-black text-sky-800">Customer self-purchase</span>
+                            @else
+                                <span class="rounded-full bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700">Dabba purchase</span>
+                            @endif
+                            <span class="rounded-full px-4 py-2 text-sm font-black {{ $requestRow->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">{{ ucfirst($requestRow->status) }}</span>
+                        </div>
                     </div>
 
                     <div class="mt-5 grid gap-3 md:grid-cols-3">

@@ -102,6 +102,7 @@
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Ref
                             </th>
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Source</th>
+                            <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Order type</th>
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
                                 Customer</th>
                             <th class="px-5 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
@@ -153,6 +154,13 @@
                                     @endphp
                                     <span class="{{ $sourceClass }} rounded-full px-3 py-1 text-xs font-black">{{ $sourceLabel }}</span>
                                 </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-sm">
+                                    @if (($request->purchase_mode ?? 'standard') === 'customer_self_purchase')
+                                        <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-black text-sky-800">Self-purchase</span>
+                                    @else
+                                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">Dabba purchase</span>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-4 text-sm font-semibold text-gray-900">
                                     {{ $name }}
                                     @if ($request->customer_company_name)
@@ -201,7 +209,7 @@
                         @empty
                             <tr>
                                 <td
-                                    colspan="9"
+                                    colspan="10"
                                     class="px-5 py-10 text-center text-sm text-gray-500"
                                 >No order requests found.</td>
                             </tr>

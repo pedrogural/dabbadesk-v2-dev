@@ -17,7 +17,9 @@
             $rate = (float) ($rate ?? 0.20);
             return $rate > 1 ? ($rate / 100) : $rate;
         };
-        $computedItemsSubtotal = round((float) $items->sum(fn($item) => ((float) ($item->qty ?? 1)) * ((float) ($item->unit_price ?? 0))), 2);
+        $isCustomerSelfPurchase = ($draft->purchase_mode ?? 'standard') === 'customer_self_purchase';
+        $computedGoodsSubtotal = round((float) $items->sum(fn($item) => ((float) ($item->qty ?? 1)) * ((float) ($item->unit_price ?? 0))), 2);
+        $computedItemsSubtotal = $isCustomerSelfPurchase ? 0.0 : $computedGoodsSubtotal;
         $computedSellerDeliveryTotal = round((float) $items->sum(fn($item) => (float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0))), 2);
         $computedRetailerDeliveryTotal = round((float) $retailerSummaries->sum(fn($summary) => (float) ($summary->retailer_delivery_fee_total ?? 0)), 2);
         $computedDabbaFeeTotal = round((float) $groupedItems->sum(function ($retailerItems, $retailerId) use ($retailerRows, $draft, $normaliseFeeRate) {
@@ -720,6 +722,7 @@
             csrf: '{{ csrf_token() }}',
             initialTab: '{{ $activeTab }}',
             isConsumedDraft: @js($isConsumedDraft),
+            isCustomerSelfPurchase: @js($isCustomerSelfPurchase),
             isCancelledDraft: @js($isCancelledDraft),
             hasChildOrder: @js($hasChildOrder),
             finalizedOrderLabel: @js($finalizedOrderLabel),
@@ -785,6 +788,24 @@
             </section>
         @endif
 
+
+        @if ($isCustomerSelfPurchase)
+            <section class="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="max-w-4xl">
+                        <p class="text-xs font-black uppercase tracking-[0.18em] text-sky-700">👤 Customer self-purchase</p>
+                        <h2 class="mt-1 text-lg font-black text-sky-950">Customer has purchased the goods directly from the retailer.</h2>
+                        <p class="mt-2 text-sm font-semibold leading-6 text-sky-900">
+                            Dabba will not purchase these items and will not invoice the customer for the goods value.
+                            Goods values are kept for fee calculation, arrivals, warehouse handling and customs documentation.
+                            Only Dabba service, shipping and handling fees are billable.
+                        </p>
+                    </div>
+                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-sky-700 ring-1 ring-sky-200">No Dabba buying</span>
+                </div>
+            </section>
+        @endif
+
         {{-- Compact header --}}
         <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div class="flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
@@ -797,6 +818,11 @@
                     </div>
                     <div class="mt-1.5 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-black tracking-tight text-slate-950">Draft Workbench</h1>
+                        @if ($isCustomerSelfPurchase)
+                            <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-sky-700">Customer self-purchase</span>
+                        @else
+                            <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-700">Dabba purchase</span>
+                        @endif
                         <span class="rounded-full {{ $isConsumedDraft ? 'bg-amber-100 text-amber-700' : ($isCancelledDraft ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') }} px-3 py-1 text-xs font-black uppercase tracking-wide">{{ $draft->status ?: 'open' }}</span>
                     </div>
                     <p class="mt-1 text-sm text-slate-500">
@@ -1052,7 +1078,8 @@
                                         dabbaRate: {{ number_format((float) ($summary->dabba_fee_rate ?? ($draft->dabba_fee_rate ?? 0.20)), 4, '.', '') }},
                                         dabbaMin: {{ number_format((float) ($summary->dabba_fee_min ?? 10), 2, '.', '') }},
                                         dabbaDisabled: @js((bool) ($summary->dabba_fee_is_disabled ?? false)),
-                                        get retailerGrand() { return this.goodsTotal + this.sellerDeliveryTotal + this.retailerDeliveryFee + this.dabbaFee; },
+                                        isCustomerSelfPurchase: @js($isCustomerSelfPurchase),
+                                        get retailerGrand() { return (this.isCustomerSelfPurchase ? 0 : this.goodsTotal) + this.sellerDeliveryTotal + this.retailerDeliveryFee + this.dabbaFee; },
                                         money(value) { return '£' + Number(value || 0).toFixed(2); },
                                         calculateDabbaFee() {
                                             if (this.dabbaDisabled) return 0;
@@ -1093,7 +1120,7 @@
                                                     {{ $retailerItems->count() }}
                                                     {{ Str::plural('item', $retailerItems->count()) }}
                                                     <span class="mx-1">•</span>
-                                                    Goods: {{ $money($goodsTotal) }}
+                                                    {{ $isCustomerSelfPurchase ? 'Goods value:' : 'Goods:' }} {{ $money($goodsTotal) }}
                                                 </span>
                                             </span>
                                         </button>
@@ -1146,7 +1173,7 @@
                                         </div>
 
                                         <div class="money-tile-grid">
-                                            <div class="money-box"><span class="money-label">Goods</span><span
+                                            <div class="money-box"><span class="money-label">{{ $isCustomerSelfPurchase ? 'Goods value' : 'Goods' }}</span><span
                                                     class="money-value"
                                                  x-text="money(goodsTotal)"></span></div>
                                             <div class="money-box"><span class="money-label">Seller
@@ -1156,8 +1183,7 @@
                                             <div class="money-box"><span class="money-label">Dabba fee</span><span
                                                     class="money-value"
                                                  x-text="money(dabbaFee)"></span></div>
-                                            <div class="money-box money-box-purple"><span class="money-label">Retailer
-                                                    total</span><span
+                                            <div class="money-box money-box-purple"><span class="money-label">{{ $isCustomerSelfPurchase ? 'Billable' : 'Retailer total' }}</span><span
                                                     class="money-value" x-text="money(retailerGrand)"></span></div>
                                         </div>
                                     </div>
@@ -1419,11 +1445,11 @@
                                             <div
                                                 class="flex flex-wrap items-center gap-6 text-sm font-black text-slate-500">
                                                 <span>{{ $retailerItems->count() }} items</span>
-                                                <span>Goods: <span x-text="money(goodsTotal)"></span></span>
+                                                <span>{{ $isCustomerSelfPurchase ? 'Goods value:' : 'Goods:' }} <span x-text="money(goodsTotal)"></span></span>
                                                 <span>Seller delivery: <span x-text="money(sellerDeliveryTotal)"></span></span>
                                                 <span>Retailer delivery fee: {{ $money($retailerDeliveryFee) }}</span>
                                                 <span>Dabba fee: <span x-text="money(dabbaFee)"></span></span>
-                                                <span class="text-purple-700">Retailer total: <span x-text="money(retailerGrand)"></span></span>
+                                                <span class="text-purple-700">{{ $isCustomerSelfPurchase ? 'Billable total:' : 'Retailer total:' }} <span x-text="money(retailerGrand)"></span></span>
                                             </div>
                                         </div>
                                     </div>
@@ -1675,10 +1701,10 @@
                                         @endif
                                     </div>
                                     <div class="mt-3 space-y-1 text-sm">
-                                        <div class="flex justify-between"><span>Goods subtotal</span><strong>{{ $money($summary->retailer_subtotal) }}</strong></div>
+                                        <div class="flex justify-between"><span>{{ $isCustomerSelfPurchase ? 'Goods value (reference)' : 'Goods subtotal' }}</span><strong>{{ $money($summary->retailer_subtotal) }}</strong></div>
                                         <div class="flex justify-between"><span>Retailer delivery</span><strong>{{ $money($summary->retailer_delivery_fee_total) }}</strong></div>
                                         <div class="flex justify-between border-t pt-2"><span>Dabba fee</span><strong>{{ $money($summary->dabba_fee) }}</strong></div>
-                                        <div class="flex justify-between text-purple-700"><span>Retailer total</span><strong>{{ $money($summary->retailer_grand_total) }}</strong></div>
+                                        <div class="flex justify-between text-purple-700"><span>{{ $isCustomerSelfPurchase ? 'Billable total' : 'Retailer total' }}</span><strong>{{ $money($summary->retailer_grand_total) }}</strong></div>
                                     </div>
                                 </div>
                             @empty
@@ -1782,23 +1808,24 @@
             <aside class="space-y-3 text-[13px] xl:sticky xl:top-4 xl:self-start">
                 <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-base font-black text-slate-950">Order summary</h2><button
+                        <h2 class="text-base font-black text-slate-950">{{ $isCustomerSelfPurchase ? 'Billable summary' : 'Order summary' }}</h2><button
                             type="button"
                             disabled
                             class="rounded-xl border border-slate-200 px-2.5 py-1 text-[11px] font-black text-slate-400"
                         >Details</button>
                     </div>
                     <div class="mt-3 space-y-2 text-[13px]">
-                        <div class="flex justify-between"><span class="text-slate-500">Items
-                                subtotal</span><strong x-text="money(totals.itemsSubtotal)"></strong></div>
-                        <div class="flex justify-between"><span class="text-slate-500">Delivery
-                                fees</span><strong x-text="money(totals.retailerDelivery)"></strong></div>
-                        <div class="flex justify-between"><span class="text-slate-500">Dabba
-                                fee</span><strong x-text="money(totals.dabbaFee)"></strong></div>
+                        @if ($isCustomerSelfPurchase)
+                            <div class="flex justify-between"><span class="text-slate-500">Goods value <span class="text-[10px] font-black uppercase text-sky-600">ref</span></span><strong>{{ $money($computedGoodsSubtotal) }}</strong></div>
+                        @else
+                            <div class="flex justify-between"><span class="text-slate-500">Items subtotal</span><strong x-text="money(totals.itemsSubtotal)"></strong></div>
+                        @endif
+                        <div class="flex justify-between"><span class="text-slate-500">Delivery fees</span><strong x-text="money(totals.retailerDelivery)"></strong></div>
+                        <div class="flex justify-between"><span class="text-slate-500">Dabba fee</span><strong x-text="money(totals.dabbaFee)"></strong></div>
                     </div>
                     <div class="mt-3 border-t border-slate-200 pt-3">
                         <div class="flex items-end justify-between"><span
-                                class="text-sm font-black text-slate-600">Total</span><strong
+                                class="text-sm font-black text-slate-600">{{ $isCustomerSelfPurchase ? 'Billable total' : 'Total' }}</span><strong
                                 class="text-2xl font-black text-slate-950"
                                 x-text="money(totals.grandTotal)"
                             ></strong></div>
@@ -1906,6 +1933,12 @@
                         <p class="mt-2 text-sm leading-6 text-slate-600" x-show="hasChildOrder">
                             This draft has already created <strong>{{ $finalizedOrderLabel ?: 'an order' }}</strong>. Creating a new version will supersede the previous active order and create a new immutable order snapshot.
                         </p>
+                        @if ($isCustomerSelfPurchase)
+                            <div class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-6 text-sky-900">
+                                <p class="font-black text-sky-950">Customer Self Purchase confirmation</p>
+                                <p class="mt-1">Dabba will not purchase these items. Only service, shipping and handling charges will be invoiced. Goods values remain for reference, arrivals and customs documentation.</p>
+                            </div>
+                        @endif
                     </div>
                 </div>
                 <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" data-allow-consumed-submit="1" class="mt-6 flex justify-end gap-3">
@@ -2306,14 +2339,16 @@
                 isConsumedDraft: !!config.isConsumedDraft,
                 isCancelledDraft: !!config.isCancelledDraft,
                 hasChildOrder: !!config.hasChildOrder,
+                isCustomerSelfPurchase: !!config.isCustomerSelfPurchase,
 
                 boot() {
                     window.addEventListener('draft-totals-repriced', (event) => {
                         const detail = event.detail || {};
-                        this.totals.itemsSubtotal += Number(detail.goodsDelta || 0);
+                        const billableGoodsDelta = this.isCustomerSelfPurchase ? 0 : Number(detail.goodsDelta || 0);
+                        this.totals.itemsSubtotal += billableGoodsDelta;
                         this.totals.retailerDelivery += Number(detail.deliveryDelta || 0);
                         this.totals.dabbaFee += Number(detail.feeDelta || 0);
-                        this.totals.grandTotal += Number(detail.goodsDelta || 0) + Number(detail.deliveryDelta || 0) + Number(detail.feeDelta || 0);
+                        this.totals.grandTotal += billableGoodsDelta + Number(detail.deliveryDelta || 0) + Number(detail.feeDelta || 0);
                     });
 
                     const justAdded = document.querySelector('[id^="item-"].bg-purple-50\/70');

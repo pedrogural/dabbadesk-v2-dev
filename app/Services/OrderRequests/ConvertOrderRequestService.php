@@ -46,6 +46,7 @@ class ConvertOrderRequestService
             }
 
             $feePolicy = $this->feePolicyForCustomer($customerId);
+            $purchaseMode = $this->normalisePurchaseMode((string) ($request->purchase_mode ?? 'standard'));
 
             $draftId = DB::table('draft_orders')->insertGetId([
                 'order_request_id' => $request->id,
@@ -54,6 +55,7 @@ class ConvertOrderRequestService
                 'kind' => 'normal',
                 'state' => 'draft',
                 'status' => 'open',
+                'purchase_mode' => $purchaseMode,
                 'home_delivery_requested' => 0,
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -121,6 +123,15 @@ class ConvertOrderRequestService
 
             return (int) $draftId;
         });
+    }
+
+    private function normalisePurchaseMode(string $value): string
+    {
+        $value = trim(strtolower($value));
+
+        return in_array($value, ['customer_self_purchase', 'self_purchase', 'customer_purchase'], true)
+            ? 'customer_self_purchase'
+            : 'standard';
     }
 
     private function updateExistingCustomerForConversion(int $customerId, array $payload, int $userId, string $existingCustomerAction = 'keep'): int

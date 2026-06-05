@@ -28,6 +28,7 @@ class CreateOrderRequestService
             }
 
             $requestRef = $this->nextRequestRef();
+            $purchaseMode = $this->normalisePurchaseMode((string) ($payload['purchase_mode'] ?? $payload['order_type'] ?? 'standard'));
 
             $nameParts = $this->splitName((string) ($payload['customer_name'] ?? ''));
 
@@ -43,6 +44,7 @@ class CreateOrderRequestService
                 'request_ref' => $requestRef,
                 'source' => (string) ($payload['source'] ?? 'order_app_v2'),
                 'reference_number' => null,
+                'purchase_mode' => $purchaseMode,
 
                 'customer_first_name' => $nameParts['first_name'],
                 'customer_last_name' => $nameParts['last_name'],
@@ -98,6 +100,15 @@ class CreateOrderRequestService
                 'existing' => false,
             ];
         });
+    }
+
+    private function normalisePurchaseMode(string $value): string
+    {
+        $value = trim(strtolower($value));
+
+        return in_array($value, ['customer_self_purchase', 'self_purchase', 'customer_purchase'], true)
+            ? 'customer_self_purchase'
+            : 'standard';
     }
 
     private function nextRequestRef(): string

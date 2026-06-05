@@ -22,6 +22,11 @@
             'phone' => 'Phone',
             'other' => 'Other',
         ];
+        $selectedPurchaseMode = old('purchase_mode', $selectedPurchaseMode ?? 'standard');
+        $purchaseModeOptions = [
+            'standard' => 'Dabba purchases goods',
+            'customer_self_purchase' => 'Customer self-purchase',
+        ];
         $inputClass = 'mt-1 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100';
         $labelClass = 'text-[11px] font-black uppercase tracking-[0.16em] text-slate-500';
     @endphp
@@ -54,7 +59,7 @@
         @endif
 
         <section class="overflow-hidden rounded-[2rem] bg-white shadow-sm ring-1 ring-slate-200">
-            <div class="grid gap-4 border-b border-slate-100 bg-slate-50/70 p-5 xl:grid-cols-[minmax(0,1fr)_220px] xl:items-end">
+            <div class="grid gap-4 border-b border-slate-100 bg-slate-50/70 p-5 xl:grid-cols-[minmax(0,1fr)_220px_260px] xl:items-end">
                 <form method="GET" action="{{ route('order-requests.create-manual') }}" class="min-w-0">
                     <label for="customer_q" class="{{ $labelClass }}">Search customer</label>
                     <div class="mt-2 flex flex-col gap-3 lg:flex-row">
@@ -82,6 +87,16 @@
                             <option value="{{ $value }}" @selected($selectedSource === $value)>{{ $label }}</option>
                         @endforeach
                     </select>
+                </div>
+
+                <div>
+                    <label for="purchase_mode_top" class="{{ $labelClass }}">Order type</label>
+                    <select id="purchase_mode_top" form="manual-order-form" name="purchase_mode" class="{{ $inputClass }}">
+                        @foreach ($purchaseModeOptions as $value => $label)
+                            <option value="{{ $value }}" @selected($selectedPurchaseMode === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1 text-[11px] font-bold text-slate-500">Self-purchase orders are not mixed with Dabba-purchase orders.</p>
                 </div>
             </div>
 

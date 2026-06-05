@@ -38,6 +38,7 @@ class OrderRequestsController extends Controller
                 'created_at',
                 'converted_at',
                 'converted_draft_order_id',
+                'purchase_mode',
             ])
             ->when($status === 'open', function ($query) {
                 $query->whereNull('converted_at')
@@ -98,6 +99,7 @@ class OrderRequestsController extends Controller
         $customerOptions = $customerSearch !== '' ? $this->customerSearchResults($customerSearch) : collect();
         $countries = $this->countryOptions();
         $defaultCountryId = (int) ($countries->firstWhere('iso2', 'GI')->id ?? $countries->firstWhere('name', 'Gibraltar')->id ?? 0);
+        $selectedPurchaseMode = old('purchase_mode', 'standard');
 
         return view('order-requests.create-manual', [
             'customerSearch' => $customerSearch,
@@ -106,6 +108,7 @@ class OrderRequestsController extends Controller
             'defaultPhoneCountryId' => $defaultCountryId,
             'defaultAddressCountryId' => $defaultCountryId,
             'defaultPostcode' => 'GX11 1AA',
+            'selectedPurchaseMode' => $selectedPurchaseMode,
             'newRequestCount' => $this->newRequestCount(),
         ]);
     }
@@ -114,6 +117,7 @@ class OrderRequestsController extends Controller
     {
         $validated = $request->validate([
             'source' => ['required', Rule::in(['office', 'email', 'whatsapp', 'phone', 'other'])],
+            'purchase_mode' => ['required', Rule::in(['standard', 'customer_self_purchase'])],
             'notes' => ['nullable', 'string', 'max:5000'],
             'customer_mode' => ['required', Rule::in(['existing', 'create'])],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -171,6 +175,7 @@ class OrderRequestsController extends Controller
                     'request_ref' => $requestRef,
                     'source' => 'manual_' . (string) $validated['source'],
                     'reference_number' => null,
+                    'purchase_mode' => (string) ($validated['purchase_mode'] ?? 'standard'),
                     'customer_first_name' => $customerSnapshot['first_name'],
                     'customer_last_name' => $customerSnapshot['last_name'],
                     'customer_company_name' => $customerSnapshot['company_name'],

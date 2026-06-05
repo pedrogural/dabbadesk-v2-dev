@@ -73,12 +73,15 @@ class FinaliseDraftOrderService
             if ($orderFeeRate > 1) {
                 $orderFeeRate = round($orderFeeRate / 100, 4);
             }
+            $purchaseMode = $this->normalisePurchaseMode((string) ($draft->purchase_mode ?? 'standard'));
+            $isCustomerSelfPurchase = $purchaseMode === 'customer_self_purchase';
 
             $orderId = (int) DB::table('orders')->insertGetId([
                 'draft_order_id' => $draftId,
                 'source_draft_order_id' => $draftId,
                 'parent_order_id' => $previousOrderId ?: ($draft->parent_order_id ?: null),
                 'order_type' => 'invoice',
+                'purchase_mode' => $purchaseMode,
                 'order_number' => $orderNumber,
                 'status' => 'ready',
                 'dabba_fee_level' => (string) ($draft->dabba_fee_level ?: $customer->dabba_fee_level ?: 'global'),
@@ -136,10 +139,14 @@ class FinaliseDraftOrderService
                 'subject_type' => 'draft_order',
                 'subject_id' => $draftId,
                 'type' => 'system_note',
-                'title' => $previousOrderId ? 'New order version created' : 'Draft consumed',
+                'title' => $previousOrderId
+                    ? 'New order version created'
+                    : ($isCustomerSelfPurchase ? 'Customer Self Purchase order created' : 'Draft consumed'),
                 'body' => $previousOrderId
-                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.'
-                    : 'Draft consumed into Order/Request #' . $orderNumber . '.',
+                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.' . ($isCustomerSelfPurchase ? ' This new version is marked as Customer Self Purchase: Dabba does not buy the goods; goods values are retained for reference, arrivals and customs documentation.' : '')
+                    : ($isCustomerSelfPurchase
+                        ? 'Customer Self Purchase draft consumed into Order/Request #' . $orderNumber . '. Dabba will not purchase these items. Only service, shipping and handling charges are billable; goods values remain for arrivals and customs documentation.'
+                        : 'Draft consumed into Order/Request #' . $orderNumber . '.'),
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -151,8 +158,10 @@ class FinaliseDraftOrderService
                 'subject_type' => 'order',
                 'subject_id' => $orderId,
                 'type' => 'system_note',
-                'title' => 'Order created',
-                'body' => 'Order created from draft workspace for Request #' . $orderNumber . '.',
+                'title' => $isCustomerSelfPurchase ? 'Customer Self Purchase order created' : 'Order created',
+                'body' => $isCustomerSelfPurchase
+                    ? 'Order created from draft workspace for Request #' . $orderNumber . ' as Customer Self Purchase. Dabba purchasing is skipped; arrival, warehouse and customs workflows still apply.'
+                    : 'Order created from draft workspace for Request #' . $orderNumber . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -167,6 +176,16 @@ class FinaliseDraftOrderService
     }
 
 
+
+
+    private function normalisePurchaseMode(string $value): string
+    {
+        $value = trim(strtolower($value));
+
+        return in_array($value, ['customer_self_purchase', 'self_purchase', 'customer_purchase'], true)
+            ? 'customer_self_purchase'
+            : 'standard';
+    }
 
     private function draftHasChangedSincePreviousOrder(object $draft, Collection $items, int $previousOrderId): bool
     {
@@ -187,6 +206,7 @@ class FinaliseDraftOrderService
     {
         return [
             'customer_id' => (int) ($draft->customer_id ?? 0),
+            'purchase_mode' => $purchaseMode,
             'totals' => [
                 'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($draft->retailer_delivery_total ?? 0),
@@ -223,6 +243,7 @@ class FinaliseDraftOrderService
 
         return [
             'customer_id' => (int) ($customerId ?? 0),
+            'purchase_mode' => $this->normalisePurchaseMode((string) ($order->purchase_mode ?? 'standard')),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
                 'retailer_delivery_fee_total' => $this->normaliseMoney($order->retailer_delivery_fee_total ?? 0),
