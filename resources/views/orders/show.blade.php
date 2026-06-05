@@ -4,7 +4,8 @@
     </x-slot>
 
     @php
-        $isCustomerSelfPurchase = ($order->purchase_mode ?? 'standard') === 'customer_self_purchase';
+        $orderType = $order->order_type ?? $order->purchase_mode ?? 'standard';
+        $isCustomerSelfPurchase = $orderType === 'customer_self_purchase';
         $customerRequestNotes = collect($notes ?? [])->filter(function ($note) {
             return ($note->type ?? '') === 'order_request_note' || ($note->title ?? '') === 'Customer order request notes';
         })->values();
@@ -209,7 +210,7 @@
 
                 <div class="mt-5 space-y-3 text-sm">
                     <div class="flex justify-between gap-4">
-                        <span class="text-slate-500">Items subtotal</span>
+                        <span class="text-slate-500">{{ $isCustomerSelfPurchase ? 'Goods value (reference)' : 'Items subtotal' }}</span>
                         <span class="font-semibold text-slate-900">£{{ number_format($order->subtotal ?? 0, 2) }}</span>
                     </div>
 
@@ -237,7 +238,7 @@
 
                     <div class="border-t border-slate-200 pt-4">
                         <div class="flex justify-between gap-4">
-                            <span class="text-xs font-bold uppercase tracking-wide text-slate-400">Total</span>
+                            <span class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ $isCustomerSelfPurchase ? 'Billable total' : 'Total' }}</span>
                             <span class="text-2xl font-bold text-slate-950">£{{ number_format($order->grand_total ?? 0, 2) }}</span>
                         </div>
                     </div>
@@ -348,7 +349,7 @@
                                                     {{ $item->purchased_qty }}/{{ $item->quantity }}
                                                 </p>
                                                 <p class="mt-1 text-xs text-slate-400">
-                                                    {{ $item->purchase_remaining_qty > 0 ? 'Pending purchase' : 'Purchased' }}
+                                                    {{ $isCustomerSelfPurchase ? 'Bought by customer' : ($item->purchase_remaining_qty > 0 ? 'Pending purchase' : 'Purchased') }}
                                                 </p>
                                             </div>
 
