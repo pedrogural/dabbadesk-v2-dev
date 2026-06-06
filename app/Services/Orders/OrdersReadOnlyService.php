@@ -12,12 +12,22 @@ class OrdersReadOnlyService
 {
     public function statusOptions(): Collection
     {
-        return DB::table('orders')
+        $legacyStatuses = DB::table('orders')
             ->select('status')
             ->whereNotNull('status')
             ->distinct()
             ->orderBy('status')
-            ->pluck('status');
+            ->pluck('status')
+            ->reject(fn ($status) => in_array((string) $status, ['paid', 'purchased', 'arrived', 'customer_self_purchase'], true))
+            ->values();
+
+        return collect([
+            'paid',
+            'unpaid',
+            'purchased',
+            'arrived',
+            'customer_self_purchase',
+        ])->merge($legacyStatuses)->unique()->values();
     }
 
     public function search(array $filters): LengthAwarePaginator
@@ -86,6 +96,7 @@ class OrdersReadOnlyService
                 'orders.draft_order_id',
                 'orders.order_number',
                 'orders.status',
+                'orders.purchase_mode',
                 'orders.grand_total',
                 'orders.bill_to_name',
                 'orders.bill_to_email',
@@ -132,7 +143,18 @@ class OrdersReadOnlyService
                     });
             })
             ->when($status !== '', function ($query) use ($status) {
-                $query->where('orders.status', $status);
+                match ($status) {
+                    'paid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) <= 0.004'),
+                    'unpaid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) > 0.004'),
+                    'purchased' => $query
+                        ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                        ->whereRaw('COALESCE(purchase_totals.purchased_qty, 0) >= COALESCE(item_totals.total_qty, 0)'),
+                    'arrived' => $query
+                        ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                        ->whereRaw('COALESCE(arrival_totals.arrived_qty, 0) >= COALESCE(item_totals.total_qty, 0)'),
+                    'customer_self_purchase' => $query->where('orders.purchase_mode', 'customer_self_purchase'),
+                    default => $query->where('orders.status', $status),
+                };
             })
             ->when($mineOnly && $userId > 0, function ($query) use ($userId) {
                 $query->where('orders.created_by_user_id', $userId);
@@ -224,6 +246,7 @@ class OrdersReadOnlyService
                 DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number) as revision_total"),
                 DB::raw("CASE WHEN orders.status = 'superseded' OR orders.cancel_reason = 'superseded' OR EXISTS (SELECT 1 FROM orders newer_orders WHERE newer_orders.order_number = orders.order_number AND newer_orders.id > orders.id AND newer_orders.status != 'superseded' AND (newer_orders.cancel_reason IS NULL OR newer_orders.cancel_reason != 'superseded')) THEN 'superseded' WHEN (SELECT COUNT(*) FROM orders revision_orders WHERE revision_orders.order_number = orders.order_number) > 1 THEN 'current_revision' ELSE 'current' END as revision_state"),
                 'orders.order_type',
+                'orders.purchase_mode',
                 'orders.order_number',
                 'orders.draft_order_id',
                 'orders.status',
@@ -264,6 +287,7 @@ class OrdersReadOnlyService
                 'orders.draft_order_id',
                 'orders.order_number',
                 'orders.status',
+                'orders.purchase_mode',
                 'orders.grand_total',
                 'orders.created_at',
                 'orders.cancel_reason',

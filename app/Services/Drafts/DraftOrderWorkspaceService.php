@@ -23,7 +23,7 @@ class DraftOrderWorkspaceService
             ->leftJoin('users as created_user', 'created_user.id', '=', 'd.created_by_user_id')
             ->leftJoin('users as updated_user', 'updated_user.id', '=', 'd.updated_by_user_id')
             ->select([
-                'd.id', 'd.draft_number', 'd.state', 'd.status', 'd.kind', 'd.grand_total', 'd.items_subtotal',
+                'd.id', 'd.draft_number', 'd.state', 'd.status', 'd.kind', 'd.purchase_mode', 'd.grand_total', 'd.items_subtotal',
                 'd.retailer_delivery_total', 'd.dabba_fee_total', 'd.created_at', 'd.updated_at', 'd.finalized_order_id',
                 'd.created_by_user_id', 'd.updated_by_user_id',
                 'c.id as customer_id', 'c.first_name', 'c.last_name', 'c.company_name', 'r.request_ref',
@@ -763,6 +763,7 @@ class DraftOrderWorkspaceService
             $feeTotal = 0.0;
 
             $draft = DB::table('draft_orders')->where('id', $draftId)->first();
+            $isSelfPurchase = $this->isCustomerSelfPurchase($draft->purchase_mode ?? null);
             $storedRate = (float) ($draft->dabba_fee_rate ?? 0.20);
             $rate = $storedRate > 1 ? $storedRate : $storedRate * 100;
             $min = (float) ($draft->dabba_fee_min ?? 10);
@@ -772,9 +773,10 @@ class DraftOrderWorkspaceService
                 $sellerDelivery = round((float) $row->seller_delivery, 2);
                 $retailerDelivery = round((float) ($existingRetailerDeliveryFees[$row->retailer_id] ?? 0), 2);
                 $fee = $draft && $draft->fee_mode === 'fee_disabled' ? 0.0 : max($min, round($subtotal * ($rate / 100), 2));
-                $grand = round($subtotal + $sellerDelivery + $retailerDelivery + $fee, 2);
+                $billableSubtotal = $isSelfPurchase ? 0.0 : $subtotal;
+                $grand = round($billableSubtotal + $sellerDelivery + $retailerDelivery + $fee, 2);
 
-                $itemsSubtotal += $subtotal;
+                $itemsSubtotal += $billableSubtotal;
                 $deliveryTotal += ($sellerDelivery + $retailerDelivery);
                 $feeTotal += $fee;
 
@@ -805,6 +807,12 @@ class DraftOrderWorkspaceService
                 'updated_at' => now(),
             ]);
         });
+    }
+
+
+    private function isCustomerSelfPurchase(?string $purchaseMode): bool
+    {
+        return in_array((string) $purchaseMode, ['customer_self_purchase', 'self_purchase', 'customer_purchase'], true);
     }
 
     private function addSystemNote(int $draftId, string $title, string $body, int $userId): void

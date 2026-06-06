@@ -28,6 +28,7 @@ class CreateOrderRequestService
             }
 
             $requestRef = $this->nextRequestRef();
+            $purchaseMode = $this->normalisePurchaseMode((string) ($payload['purchase_mode'] ?? $payload['order_type'] ?? 'standard'));
 
             $nameParts = $this->splitName((string) ($payload['customer_name'] ?? ''));
 
@@ -43,6 +44,7 @@ class CreateOrderRequestService
                 'request_ref' => $requestRef,
                 'source' => (string) ($payload['source'] ?? 'order_app_v2'),
                 'reference_number' => null,
+                'purchase_mode' => $purchaseMode,
 
                 'customer_first_name' => $nameParts['first_name'],
                 'customer_last_name' => $nameParts['last_name'],
@@ -100,15 +102,44 @@ class CreateOrderRequestService
         });
     }
 
+    private function normalisePurchaseMode(string $value): string
+    {
+        $value = trim(strtolower($value));
+
+        return in_array($value, ['customer_self_purchase', 'self_purchase', 'customer_purchase'], true)
+            ? 'customer_self_purchase'
+            : 'standard';
+    }
+
     private function nextRequestRef(): string
     {
-        $latest = DB::table('order_requests')
+        $counter = DB::table('order_ref_counter')
+            ->where('id', 1)
+            ->lockForUpdate()
+            ->first();
+
+        $latestNumericRef = DB::table('order_requests')
             ->whereNotNull('request_ref')
             ->whereRaw("request_ref REGEXP '^[0-9]+$'")
-            ->lockForUpdate()
             ->max(DB::raw('CAST(request_ref AS UNSIGNED)'));
 
-        return (string) (((int) $latest) + 1);
+        $nextValue = max(
+            (int) ($counter->next_value ?? 0),
+            ((int) $latestNumericRef) + 1
+        );
+
+        if ($counter) {
+            DB::table('order_ref_counter')
+                ->where('id', 1)
+                ->update(['next_value' => $nextValue + 1]);
+        } else {
+            DB::table('order_ref_counter')->insert([
+                'id' => 1,
+                'next_value' => $nextValue + 1,
+            ]);
+        }
+
+        return (string) $nextValue;
     }
 
     private function splitName(string $fullName): array

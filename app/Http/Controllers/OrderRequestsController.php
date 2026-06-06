@@ -38,6 +38,7 @@ class OrderRequestsController extends Controller
                 'created_at',
                 'converted_at',
                 'converted_draft_order_id',
+                'purchase_mode',
             ])
             ->when($status === 'open', function ($query) {
                 $query->whereNull('converted_at')
@@ -96,11 +97,18 @@ class OrderRequestsController extends Controller
     {
         $customerSearch = trim((string) $request->query('customer_q', ''));
         $customerOptions = $customerSearch !== '' ? $this->customerSearchResults($customerSearch) : collect();
+        $countries = $this->countryOptions();
+        $defaultCountryId = (int) ($countries->firstWhere('iso2', 'GI')->id ?? $countries->firstWhere('name', 'Gibraltar')->id ?? 0);
+        $selectedPurchaseMode = old('purchase_mode', 'standard');
 
         return view('order-requests.create-manual', [
             'customerSearch' => $customerSearch,
             'customerOptions' => $customerOptions,
-            'countries' => $this->countryOptions(),
+            'countries' => $countries,
+            'defaultPhoneCountryId' => $defaultCountryId,
+            'defaultAddressCountryId' => $defaultCountryId,
+            'defaultPostcode' => 'GX11 1AA',
+            'selectedPurchaseMode' => $selectedPurchaseMode,
             'newRequestCount' => $this->newRequestCount(),
         ]);
     }
@@ -109,6 +117,7 @@ class OrderRequestsController extends Controller
     {
         $validated = $request->validate([
             'source' => ['required', Rule::in(['office', 'email', 'whatsapp', 'phone', 'other'])],
+            'purchase_mode' => ['required', Rule::in(['standard', 'customer_self_purchase'])],
             'notes' => ['nullable', 'string', 'max:5000'],
             'customer_mode' => ['required', Rule::in(['existing', 'create'])],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -124,6 +133,22 @@ class OrderRequestsController extends Controller
             'attachments' => ['nullable', 'array', 'max:8'],
             'attachments.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,pdf,txt,doc,docx'],
         ]);
+
+        if ($validated['customer_mode'] === 'create') {
+            $defaultCountryId = $this->defaultCountryId('GI');
+
+            if (empty($validated['phone_country_id']) && $defaultCountryId) {
+                $validated['phone_country_id'] = $defaultCountryId;
+            }
+
+            if (empty($validated['address_country_id']) && $defaultCountryId) {
+                $validated['address_country_id'] = $defaultCountryId;
+            }
+
+            if (trim((string) ($validated['address_postcode'] ?? '')) === '') {
+                $validated['address_postcode'] = 'GX11 1AA';
+            }
+        }
 
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
             return back()->withInput()->withErrors(['customer_id' => 'Choose an existing customer before creating the draft.']);
@@ -150,6 +175,7 @@ class OrderRequestsController extends Controller
                     'request_ref' => $requestRef,
                     'source' => 'manual_' . (string) $validated['source'],
                     'reference_number' => null,
+                    'purchase_mode' => (string) ($validated['purchase_mode'] ?? 'standard'),
                     'customer_first_name' => $customerSnapshot['first_name'],
                     'customer_last_name' => $customerSnapshot['last_name'],
                     'customer_company_name' => $customerSnapshot['company_name'],
@@ -520,13 +546,33 @@ class OrderRequestsController extends Controller
 
     private function nextRequestRef(): string
     {
-        $latest = DB::table('order_requests')
+        $counter = DB::table('order_ref_counter')
+            ->where('id', 1)
+            ->lockForUpdate()
+            ->first();
+
+        $latestNumericRef = DB::table('order_requests')
             ->whereNotNull('request_ref')
             ->whereRaw("request_ref REGEXP '^[0-9]+$'")
-            ->lockForUpdate()
             ->max(DB::raw('CAST(request_ref AS UNSIGNED)'));
 
-        return (string) (((int) $latest) + 1);
+        $nextValue = max(
+            (int) ($counter->next_value ?? 0),
+            ((int) $latestNumericRef) + 1
+        );
+
+        if ($counter) {
+            DB::table('order_ref_counter')
+                ->where('id', 1)
+                ->update(['next_value' => $nextValue + 1]);
+        } else {
+            DB::table('order_ref_counter')->insert([
+                'id' => 1,
+                'next_value' => $nextValue + 1,
+            ]);
+        }
+
+        return (string) $nextValue;
     }
 
     private function manualRequestCustomerSnapshot(array $payload): array
@@ -665,8 +711,10 @@ class OrderRequestsController extends Controller
     private function customerSearchResults(string $search)
     {
         $search = trim($search);
-        $digits = preg_replace('/\D+/', '', $search) ?: '';
+        $smart = SmartSearch::from($search);
+        $digits = $smart->digits;
         $email = strtolower($search);
+        $phraseLike = $smart->phraseLike();
 
         return DB::table('customers')
             ->leftJoin('customer_emails', function ($join) {
@@ -677,16 +725,50 @@ class OrderRequestsController extends Controller
                 $join->on('customer_phones.customer_id', '=', 'customers.id')->where('customer_phones.is_active', 1);
             })
             ->leftJoin('phones', 'phones.id', '=', 'customer_phones.phone_id')
+            ->leftJoin('customer_addresses', function ($join) {
+                $join->on('customer_addresses.customer_id', '=', 'customers.id')->where('customer_addresses.is_active', 1);
+            })
+            ->leftJoin('addresses', 'addresses.id', '=', 'customer_addresses.address_id')
+            ->leftJoin('countries', 'countries.id', '=', 'addresses.country_id')
             ->where('customers.is_active', 1)
-            ->where(function ($query) use ($search, $digits, $email) {
+            ->where(function ($query) use ($smart, $phraseLike, $email, $digits) {
                 $query
-                    ->where('customers.first_name', 'like', "%{$search}%")
-                    ->orWhere('customers.last_name', 'like', "%{$search}%")
-                    ->orWhere('customers.company_name', 'like', "%{$search}%")
-                    ->orWhere('customers.reference', 'like', "%{$search}%")
-                    ->orWhere('emails.email', 'like', "%{$email}%");
+                    ->where('customers.first_name', 'like', $phraseLike)
+                    ->orWhere('customers.last_name', 'like', $phraseLike)
+                    ->orWhere('customers.company_name', 'like', $phraseLike)
+                    ->orWhere('customers.reference', 'like', $phraseLike)
+                    ->orWhere('emails.email', 'like', '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $email) . '%')
+                    ->orWhere('addresses.line1', 'like', $phraseLike)
+                    ->orWhere('addresses.line2', 'like', $phraseLike)
+                    ->orWhere('addresses.city', 'like', $phraseLike)
+                    ->orWhere('addresses.region', 'like', $phraseLike)
+                    ->orWhere('addresses.postcode', 'like', $phraseLike)
+                    ->orWhereRaw("CONCAT_WS(' ', customers.first_name, customers.last_name) like ?", [$phraseLike])
+                    ->orWhereRaw("CONCAT_WS(' ', customers.last_name, customers.first_name) like ?", [$phraseLike])
+                    ->orWhereRaw("CONCAT_WS(' ', customers.last_name, LEFT(customers.first_name, 1)) like ?", [$phraseLike])
+                    ->orWhereRaw("CONCAT_WS(' ', customers.first_name, LEFT(customers.last_name, 1)) like ?", [$phraseLike]);
+
+                $smart->orWhereAllTokensAcross($query, [
+                    'customers.first_name',
+                    'customers.last_name',
+                    'customers.company_name',
+                    'emails.email',
+                    'addresses.line1',
+                    'addresses.line2',
+                    'addresses.city',
+                    'addresses.region',
+                    'addresses.postcode',
+                ]);
+
+                $smart->orWhereAllTokensAcrossRaw($query, [
+                    "CONCAT_WS(' ', customers.first_name, customers.last_name)",
+                    "CONCAT_WS(' ', customers.last_name, customers.first_name)",
+                    "CONCAT_WS(' ', customers.last_name, LEFT(customers.first_name, 1))",
+                    "CONCAT_WS(' ', customers.first_name, LEFT(customers.last_name, 1))",
+                ]);
+
                 if ($digits !== '') {
-                    $query->orWhere('phones.phone', 'like', "%{$digits}%");
+                    $query->orWhere('phones.phone', 'like', $smart->digitsLike());
                 }
             })
             ->groupBy('customers.id', 'customers.first_name', 'customers.last_name', 'customers.company_name')
@@ -697,9 +779,13 @@ class OrderRequestsController extends Controller
                 'customers.company_name',
                 DB::raw('MIN(emails.email) as email'),
                 DB::raw('MIN(phones.phone) as phone'),
+                DB::raw('MIN(addresses.line1) as address_line1'),
+                DB::raw('MIN(addresses.postcode) as postcode'),
+                DB::raw('MIN(countries.name) as country_name'),
             ])
             ->orderBy('customers.first_name')
-            ->limit(20)
+            ->orderBy('customers.last_name')
+            ->limit(30)
             ->get();
     }
 
@@ -809,6 +895,22 @@ class OrderRequestsController extends Controller
         $value = preg_replace('/[^a-z0-9@.\-\s]/', '', $value) ?: $value;
 
         return trim($value);
+    }
+
+    private function defaultCountryId(string $iso2): ?int
+    {
+        $country = DB::table('countries')
+            ->where('is_active', 1)
+            ->where(function ($query) use ($iso2) {
+                $query->where('iso2', strtoupper($iso2));
+                if (strtoupper($iso2) === 'GI') {
+                    $query->orWhere('name', 'Gibraltar');
+                }
+            })
+            ->orderByRaw("CASE WHEN iso2 = ? THEN 0 ELSE 1 END", [strtoupper($iso2)])
+            ->first(['id']);
+
+        return $country ? (int) $country->id : null;
     }
 
     private function countryOptions()

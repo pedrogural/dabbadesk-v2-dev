@@ -1,9 +1,11 @@
 <x-app-layout>
     <x-slot name="header">
-        Order #{{ $order->order_number }} · Rev {{ $order->revision_number ?? 1 }}@if(($order->revision_total ?? 1) > 1) of {{ $order->revision_total }}@endif
+        Orders
     </x-slot>
 
     @php
+        $orderType = $order->order_type ?? $order->purchase_mode ?? 'standard';
+        $isCustomerSelfPurchase = $orderType === 'customer_self_purchase';
         $customerRequestNotes = collect($notes ?? [])->filter(function ($note) {
             return ($note->type ?? '') === 'order_request_note' || ($note->title ?? '') === 'Customer order request notes';
         })->values();
@@ -23,7 +25,11 @@
                             Order #{{ $order->order_number }}
                         </h1>
 
-                        <span class="rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700">
+                        <span class="rounded-full {{ $isCustomerSelfPurchase ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700' }} px-3 py-1 text-sm font-black">
+                            {{ $isCustomerSelfPurchase ? 'Customer self-purchase' : 'Dabba purchase' }}
+                        </span>
+
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700">
                             {{ str_replace('_', ' ', ucfirst($order->status)) }}
                         </span>
 
@@ -37,7 +43,7 @@
                             <span class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-black text-emerald-700">Current revision</span>
                         @endif
 
-                        @if (($progress['remaining_purchase_qty'] ?? 0) > 0)
+                        @if (! $isCustomerSelfPurchase && (($progress['remaining_purchase_qty'] ?? 0) > 0))
                             <span class="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-700">
                                 {{ $progress['remaining_purchase_qty'] }} still to purchase
                             </span>
@@ -55,25 +61,39 @@
                         href="{{ route('draft-orders.show', $order->draft_order_id) }}"
                         class="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200"
                     >
-                        Open Draft
+                        Open Draft ↗
                     </a>
 
                     <a
                         href="{{ route('money-desk.orders.show', $order->id) }}"
                         class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
                     >
-                        Finance view
+                        Finance ↗
                     </a>
 
                     <a
                         href="{{ route('money-desk.customers.show', $order->customer_id) }}"
                         class="rounded-2xl bg-indigo-100 px-4 py-3 text-sm font-semibold text-indigo-700 hover:bg-indigo-200"
                     >
-                        Customer finance
+                        Customer Finance ↗
                     </a>
                 </div>
             </div>
         </div>
+
+
+        @if ($isCustomerSelfPurchase)
+            <div class="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-sky-700">Customer self-purchase</p>
+                        <h2 class="mt-1 text-lg font-black text-sky-950">Customer bought the goods directly from the retailer</h2>
+                        <p class="mt-1 text-sm font-semibold leading-6 text-sky-900">Dabba should not purchase these goods. Continue with arrival, customs, collection and delivery workflow when the goods reach Dabba.</p>
+                    </div>
+                    <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl bg-white px-4 py-2.5 text-sm font-black text-sky-700 ring-1 ring-sky-200 hover:bg-sky-100">Finance ↗</a>
+                </div>
+            </div>
+        @endif
 
         @if ($customerRequestNotes->isNotEmpty())
             <div class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
@@ -99,7 +119,7 @@
         @endif
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <div class="xl:col-span-4 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+            <div class="xl:col-span-4 rounded-3xl bg-white p-5 shadow-sm border border-slate-200">
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Customer</p>
@@ -144,54 +164,53 @@
                 </div>
             </div>
 
-            <div class="xl:col-span-5 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-                <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Order health</p>
+            <div class="xl:col-span-5 rounded-3xl bg-white p-5 shadow-sm border border-slate-200">
+                <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Lifecycle</p>
 
-                <div class="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3">
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Items</p>
-                        <p class="mt-2 text-2xl font-bold text-slate-900">{{ $progress['item_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-slate-500">requested</p>
+                <div class="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Requested</p>
+                        <p class="mt-1 text-xl font-black text-slate-950">{{ $progress['item_qty'] ?? 0 }}</p>
                     </div>
 
-                    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-emerald-600">Purchased</p>
-                        <p class="mt-2 text-2xl font-bold text-emerald-700">{{ $progress['purchased_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-emerald-700">bought so far</p>
+                    <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-emerald-600">Purchased</p>
+                        <p class="mt-1 text-xl font-black text-emerald-700">{{ $progress['purchased_qty'] ?? 0 }}</p>
                     </div>
 
-                    <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-rose-600">Remaining</p>
-                        <p class="mt-2 text-2xl font-bold text-rose-700">{{ $progress['remaining_purchase_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-rose-700">still to buy</p>
+                    <div class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-sky-600">Arrived</p>
+                        <p class="mt-1 text-xl font-black text-sky-700">{{ $progress['arrived_qty'] ?? 0 }}</p>
                     </div>
 
-                    <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-sky-600">Arrived</p>
-                        <p class="mt-2 text-2xl font-bold text-sky-700">{{ $progress['arrived_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-sky-700">received</p>
+                    <div class="rounded-2xl border border-purple-200 bg-purple-50 px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-purple-600">Ready</p>
+                        <p class="mt-1 text-xl font-black text-purple-700">{{ $progress['ready_qty'] ?? 0 }}</p>
                     </div>
 
-                    <div class="rounded-2xl border border-purple-200 bg-purple-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-purple-600">Ready</p>
-                        <p class="mt-2 text-2xl font-bold text-purple-700">{{ $progress['ready_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-purple-700">collection/delivery</p>
-                    </div>
-
-                    <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Completed</p>
-                        <p class="mt-2 text-2xl font-bold text-slate-900">{{ $progress['collected_qty'] ?? 0 }}</p>
-                        <p class="mt-1 text-xs text-slate-500">collected/delivered</p>
+                    <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 ring-1 ring-slate-100">
+                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Completed</p>
+                        <p class="mt-1 text-xl font-black text-slate-950">{{ $progress['collected_qty'] ?? 0 }}</p>
                     </div>
                 </div>
+
+                @if (! $isCustomerSelfPurchase && (($progress['remaining_purchase_qty'] ?? 0) > 0))
+                    <p class="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800 ring-1 ring-amber-100">
+                        {{ $progress['remaining_purchase_qty'] }} item(s) still need purchasing.
+                    </p>
+                @elseif ($isCustomerSelfPurchase)
+                    <p class="mt-4 rounded-2xl bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-800 ring-1 ring-sky-100">
+                        Customer-purchased goods skip Dabba buying and continue into arrival, customs and collection.
+                    </p>
+                @endif
             </div>
 
-            <div class="xl:col-span-3 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+            <div class="xl:col-span-3 rounded-3xl bg-white p-5 shadow-sm border border-slate-200">
                 <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Order summary</p>
 
                 <div class="mt-5 space-y-3 text-sm">
                     <div class="flex justify-between gap-4">
-                        <span class="text-slate-500">Items subtotal</span>
+                        <span class="text-slate-500">{{ $isCustomerSelfPurchase ? 'Goods value (reference)' : 'Items subtotal' }}</span>
                         <span class="font-semibold text-slate-900">£{{ number_format($order->subtotal ?? 0, 2) }}</span>
                     </div>
 
@@ -219,7 +238,7 @@
 
                     <div class="border-t border-slate-200 pt-4">
                         <div class="flex justify-between gap-4">
-                            <span class="text-xs font-bold uppercase tracking-wide text-slate-400">Total</span>
+                            <span class="text-xs font-bold uppercase tracking-wide text-slate-400">{{ $isCustomerSelfPurchase ? 'Billable total' : 'Total' }}</span>
                             <span class="text-2xl font-bold text-slate-950">£{{ number_format($order->grand_total ?? 0, 2) }}</span>
                         </div>
                     </div>
@@ -227,19 +246,12 @@
             </div>
         </div>
 
-        @if (($progress['remaining_purchase_qty'] ?? 0) > 0)
-            <div class="rounded-3xl border border-amber-200 bg-amber-50 p-5">
-                <p class="text-sm font-semibold text-amber-800">
-                    {{ $progress['remaining_purchase_qty'] }} item(s) still need purchasing.
-                </p>
-            </div>
-        @endif
 
         <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
-            <div class="xl:col-span-8 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+            <div class="xl:col-span-12 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
-                        <h2 class="text-lg font-bold text-slate-950">Items grouped by retailer</h2>
+                        <h2 class="text-lg font-bold text-slate-950">Retailers &amp; Items</h2>
                         <p class="mt-1 text-sm text-slate-500">
                             Product links, purchase progress and arrival progress are grouped by retailer.
                         </p>
@@ -337,7 +349,7 @@
                                                     {{ $item->purchased_qty }}/{{ $item->quantity }}
                                                 </p>
                                                 <p class="mt-1 text-xs text-slate-400">
-                                                    {{ $item->purchase_remaining_qty > 0 ? 'Pending purchase' : 'Purchased' }}
+                                                    {{ $isCustomerSelfPurchase ? 'Bought by customer' : ($item->purchase_remaining_qty > 0 ? 'Pending purchase' : 'Purchased') }}
                                                 </p>
                                             </div>
 
@@ -382,73 +394,6 @@
                 </div>
             </div>
 
-            <div class="xl:col-span-4 space-y-6">
-                <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-slate-950">Operations</h2>
-
-                    <div class="mt-5 space-y-3">
-                        <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                            <span class="text-sm font-semibold text-slate-700">Active order</span>
-                            <span class="rounded-full bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">{{ $progress['item_qty'] ?? 0 }}</span>
-                        </div>
-
-                        <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                            <span class="text-sm font-semibold text-slate-700">Purchased</span>
-                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">{{ $progress['purchased_qty'] ?? 0 }}</span>
-                        </div>
-
-                        <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                            <span class="text-sm font-semibold text-slate-700">Arrived</span>
-                            <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">{{ $progress['arrived_qty'] ?? 0 }}</span>
-                        </div>
-
-                        <div class="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
-                            <span class="text-sm font-semibold text-slate-700">Ready</span>
-                            <span class="rounded-full bg-purple-100 px-3 py-1 text-xs font-bold text-purple-700">{{ $progress['ready_qty'] ?? 0 }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-slate-950">Quick links</h2>
-
-                    <div class="mt-5 divide-y divide-slate-100">
-                        <a href="{{ route('money-desk.orders.show', $order->id) }}" class="flex items-center justify-between py-3 text-sm font-semibold text-slate-700 hover:text-emerald-700">
-                            View order finance <span>↗</span>
-                        </a>
-
-                        <a href="{{ route('money-desk.customers.show', $order->customer_id) }}" class="flex items-center justify-between py-3 text-sm font-semibold text-slate-700 hover:text-indigo-700">
-                            View customer finance <span>↗</span>
-                        </a>
-
-                        <a href="{{ route('orders.index') }}?q={{ urlencode($order->bill_to_email ?: $order->bill_to_name) }}" class="flex items-center justify-between py-3 text-sm font-semibold text-slate-700 hover:text-indigo-700">
-                            Search related orders <span>↗</span>
-                        </a>
-                    </div>
-                </div>
-
-                <div class="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-                    <h2 class="text-lg font-bold text-slate-950">Latest purchase events</h2>
-
-                    <div class="mt-5 space-y-3">
-                        @forelse ($purchases->take(5) as $purchase)
-                            <div class="rounded-2xl border border-slate-200 p-4 {{ $purchase->requires_marking_attention ? 'border-purple-300 bg-purple-50/60' : '' }}">
-                                <p class="font-semibold text-slate-900">{{ $purchase->item_name }}</p>
-                                <p class="mt-1 text-sm text-slate-500">
-                                    Qty {{ $purchase->qty }} · {{ str_replace('_', ' ', $purchase->status) }}
-                                </p>
-
-                                @if ($purchase->retailer_order_reference)
-                                    <p class="mt-2 text-xs text-slate-400">Ref: {{ $purchase->retailer_order_reference }}</p>
-                                @endif
-                            </div>
-                        @empty
-                            <div class="rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                                No purchase events yet.
-                            </div>
-                        @endforelse
-                    </div>
-                </div>
             </div>
         </div>
 

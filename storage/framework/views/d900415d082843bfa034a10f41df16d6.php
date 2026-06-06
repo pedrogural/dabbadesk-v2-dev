@@ -1,7 +1,18 @@
-<x-app-layout>
-    <x-slot name="header">Order Request #{{ $draft->request_ref ?: ($draft->draft_number ?: $draft->id) }}</x-slot>
+<?php if (isset($component)) { $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54 = $attributes; } ?>
+<?php $component = App\View\Components\AppLayout::resolve([] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('app-layout'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\App\View\Components\AppLayout::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-    @php
+     <?php $__env->slot('header', null, []); ?> Order Request #<?php echo e($draft->request_ref ?: ($draft->draft_number ?: $draft->id)); ?> <?php $__env->endSlot(); ?>
+
+    <?php
         $customerName =
             trim(($draft->first_name ?? '') . ' ' . ($draft->last_name ?? '')) ?:
             ($draft->company_name ?:
@@ -73,7 +84,7 @@
 
             return asset('storage/' . $path);
         };
-    @endphp
+    ?>
 
     <style>
         [x-cloak] {
@@ -717,29 +728,30 @@
     <div
         class="draft-ui space-y-4"
         x-data="draftWorkspace({
-            detectUrl: '{{ route('draft-orders.detect-retailer') }}',
-            quickRetailerUrl: '{{ route('draft-orders.retailers.quick-store') }}',
-            csrf: '{{ csrf_token() }}',
-            initialTab: '{{ $activeTab }}',
-            isConsumedDraft: @js($isConsumedDraft),
-            isCustomerSelfPurchase: @js($isCustomerSelfPurchase),
-            isCancelledDraft: @js($isCancelledDraft),
-            hasChildOrder: @js($hasChildOrder),
-            finalizedOrderLabel: @js($finalizedOrderLabel),
-            finalizedOrderUrl: @js($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null),
-            totals: @js($initialDraftTotals)
+            detectUrl: '<?php echo e(route('draft-orders.detect-retailer')); ?>',
+            quickRetailerUrl: '<?php echo e(route('draft-orders.retailers.quick-store')); ?>',
+            csrf: '<?php echo e(csrf_token()); ?>',
+            initialTab: '<?php echo e($activeTab); ?>',
+            isConsumedDraft: <?php echo \Illuminate\Support\Js::from($isConsumedDraft)->toHtml() ?>,
+            isCustomerSelfPurchase: <?php echo \Illuminate\Support\Js::from($isCustomerSelfPurchase)->toHtml() ?>,
+            isCancelledDraft: <?php echo \Illuminate\Support\Js::from($isCancelledDraft)->toHtml() ?>,
+            hasChildOrder: <?php echo \Illuminate\Support\Js::from($hasChildOrder)->toHtml() ?>,
+            finalizedOrderLabel: <?php echo \Illuminate\Support\Js::from($finalizedOrderLabel)->toHtml() ?>,
+            finalizedOrderUrl: <?php echo \Illuminate\Support\Js::from($draft->finalized_order_id ? route('orders.show', $draft->finalized_order_id) : null)->toHtml() ?>,
+            totals: <?php echo \Illuminate\Support\Js::from($initialDraftTotals)->toHtml() ?>
         })"
         x-init="boot()"
         @delete-item.window="deleteModal = { open: true, url: $event.detail.url, title: $event.detail.title }"
         @consumed-draft-edit-attempt.window="openConsumedEditModal($event.detail.form || null)"
     >
-        @if ($errors->any())
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?>
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
-                <strong>Something needs checking:</strong> {{ $errors->first() }}
-            </div>
-        @endif
+                <strong>Something needs checking:</strong> <?php echo e($errors->first()); ?>
 
-        @if (session('success'))
+            </div>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?>
             <div
                 x-data="{ show: true }"
                 x-show="show"
@@ -763,7 +775,7 @@
                     </div>
                     <div class="min-w-0 flex-1">
                         <p class="font-black text-slate-950">Saved</p>
-                        <p class="mt-1 text-sm text-slate-500">{{ session('success') }}</p>
+                        <p class="mt-1 text-sm text-slate-500"><?php echo e(session('success')); ?></p>
                     </div>
                     <button
                         type="button"
@@ -772,9 +784,9 @@
                     >✕</button>
                 </div>
             </div>
-        @endif
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-        @if ($isCancelledDraft)
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCancelledDraft): ?>
             <section class="rounded-3xl border border-rose-200 bg-rose-50 p-5 shadow-sm">
                 <div class="flex items-start gap-4">
                     <div class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-rose-600 shadow-sm">✕</div>
@@ -786,10 +798,10 @@
                     </div>
                 </div>
             </section>
-        @endif
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
 
-        @if ($isCustomerSelfPurchase)
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCustomerSelfPurchase): ?>
             <section class="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div class="max-w-4xl">
@@ -804,82 +816,87 @@
                     <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-sky-700 ring-1 ring-sky-200">No Dabba buying</span>
                 </div>
             </section>
-        @endif
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-        {{-- Compact header --}}
+        
         <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
             <div class="flex flex-col gap-3 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
                 <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
                         <a
-                            href="{{ route('draft-orders.index') }}"
+                            href="<?php echo e(route('draft-orders.index')); ?>"
                             class="font-semibold text-slate-500 hover:text-slate-950"
                         >← Back to drafts</a>
                     </div>
                     <div class="mt-1.5 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-black tracking-tight text-slate-950">Draft Workbench</h1>
-                        @if ($isCustomerSelfPurchase)
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCustomerSelfPurchase): ?>
                             <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-black uppercase tracking-wide text-sky-700">Customer self-purchase</span>
-                        @else
+                        <?php else: ?>
                             <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-indigo-700">Dabba purchase</span>
-                        @endif
-                        <span class="rounded-full {{ $isConsumedDraft ? 'bg-amber-100 text-amber-700' : ($isCancelledDraft ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700') }} px-3 py-1 text-xs font-black uppercase tracking-wide">{{ $draft->status ?: 'open' }}</span>
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                        <span class="rounded-full <?php echo e($isConsumedDraft ? 'bg-amber-100 text-amber-700' : ($isCancelledDraft ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700')); ?> px-3 py-1 text-xs font-black uppercase tracking-wide"><?php echo e($draft->status ?: 'open'); ?></span>
                     </div>
                     <p class="mt-1 text-sm text-slate-500">
-                        {{ $customerName }}
-                        <span class="mx-1">•</span> Request #{{ $requestRef }}
-                        <span class="mx-1">•</span> Draft #{{ $draft->id }}
-                        @if ($draft->created_at)
-                            <span class="mx-1">•</span> Created {{ \Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i') }}
-                        @endif
+                        <?php echo e($customerName); ?>
+
+                        <span class="mx-1">•</span> Request #<?php echo e($requestRef); ?>
+
+                        <span class="mx-1">•</span> Draft #<?php echo e($draft->id); ?>
+
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draft->created_at): ?>
+                            <span class="mx-1">•</span> Created <?php echo e(\Carbon\Carbon::parse($draft->created_at)->format('d M Y, H:i')); ?>
+
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </p>
-                    @if ($hasChildOrder)
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($hasChildOrder): ?>
                         <div class="mt-2 flex flex-wrap items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                            <span class="font-black tracking-wide text-amber-700">{{ $isConsumedDraft ? 'Consumed Draft' : 'Version Draft' }}</span>
+                            <span class="font-black tracking-wide text-amber-700"><?php echo e($isConsumedDraft ? 'Consumed Draft' : 'Version Draft'); ?></span>
                             <span class="text-amber-300">•</span>
-                            <span class="font-semibold">Created {{ $finalizedOrderLabel ?: 'an order' }}</span>
-                            @if ($isConsumedDraft)
+                            <span class="font-semibold">Created <?php echo e($finalizedOrderLabel ?: 'an order'); ?></span>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isConsumedDraft): ?>
                                 <span class="hidden text-amber-300 md:inline">•</span>
                                 <span class="font-semibold text-amber-800">Editing will prepare a new version.</span>
-                            @endif
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
-                    @endif
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </div>
                 <div class="flex flex-wrap gap-2">
-                    @if ($draft->finalized_order_id)
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draft->finalized_order_id): ?>
                         <a
-                            href="{{ route('orders.show', $draft->finalized_order_id) }}"
+                            href="<?php echo e(route('orders.show', $draft->finalized_order_id)); ?>"
                             class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"
-                        >Open {{ $finalizedOrderLabel }}</a>
-                    @endif
-                    @if ($isCancelledDraft)
+                        >Open <?php echo e($finalizedOrderLabel); ?></a>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCancelledDraft): ?>
                         <button
                             type="button"
                             disabled
                             class="cursor-not-allowed rounded-2xl bg-slate-200 px-4 py-2.5 text-sm font-black text-slate-500"
                             title="Cancelled drafts must be reopened before they can be finalised."
                         >Finalise locked</button>
-                    @else
+                    <?php else: ?>
                         <button
                             type="button"
                             @click="openFinaliseModal()"
                             class="rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-purple-700"
-                        >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
-                    @endif
+                        ><?php echo e($isConsumedDraft ? 'Create New Version' : 'Finalise to Order'); ?></button>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </div>
             </div>
             <div class="flex gap-1 border-t border-slate-100 px-5 py-2">
-                @foreach ([['products', 'Products', '🛒'], ['customer', 'Customer', '👤'], ['notes', 'Notes', '📝'], ['fees', 'Dabba fees', '🏷️'], ['activity', 'Activity', '〽️']] as [$key, $label, $icon])
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = [['products', 'Products', '🛒'], ['customer', 'Customer', '👤'], ['notes', 'Notes', '📝'], ['fees', 'Dabba fees', '🏷️'], ['activity', 'Activity', '〽️']]; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as [$key, $label, $icon]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                     <button
                         type="button"
-                        @click="tab='{{ $key }}'"
-                        :class="tab === '{{ $key }}' ? 'border-purple-600 text-purple-700 bg-purple-50' :
+                        @click="tab='<?php echo e($key); ?>'"
+                        :class="tab === '<?php echo e($key); ?>' ? 'border-purple-600 text-purple-700 bg-purple-50' :
                             'border-transparent text-slate-600 hover:bg-slate-50'"
                         class="rounded-2xl border px-4 py-2.5 text-sm font-black transition"
                     >
-                        <span class="mr-1">{{ $icon }}</span>{{ $label }}
+                        <span class="mr-1"><?php echo e($icon); ?></span><?php echo e($label); ?>
+
                     </button>
-                @endforeach
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
             </div>
         </section>
 
@@ -890,15 +907,15 @@
                     x-cloak
                     class="space-y-4"
                 >
-                    {{-- Better add product panel --}}
-                    @if ($isCancelledDraft)
+                    
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCancelledDraft): ?>
                         <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h2 class="text-xl font-black text-slate-950">Add product</h2>
                             <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">
                                 This draft is cancelled, so adding products is disabled. Reopen the draft from Draft settings before adding or changing items.
                             </div>
                         </section>
-                    @else
+                    <?php else: ?>
                     <section class="rounded-3xl border-2 border-purple-200 bg-white p-6 shadow-sm ring-4 ring-purple-50">
                         <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -910,10 +927,10 @@
 
                         <form
                             method="POST"
-                            action="{{ route('draft-orders.items.store', $draft->id) }}"
+                            action="<?php echo e(route('draft-orders.items.store', $draft->id)); ?>"
                             class="space-y-4"
                         >
-                            @csrf
+                            <?php echo csrf_field(); ?>
                             <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_260px_110px_150px] 2xl:items-end">
                                 <div>
                                     <label class="field-label">Product URL / code</label>
@@ -942,9 +959,9 @@
                                         class="input-clean text-sm"
                                     >
                                         <option value="">Choose retailer</option>
-                                        @foreach ($retailers as $retailer)
-                                            <option value="{{ $retailer->id }}">{{ $retailer->name }}</option>
-                                        @endforeach
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                            <option value="<?php echo e($retailer->id); ?>"><?php echo e($retailer->name); ?></option>
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                     </select>
                                 </div>
                                 <div>
@@ -1007,14 +1024,14 @@
                             ></div>
                         </form>
                     </section>
-                    @endif
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-                    {{-- Basket --}}
+                    
                     <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-6">
                             <div>
                                 <div class="flex items-center gap-2">
-                                    <h2 class="text-xl font-black text-slate-950">Basket items ({{ $items->count() }})
+                                    <h2 class="text-xl font-black text-slate-950">Basket items (<?php echo e($items->count()); ?>)
                                     </h2>
                                     <span
                                         class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">Newest
@@ -1038,8 +1055,8 @@
                         </div>
 
                         <div class="retailer-stack">
-                            @forelse ($groupedItems as $retailerId => $retailerItems)
-                                @php
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $groupedItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailerId => $retailerItems): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                <?php
                                     $first = $retailerItems->first();
                                     $summary = $retailerRows->get($retailerId);
                                     $retailerName = $first->retailer_name ?: 'Unknown retailer';
@@ -1066,19 +1083,19 @@
                                         $goodsTotal + $sellerDeliveryTotal + $retailerDeliveryFee + $dabbaFee,
                                         2,
                                     );
-                                @endphp
+                                ?>
                                 <section
                                     x-data="{
                                         open: true,
-                                        retailerId: @js((string) $retailerId),
-                                        goodsTotal: {{ number_format($goodsTotal, 2, '.', '') }},
-                                        sellerDeliveryTotal: {{ number_format($sellerDeliveryTotal, 2, '.', '') }},
-                                        retailerDeliveryFee: {{ number_format($retailerDeliveryFee, 2, '.', '') }},
-                                        dabbaFee: {{ number_format($dabbaFee, 2, '.', '') }},
-                                        dabbaRate: {{ number_format((float) ($summary->dabba_fee_rate ?? ($draft->dabba_fee_rate ?? 0.20)), 4, '.', '') }},
-                                        dabbaMin: {{ number_format((float) ($summary->dabba_fee_min ?? 10), 2, '.', '') }},
-                                        dabbaDisabled: @js((bool) ($summary->dabba_fee_is_disabled ?? false)),
-                                        isCustomerSelfPurchase: @js($isCustomerSelfPurchase),
+                                        retailerId: <?php echo \Illuminate\Support\Js::from((string) $retailerId)->toHtml() ?>,
+                                        goodsTotal: <?php echo e(number_format($goodsTotal, 2, '.', '')); ?>,
+                                        sellerDeliveryTotal: <?php echo e(number_format($sellerDeliveryTotal, 2, '.', '')); ?>,
+                                        retailerDeliveryFee: <?php echo e(number_format($retailerDeliveryFee, 2, '.', '')); ?>,
+                                        dabbaFee: <?php echo e(number_format($dabbaFee, 2, '.', '')); ?>,
+                                        dabbaRate: <?php echo e(number_format((float) ($summary->dabba_fee_rate ?? ($draft->dabba_fee_rate ?? 0.20)), 4, '.', '')); ?>,
+                                        dabbaMin: <?php echo e(number_format((float) ($summary->dabba_fee_min ?? 10), 2, '.', '')); ?>,
+                                        dabbaDisabled: <?php echo \Illuminate\Support\Js::from((bool) ($summary->dabba_fee_is_disabled ?? false))->toHtml() ?>,
+                                        isCustomerSelfPurchase: <?php echo \Illuminate\Support\Js::from($isCustomerSelfPurchase)->toHtml() ?>,
                                         get retailerGrand() { return (this.isCustomerSelfPurchase ? 0 : this.goodsTotal) + this.sellerDeliveryTotal + this.retailerDeliveryFee + this.dabbaFee; },
                                         money(value) { return '£' + Number(value || 0).toFixed(2); },
                                         calculateDabbaFee() {
@@ -1098,29 +1115,32 @@
                                             @click="open=!open"
                                             class="retailer-identity text-left"
                                         >
-                                                                            @if ($logoUrl)
+                                                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($logoUrl): ?>
                                                 <span
                                                     style="width:48px;height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:17px;background:#fff;border:1px solid #e2e8f0;"
                                                 >
                                                     <img
-                                                        src="{{ $logoUrl }}"
-                                                        alt="{{ $retailerName }} logo"
+                                                        src="<?php echo e($logoUrl); ?>"
+                                                        alt="<?php echo e($retailerName); ?> logo"
                                                         style="display:block;width:100%;height:100%;object-fit:contain;padding:6px;"
                                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='grid';"
                                                     >
                                                     <span
-                                                        class="retailer-initial absolute inset-0 hidden">{{ $initial }}</span>
+                                                        class="retailer-initial absolute inset-0 hidden"><?php echo e($initial); ?></span>
                                                 </span>
-                                            @else
-                                                <span class="retailer-initial">{{ $initial }}</span>
-                                            @endif
+                                            <?php else: ?>
+                                                <span class="retailer-initial"><?php echo e($initial); ?></span>
+                                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                             <span class="min-w-0">
-                                                <span class="retailer-name block" title="{{ $retailerName }}">{{ $retailerName }}</span>
+                                                <span class="retailer-name block" title="<?php echo e($retailerName); ?>"><?php echo e($retailerName); ?></span>
                                                 <span class="retailer-subline block">
-                                                    {{ $retailerItems->count() }}
-                                                    {{ Str::plural('item', $retailerItems->count()) }}
+                                                    <?php echo e($retailerItems->count()); ?>
+
+                                                    <?php echo e(Str::plural('item', $retailerItems->count())); ?>
+
                                                     <span class="mx-1">•</span>
-                                                    {{ $isCustomerSelfPurchase ? 'Goods value:' : 'Goods:' }} {{ $money($goodsTotal) }}
+                                                    <?php echo e($isCustomerSelfPurchase ? 'Goods value:' : 'Goods:'); ?> <?php echo e($money($goodsTotal)); ?>
+
                                                 </span>
                                             </span>
                                         </button>
@@ -1128,18 +1148,18 @@
                                         <div class="retailer-delivery-panel">
                                             <form
                                                 method="POST"
-                                                action="{{ route('draft-orders.retailers.delivery.update', [$draft->id, $retailerId]) }}"
+                                                action="<?php echo e(route('draft-orders.retailers.delivery.update', [$draft->id, $retailerId])); ?>"
                                                 class="retailer-delivery-form"
                                             >
-                                                @csrf
-                                                @method('PATCH')
+                                                <?php echo csrf_field(); ?>
+                                                <?php echo method_field('PATCH'); ?>
                                                 <div>
                                                     <label class="money-label">Retailer delivery fee</label>
                                                     <div class="currency-input-wrap">
                                                         <span class="currency-prefix">£</span>
                                                         <input
                                                             name="retailer_delivery_fee_total"
-                                                            value="{{ $retailerDeliveryFee > 0 ? number_format($retailerDeliveryFee, 2, '.', '') : '' }}"
+                                                            value="<?php echo e($retailerDeliveryFee > 0 ? number_format($retailerDeliveryFee, 2, '.', '') : ''); ?>"
                                                             type="number"
                                                             min="0"
                                                             step="0.01"
@@ -1173,7 +1193,7 @@
                                         </div>
 
                                         <div class="money-tile-grid">
-                                            <div class="money-box"><span class="money-label">{{ $isCustomerSelfPurchase ? 'Goods value' : 'Goods' }}</span><span
+                                            <div class="money-box"><span class="money-label"><?php echo e($isCustomerSelfPurchase ? 'Goods value' : 'Goods'); ?></span><span
                                                     class="money-value"
                                                  x-text="money(goodsTotal)"></span></div>
                                             <div class="money-box"><span class="money-label">Seller
@@ -1183,7 +1203,7 @@
                                             <div class="money-box"><span class="money-label">Dabba fee</span><span
                                                     class="money-value"
                                                  x-text="money(dabbaFee)"></span></div>
-                                            <div class="money-box money-box-purple"><span class="money-label">{{ $isCustomerSelfPurchase ? 'Billable' : 'Retailer total' }}</span><span
+                                            <div class="money-box money-box-purple"><span class="money-label"><?php echo e($isCustomerSelfPurchase ? 'Billable' : 'Retailer total'); ?></span><span
                                                     class="money-value" x-text="money(retailerGrand)"></span></div>
                                         </div>
                                     </div>
@@ -1205,8 +1225,8 @@
                                                 <div class="text-center">Review</div>
                                             </div>
 
-                                            @foreach ($retailerItems as $item)
-                                                @php
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailerItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                                <?php
                                                     $lineTotal =
                                                         (float) ($item->line_total ??
                                                             ($item->qty ?? 1) * ($item->unit_price ?? 0) +
@@ -1218,20 +1238,20 @@
                                                         : '';
                                                     $isJustAdded = $lastAddedItemId === (int) $item->id;
                                                     $isReviewed = ! empty($item->reviewed_at);
-                                                @endphp
+                                                ?>
                                                 <form
                                                     method="POST"
-                                                    action="{{ route('draft-orders.items.update', [$draft->id, $item->id]) }}"
-                                                    id="item-{{ $item->id }}"
-                                                    class="basket-grid basket-row {{ $isJustAdded ? 'bg-purple-50/70' : '' }}" :class="{ 'is-reviewed': reviewed }"
+                                                    action="<?php echo e(route('draft-orders.items.update', [$draft->id, $item->id])); ?>"
+                                                    id="item-<?php echo e($item->id); ?>"
+                                                    class="basket-grid basket-row <?php echo e($isJustAdded ? 'bg-purple-50/70' : ''); ?>" :class="{ 'is-reviewed': reviewed }"
                                                     x-data="{
-                                                        qty: {{ (int) $item->qty }},
-                                                        unit: {{ number_format((float) $item->unit_price, 2, '.', '') }},
-                                                        delivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
-                                                        reviewed: @js($isReviewed),
-                                                        previousSubtotal: {{ number_format((float) (($item->qty ?? 1) * ($item->unit_price ?? 0)), 2, '.', '') }},
-                                                        previousDelivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
-                                                        retailerId: @js((string) $retailerId),
+                                                        qty: <?php echo e((int) $item->qty); ?>,
+                                                        unit: <?php echo e(number_format((float) $item->unit_price, 2, '.', '')); ?>,
+                                                        delivery: <?php echo e(number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '')); ?>,
+                                                        reviewed: <?php echo \Illuminate\Support\Js::from($isReviewed)->toHtml() ?>,
+                                                        previousSubtotal: <?php echo e(number_format((float) (($item->qty ?? 1) * ($item->unit_price ?? 0)), 2, '.', '')); ?>,
+                                                        previousDelivery: <?php echo e(number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '')); ?>,
+                                                        retailerId: <?php echo \Illuminate\Support\Js::from((string) $retailerId)->toHtml() ?>,
                                                         saveState: 'saved',
                                                         saveMessage: 'Saved',
                                                         saveTimer: null,
@@ -1271,25 +1291,25 @@
                                                     }"
                                                     x-show="matchesSearch($el)"
                                                 >
-                                                    @csrf
-                                                    @method('PATCH')
+                                                    <?php echo csrf_field(); ?>
+                                                    <?php echo method_field('PATCH'); ?>
                                                     <input type="hidden" name="reviewed" :value="reviewed ? 1 : 0">
                                                     <input
                                                         type="hidden"
                                                         name="retailer_id"
-                                                        value="{{ $item->retailer_id }}"
+                                                        value="<?php echo e($item->retailer_id); ?>"
                                                     >
 
                                                     <div class="pt-1">
-                                                        <span class="row-number">{{ $loop->iteration }}</span>
+                                                        <span class="row-number"><?php echo e($loop->iteration); ?></span>
                                                     </div>
 
                                                     <div class="min-w-0">
-                                                        @if ($isJustAdded)
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isJustAdded): ?>
                                                             <span
                                                                 class="mb-2 inline-flex rounded bg-purple-600 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-white"
                                                             >Just added</span>
-                                                        @endif
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                         <div class="item-description-card">
                                                             <textarea
                                                                 name="description"
@@ -1297,7 +1317,7 @@
                                                                 @input="markDirty()"
                                                                 @blur="save()"
                                                                 class="description-input"
-                                                            >{{ $item->description }}</textarea>
+                                                            ><?php echo e($item->description); ?></textarea>
                                                         </div>
                                                         <label
                                                             class="mt-3 block text-[10px] font-black uppercase tracking-widest text-slate-400"
@@ -1305,26 +1325,26 @@
                                                         <div class="url-edit-row">
                                                             <input
                                                                 name="url"
-                                                                value="{{ $item->url }}"
+                                                                value="<?php echo e($item->url); ?>"
                                                                 @input="markDirty()"
                                                                 @blur="save()"
                                                                 placeholder="Product URL — changing this can switch retailer after resolving"
                                                                 class="url-input"
                                                             >
-                                                            @if ($item->url)
+                                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->url): ?>
                                                                 <a
-                                                                    href="{{ $item->url }}"
+                                                                    href="<?php echo e($item->url); ?>"
                                                                     target="_blank"
                                                                     rel="noopener"
                                                                     class="url-open-btn"
                                                                     title="Open product URL"
                                                                     aria-label="Open product URL"
                                                                 >↗</a>
-                                                            @endif
+                                                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                         </div>
                                                         <input
                                                             name="product_code"
-                                                            value="{{ $item->product_code }}"
+                                                            value="<?php echo e($item->product_code); ?>"
                                                             @input="markDirty()"
                                                             @blur="save()"
                                                             placeholder="SKU / product code"
@@ -1343,7 +1363,7 @@
                                                         <input
                                                             name="qty"
                                                             x-model.number="qty"
-                                                            value="{{ (int) $item->qty }}"
+                                                            value="<?php echo e((int) $item->qty); ?>"
                                                             @input="queueSave()"
                                                             @blur="save()"
                                                             type="number"
@@ -1359,7 +1379,7 @@
                                                             <input
                                                                 name="unit_price"
                                                                 x-model.number="unit"
-                                                                value="{{ number_format((float) $item->unit_price, 2, '.', '') }}"
+                                                                value="<?php echo e(number_format((float) $item->unit_price, 2, '.', '')); ?>"
                                                                 @focus="if (Number(unit) === 0) unit = ''"
                                                                 @input="queueSave()"
                                                                 @blur="if (unit === '' || unit === null) unit = 0; save()"
@@ -1378,7 +1398,7 @@
                                                             <input
                                                                 name="item_retailer_delivery_fee"
                                                                 x-model.number="delivery"
-                                                                value="{{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }}"
+                                                                value="<?php echo e(number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '')); ?>"
                                                                 @focus="if (Number(delivery) === 0) delivery = ''"
                                                                 @input="queueSave()"
                                                                 @blur="if (delivery === '' || delivery === null) delivery = 0; save()"
@@ -1412,7 +1432,7 @@
                                                         ></button>
                                                         <button
                                                             type="button"
-                                                            @click.prevent="$dispatch('delete-item', { url: '{{ route('draft-orders.items.destroy', [$draft->id, $item->id]) }}', title: @js(Str::limit($title, 90)) })"
+                                                            @click.prevent="$dispatch('delete-item', { url: '<?php echo e(route('draft-orders.items.destroy', [$draft->id, $item->id])); ?>', title: <?php echo \Illuminate\Support\Js::from(Str::limit($title, 90))->toHtml() ?> })"
                                                             class="trash-btn"
                                                             title="Remove item"
                                                             aria-label="Remove item"
@@ -1436,32 +1456,33 @@
                                                         </button>
                                                     </div>
                                                 </form>
-                                            @endforeach
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                         </div>
 
                                         <div
                                             class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
-                                            <span class="text-sm font-black text-slate-500">{{ $retailerItems->count() }} {{ Str::plural('item', $retailerItems->count()) }} for {{ $retailerName }}</span>
+                                            <span class="text-sm font-black text-slate-500"><?php echo e($retailerItems->count()); ?> <?php echo e(Str::plural('item', $retailerItems->count())); ?> for <?php echo e($retailerName); ?></span>
                                             <div
                                                 class="flex flex-wrap items-center gap-6 text-sm font-black text-slate-500">
-                                                <span>{{ $retailerItems->count() }} items</span>
-                                                <span>{{ $isCustomerSelfPurchase ? 'Goods value:' : 'Goods:' }} <span x-text="money(goodsTotal)"></span></span>
+                                                <span><?php echo e($retailerItems->count()); ?> items</span>
+                                                <span><?php echo e($isCustomerSelfPurchase ? 'Goods value:' : 'Goods:'); ?> <span x-text="money(goodsTotal)"></span></span>
                                                 <span>Seller delivery: <span x-text="money(sellerDeliveryTotal)"></span></span>
-                                                <span>Retailer delivery fee: {{ $money($retailerDeliveryFee) }}</span>
+                                                <span>Retailer delivery fee: <?php echo e($money($retailerDeliveryFee)); ?></span>
                                                 <span>Dabba fee: <span x-text="money(dabbaFee)"></span></span>
-                                                <span class="text-purple-700">{{ $isCustomerSelfPurchase ? 'Billable total:' : 'Retailer total:' }} <span x-text="money(retailerGrand)"></span></span>
+                                                <span class="text-purple-700"><?php echo e($isCustomerSelfPurchase ? 'Billable total:' : 'Retailer total:'); ?> <span x-text="money(retailerGrand)"></span></span>
                                             </div>
                                         </div>
                                     </div>
                                 </section>
-                            @empty
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 <div class="p-10 text-center text-slate-500">No items in this draft yet.</div>
-                            @endforelse
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
 
-                        <div class="border-t border-slate-100 p-5 text-sm font-semibold text-slate-500">{{ $items->count() }} items · Last
+                        <div class="border-t border-slate-100 p-5 text-sm font-semibold text-slate-500"><?php echo e($items->count()); ?> items · Last
                                 updated
-                                {{ $draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->diffForHumans() : 'recently' }}
+                                <?php echo e($draft->updated_at ? \Carbon\Carbon::parse($draft->updated_at)->diffForHumans() : 'recently'); ?>
+
                             </div>
                     </section>
                 </section>
@@ -1476,68 +1497,68 @@
                                 <h2 class="text-xl font-black text-slate-950">Customer details</h2>
                                 <p class="mt-1 text-sm text-slate-500">Update the linked customer record before finalising the draft. These details will feed the order snapshot later.</p>
                             </div>
-                            <span class="rounded-full bg-purple-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-700">Customer #{{ $draft->customer_id }}</span>
+                            <span class="rounded-full bg-purple-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-purple-700">Customer #<?php echo e($draft->customer_id); ?></span>
                         </div>
 
-                        @if (!empty($requestNotes['has_notes']))
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['has_notes'])): ?>
                             <div class="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <p class="text-xs font-black uppercase tracking-widest text-amber-700">Customer order request notes</p>
-                                    @if (!empty($requestNotes['request_ref']))
-                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #{{ $requestNotes['request_ref'] }}</span>
-                                    @endif
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['request_ref'])): ?>
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #<?php echo e($requestNotes['request_ref']); ?></span>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
-                                @if (!empty($requestNotes['notes']))
-                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['notes'] }}</p>
-                                @elseif (!empty($requestNotes['converted_note_body']))
-                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['converted_note_body'] }}</p>
-                                @endif
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['notes'])): ?>
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950"><?php echo e($requestNotes['notes']); ?></p>
+                                <?php elseif(!empty($requestNotes['converted_note_body'])): ?>
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950"><?php echo e($requestNotes['converted_note_body']); ?></p>
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 <p class="mt-3 text-xs font-bold text-amber-700">This note stays visible throughout the draft and order lifecycle.</p>
                             </div>
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-                        @php
+                        <?php
                             $addressRow = $customerDetails['address_row'] ?? [];
                             $selectedCountryId = old('country_id', $addressRow['country_id'] ?? null);
                             $selectedPhoneCountryId = old('phone_country_id', $customerDetails['phone_country_id'] ?? $selectedCountryId);
-                        @endphp
+                        ?>
 
-                        <form method="POST" action="{{ route('draft-orders.customer.update', $draft->id) }}" class="mt-5 space-y-5">
-                            @csrf
-                            @method('PATCH')
+                        <form method="POST" action="<?php echo e(route('draft-orders.customer.update', $draft->id)); ?>" class="mt-5 space-y-5">
+                            <?php echo csrf_field(); ?>
+                            <?php echo method_field('PATCH'); ?>
 
                             <div class="grid gap-4 md:grid-cols-3">
                                 <div>
                                     <label class="field-label">First name</label>
-                                    <input name="first_name" value="{{ old('first_name', $draft->first_name) }}" class="input-clean text-sm">
+                                    <input name="first_name" value="<?php echo e(old('first_name', $draft->first_name)); ?>" class="input-clean text-sm">
                                 </div>
                                 <div>
                                     <label class="field-label">Last name</label>
-                                    <input name="last_name" value="{{ old('last_name', $draft->last_name) }}" class="input-clean text-sm">
+                                    <input name="last_name" value="<?php echo e(old('last_name', $draft->last_name)); ?>" class="input-clean text-sm">
                                 </div>
                                 <div>
                                     <label class="field-label">Company</label>
-                                    <input name="company_name" value="{{ old('company_name', $draft->company_name) }}" class="input-clean text-sm">
+                                    <input name="company_name" value="<?php echo e(old('company_name', $draft->company_name)); ?>" class="input-clean text-sm">
                                 </div>
                             </div>
 
                             <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)]">
                                 <div>
                                     <label class="field-label">Email</label>
-                                    <input name="email" type="email" value="{{ old('email', $customerDetails['email'] ?? '') }}" class="input-clean text-sm">
+                                    <input name="email" type="email" value="<?php echo e(old('email', $customerDetails['email'] ?? '')); ?>" class="input-clean text-sm">
                                 </div>
                                 <div>
                                     <label class="field-label">Phone country</label>
                                     <select name="phone_country_id" class="input-clean text-sm">
                                         <option value="">—</option>
-                                        @foreach ($countries as $country)
-                                            <option value="{{ $country->id }}" @selected((int) $selectedPhoneCountryId === (int) $country->id)>{{ $country->iso2 ? strtoupper($country->iso2) . ' · ' : '' }}{{ $country->phone_code ? '+' . ltrim($country->phone_code, '+') : '' }}</option>
-                                        @endforeach
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $countries; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $country): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                            <option value="<?php echo e($country->id); ?>" <?php if((int) $selectedPhoneCountryId === (int) $country->id): echo 'selected'; endif; ?>><?php echo e($country->iso2 ? strtoupper($country->iso2) . ' · ' : ''); ?><?php echo e($country->phone_code ? '+' . ltrim($country->phone_code, '+') : ''); ?></option>
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                     </select>
                                 </div>
                                 <div>
                                     <label class="field-label">Phone</label>
-                                    <input name="phone" value="{{ old('phone', $customerDetails['phone'] ?? '') }}" class="input-clean text-sm">
+                                    <input name="phone" value="<?php echo e(old('phone', $customerDetails['phone'] ?? '')); ?>" class="input-clean text-sm">
                                 </div>
                             </div>
 
@@ -1546,31 +1567,31 @@
                                 <div class="mt-4 grid gap-4 md:grid-cols-2">
                                     <div class="md:col-span-2">
                                         <label class="field-label">Address line 1</label>
-                                        <input name="line1" value="{{ old('line1', $addressRow['line1'] ?? '') }}" class="input-clean text-sm">
+                                        <input name="line1" value="<?php echo e(old('line1', $addressRow['line1'] ?? '')); ?>" class="input-clean text-sm">
                                     </div>
                                     <div class="md:col-span-2">
                                         <label class="field-label">Address line 2</label>
-                                        <input name="line2" value="{{ old('line2', $addressRow['line2'] ?? '') }}" class="input-clean text-sm">
+                                        <input name="line2" value="<?php echo e(old('line2', $addressRow['line2'] ?? '')); ?>" class="input-clean text-sm">
                                     </div>
                                     <div>
                                         <label class="field-label">City</label>
-                                        <input name="city" value="{{ old('city', $addressRow['city'] ?? '') }}" class="input-clean text-sm">
+                                        <input name="city" value="<?php echo e(old('city', $addressRow['city'] ?? '')); ?>" class="input-clean text-sm">
                                     </div>
                                     <div>
                                         <label class="field-label">Region</label>
-                                        <input name="region" value="{{ old('region', $addressRow['region'] ?? '') }}" class="input-clean text-sm">
+                                        <input name="region" value="<?php echo e(old('region', $addressRow['region'] ?? '')); ?>" class="input-clean text-sm">
                                     </div>
                                     <div>
                                         <label class="field-label">Postcode</label>
-                                        <input name="postcode" value="{{ old('postcode', $addressRow['postcode'] ?? '') }}" class="input-clean text-sm">
+                                        <input name="postcode" value="<?php echo e(old('postcode', $addressRow['postcode'] ?? '')); ?>" class="input-clean text-sm">
                                     </div>
                                     <div>
                                         <label class="field-label">Country</label>
                                         <select name="country_id" class="input-clean text-sm">
                                             <option value="">Choose country</option>
-                                            @foreach ($countries as $country)
-                                                <option value="{{ $country->id }}" @selected((int) $selectedCountryId === (int) $country->id)>{{ $country->name }}</option>
-                                            @endforeach
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $countries; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $country): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                                <option value="<?php echo e($country->id); ?>" <?php if((int) $selectedCountryId === (int) $country->id): echo 'selected'; endif; ?>><?php echo e($country->name); ?></option>
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                         </select>
                                     </div>
                                 </div>
@@ -1590,28 +1611,28 @@
                         <h2 class="text-xl font-black text-slate-950">Notes</h2>
                         <p class="mt-1 text-sm text-slate-500">Customer request notes are shown first. Internal staff notes are below.</p>
 
-                        @if (!empty($requestNotes['has_notes']))
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['has_notes'])): ?>
                             <div class="mt-4 rounded-3xl border border-amber-200 bg-amber-50 p-4">
                                 <div class="flex flex-wrap items-center justify-between gap-2">
                                     <p class="text-xs font-black uppercase tracking-widest text-amber-700">Customer order request notes</p>
-                                    @if (!empty($requestNotes['request_ref']))
-                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #{{ $requestNotes['request_ref'] }}</span>
-                                    @endif
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['request_ref'])): ?>
+                                        <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-black text-amber-800">Request #<?php echo e($requestNotes['request_ref']); ?></span>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
-                                @if (!empty($requestNotes['notes']))
-                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['notes'] }}</p>
-                                @elseif (!empty($requestNotes['converted_note_body']))
-                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950">{{ $requestNotes['converted_note_body'] }}</p>
-                                @endif
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['notes'])): ?>
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950"><?php echo e($requestNotes['notes']); ?></p>
+                                <?php elseif(!empty($requestNotes['converted_note_body'])): ?>
+                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-amber-950"><?php echo e($requestNotes['converted_note_body']); ?></p>
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                             </div>
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
                         <form
                             method="POST"
-                            action="{{ route('draft-orders.notes.store', $draft->id) }}"
+                            action="<?php echo e(route('draft-orders.notes.store', $draft->id)); ?>"
                             class="mt-4"
                         >
-                            @csrf
+                            <?php echo csrf_field(); ?>
                             <textarea
                                 name="body"
                                 rows="3"
@@ -1624,20 +1645,21 @@
                                 >Add note</button></div>
                         </form>
                         <div class="mt-5 space-y-3">
-                            @forelse ($notes as $note)
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $notes; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $note): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                                 <div class="rounded-2xl bg-slate-50 p-4">
                                     <div class="flex flex-wrap items-center justify-between gap-2">
                                         <p class="text-sm font-bold text-slate-900">
-                                            {{ $note->title ?: ucfirst(str_replace('_', ' ', $note->type)) }}</p>
-                                        <p class="text-xs text-slate-400">{{ $note->author_name ?: 'System' }} ·
-                                            {{ $note->created_at ? \Carbon\Carbon::parse($note->created_at)->format('d M Y H:i') : '' }}
+                                            <?php echo e($note->title ?: ucfirst(str_replace('_', ' ', $note->type))); ?></p>
+                                        <p class="text-xs text-slate-400"><?php echo e($note->author_name ?: 'System'); ?> ·
+                                            <?php echo e($note->created_at ? \Carbon\Carbon::parse($note->created_at)->format('d M Y H:i') : ''); ?>
+
                                         </p>
                                     </div>
-                                    <p class="mt-2 whitespace-pre-line text-sm text-slate-600">{{ $note->body }}</p>
+                                    <p class="mt-2 whitespace-pre-line text-sm text-slate-600"><?php echo e($note->body); ?></p>
                                 </div>
-                            @empty
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 <p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">No notes yet.</p>
-                            @endforelse
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
                     </section>
 
@@ -1646,10 +1668,10 @@
                         x-cloak
                         class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                     >
-                        @php
+                        <?php
                             $displayRate = (float) ($draft->dabba_fee_rate ?? 0.20);
                             if ($displayRate <= 1) { $displayRate = $displayRate * 100; }
-                        @endphp
+                        ?>
                         <div class="flex flex-wrap items-start justify-between gap-3">
                             <div>
                                 <h2 class="text-xl font-black text-slate-950">Dabba fees</h2>
@@ -1658,24 +1680,24 @@
                             <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">Draft-only policy</span>
                         </div>
 
-                        <form method="POST" action="{{ route('draft-orders.fees.update', $draft->id) }}" class="mt-5 rounded-3xl bg-slate-50 p-4">
-                            @csrf
-                            @method('PATCH')
+                        <form method="POST" action="<?php echo e(route('draft-orders.fees.update', $draft->id)); ?>" class="mt-5 rounded-3xl bg-slate-50 p-4">
+                            <?php echo csrf_field(); ?>
+                            <?php echo method_field('PATCH'); ?>
                             <div class="grid gap-4 md:grid-cols-[220px_180px_180px_minmax(0,1fr)] md:items-end">
                                 <div>
                                     <label class="field-label">Fee mode</label>
                                     <select name="fee_mode" class="input-clean text-sm">
-                                        <option value="standard" @selected(($draft->fee_mode ?? 'standard') === 'standard')>Standard fee</option>
-                                        <option value="fee_disabled" @selected(($draft->fee_mode ?? '') === 'fee_disabled')>Fee disabled</option>
+                                        <option value="standard" <?php if(($draft->fee_mode ?? 'standard') === 'standard'): echo 'selected'; endif; ?>>Standard fee</option>
+                                        <option value="fee_disabled" <?php if(($draft->fee_mode ?? '') === 'fee_disabled'): echo 'selected'; endif; ?>>Fee disabled</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label class="field-label">Rate %</label>
-                                    <input name="dabba_fee_rate" type="number" step="0.01" min="0" max="100" value="{{ old('dabba_fee_rate', number_format($displayRate, 2, '.', '')) }}" class="input-clean text-sm">
+                                    <input name="dabba_fee_rate" type="number" step="0.01" min="0" max="100" value="<?php echo e(old('dabba_fee_rate', number_format($displayRate, 2, '.', ''))); ?>" class="input-clean text-sm">
                                 </div>
                                 <div>
                                     <label class="field-label">Minimum £</label>
-                                    <input name="dabba_fee_min" type="number" step="0.01" min="0" value="{{ old('dabba_fee_min', number_format((float) ($draft->dabba_fee_min ?? 10), 2, '.', '')) }}" class="input-clean text-sm">
+                                    <input name="dabba_fee_min" type="number" step="0.01" min="0" value="<?php echo e(old('dabba_fee_min', number_format((float) ($draft->dabba_fee_min ?? 10), 2, '.', ''))); ?>" class="input-clean text-sm">
                                 </div>
                                 <div class="flex md:justify-end">
                                     <button type="submit" class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700">Save fee policy</button>
@@ -1685,31 +1707,31 @@
                         </form>
 
                         <div class="mt-5 grid gap-3 md:grid-cols-2">
-                            @forelse ($retailerSummaries as $summary)
-                                @php
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $retailerSummaries; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $summary): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                <?php
                                     $summaryRate = (float) ($summary->dabba_fee_rate ?? $draft->dabba_fee_rate ?? 0.20);
                                     if ($summaryRate <= 1) { $summaryRate = $summaryRate * 100; }
-                                @endphp
+                                ?>
                                 <div class="rounded-2xl border border-slate-200 p-4">
                                     <div class="flex items-start justify-between gap-3">
                                         <div>
-                                            <p class="font-black text-slate-900">{{ $summary->retailer_name ?: 'Unknown retailer' }}</p>
-                                            <p class="mt-1 text-xs font-bold text-slate-500">Rate {{ number_format($summaryRate, 2) }}% · Min {{ $money($summary->dabba_fee_min ?? $draft->dabba_fee_min ?? 10) }}</p>
+                                            <p class="font-black text-slate-900"><?php echo e($summary->retailer_name ?: 'Unknown retailer'); ?></p>
+                                            <p class="mt-1 text-xs font-bold text-slate-500">Rate <?php echo e(number_format($summaryRate, 2)); ?>% · Min <?php echo e($money($summary->dabba_fee_min ?? $draft->dabba_fee_min ?? 10)); ?></p>
                                         </div>
-                                        @if (!empty($summary->dabba_fee_is_disabled))
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($summary->dabba_fee_is_disabled)): ?>
                                             <span class="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-700">Disabled</span>
-                                        @endif
+                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                     </div>
                                     <div class="mt-3 space-y-1 text-sm">
-                                        <div class="flex justify-between"><span>{{ $isCustomerSelfPurchase ? 'Goods value (reference)' : 'Goods subtotal' }}</span><strong>{{ $money($summary->retailer_subtotal) }}</strong></div>
-                                        <div class="flex justify-between"><span>Retailer delivery</span><strong>{{ $money($summary->retailer_delivery_fee_total) }}</strong></div>
-                                        <div class="flex justify-between border-t pt-2"><span>Dabba fee</span><strong>{{ $money($summary->dabba_fee) }}</strong></div>
-                                        <div class="flex justify-between text-purple-700"><span>{{ $isCustomerSelfPurchase ? 'Billable total' : 'Retailer total' }}</span><strong>{{ $money($summary->retailer_grand_total) }}</strong></div>
+                                        <div class="flex justify-between"><span><?php echo e($isCustomerSelfPurchase ? 'Goods value (reference)' : 'Goods subtotal'); ?></span><strong><?php echo e($money($summary->retailer_subtotal)); ?></strong></div>
+                                        <div class="flex justify-between"><span>Retailer delivery</span><strong><?php echo e($money($summary->retailer_delivery_fee_total)); ?></strong></div>
+                                        <div class="flex justify-between border-t pt-2"><span>Dabba fee</span><strong><?php echo e($money($summary->dabba_fee)); ?></strong></div>
+                                        <div class="flex justify-between text-purple-700"><span><?php echo e($isCustomerSelfPurchase ? 'Billable total' : 'Retailer total'); ?></span><strong><?php echo e($money($summary->retailer_grand_total)); ?></strong></div>
                                     </div>
                                 </div>
-                            @empty
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 <p class="text-sm text-slate-500">No fee groups yet.</p>
-                            @endforelse
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
                     </section>
 
@@ -1724,13 +1746,14 @@
                                 <p class="mt-1 text-sm font-semibold text-slate-500">Meaningful draft events, notes and version history for this workbench.</p>
                             </div>
                             <span class="inline-flex w-fit rounded-full bg-purple-50 px-3 py-1 text-xs font-black text-purple-700">
-                                {{ ($activityLogs ?? collect())->count() }} event{{ ($activityLogs ?? collect())->count() === 1 ? '' : 's' }}
+                                <?php echo e(($activityLogs ?? collect())->count()); ?> event<?php echo e(($activityLogs ?? collect())->count() === 1 ? '' : 's'); ?>
+
                             </span>
                         </div>
 
                         <div class="mt-5">
-                            @forelse (($activityLogs ?? collect()) as $log)
-                                @php
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = ($activityLogs ?? collect()); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $log): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                <?php
                                     $activityDate = $log->occurred_at ?: $log->created_at;
                                     $activityLabel = match ((string) ($log->type ?? '')) {
                                         'note', 'draft_note' => 'Staff note',
@@ -1758,12 +1781,12 @@
 ");
                                         }
                                     }
-                                @endphp
+                                ?>
 
-                                <div class="relative pl-8 {{ ! $loop->last ? 'pb-5' : '' }}">
-                                    @if (! $loop->last)
+                                <div class="relative pl-8 <?php echo e(! $loop->last ? 'pb-5' : ''); ?>">
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(! $loop->last): ?>
                                         <div class="absolute left-[10px] top-6 h-full w-px bg-slate-200"></div>
-                                    @endif
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                     <div class="absolute left-0 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white ring-4 ring-purple-50">
                                         <div class="h-2.5 w-2.5 rounded-full bg-purple-500"></div>
                                     </div>
@@ -1772,66 +1795,67 @@
                                         <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                             <div class="min-w-0">
                                                 <div class="flex flex-wrap items-center gap-2">
-                                                    <span class="rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ring-1 {{ $activityTone }}">{{ $activityLabel }}</span>
-                                                    <h3 class="text-sm font-black text-slate-950">{{ $activityTitle }}</h3>
+                                                    <span class="rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ring-1 <?php echo e($activityTone); ?>"><?php echo e($activityLabel); ?></span>
+                                                    <h3 class="text-sm font-black text-slate-950"><?php echo e($activityTitle); ?></h3>
                                                 </div>
-                                                @if ($activityBody !== '')
-                                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600">{{ $activityBody }}</p>
-                                                @endif
-                                                @if (($log->type ?? '') === 'order_version' && !empty($log->order_id))
-                                                    <a href="{{ route('orders.show', $log->order_id) }}" class="mt-3 inline-flex items-center rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-700">
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($activityBody !== ''): ?>
+                                                    <p class="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600"><?php echo e($activityBody); ?></p>
+                                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($log->type ?? '') === 'order_version' && !empty($log->order_id)): ?>
+                                                    <a href="<?php echo e(route('orders.show', $log->order_id)); ?>" class="mt-3 inline-flex items-center rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-black text-white hover:bg-violet-700">
                                                         Open order ↗
                                                     </a>
-                                                @endif
+                                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                             </div>
                                             <div class="shrink-0 text-left text-xs font-bold text-slate-400 sm:text-right">
-                                                <div>{{ $activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('d M Y') : 'Date unknown' }}</div>
-                                                <div>{{ $activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('H:i') : '' }}</div>
+                                                <div><?php echo e($activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('d M Y') : 'Date unknown'); ?></div>
+                                                <div><?php echo e($activityDate ? \Illuminate\Support\Carbon::parse($activityDate)->format('H:i') : ''); ?></div>
                                             </div>
                                         </div>
                                         <div class="mt-3 text-xs font-bold text-slate-400">
-                                            {{ $log->author_name ?: 'DabbaDesk' }}
+                                            <?php echo e($log->author_name ?: 'DabbaDesk'); ?>
+
                                         </div>
                                     </div>
                                 </div>
-                            @empty
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                                     <p class="text-sm font-black text-slate-700">No activity recorded yet.</p>
                                     <p class="mt-1 text-sm text-slate-500">New meaningful actions on this draft will appear here.</p>
                                 </div>
-                            @endforelse
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
                     </section>
             </main>
 
-            {{-- Sticky sidebar --}}
+            
             <aside class="space-y-3 text-[13px] xl:sticky xl:top-4 xl:self-start">
                 <section class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between">
-                        <h2 class="text-base font-black text-slate-950">{{ $isCustomerSelfPurchase ? 'Billable summary' : 'Order summary' }}</h2><button
+                        <h2 class="text-base font-black text-slate-950"><?php echo e($isCustomerSelfPurchase ? 'Billable summary' : 'Order summary'); ?></h2><button
                             type="button"
                             disabled
                             class="rounded-xl border border-slate-200 px-2.5 py-1 text-[11px] font-black text-slate-400"
                         >Details</button>
                     </div>
                     <div class="mt-3 space-y-2 text-[13px]">
-                        @if ($isCustomerSelfPurchase)
-                            <div class="flex justify-between"><span class="text-slate-500">Goods value <span class="text-[10px] font-black uppercase text-sky-600">ref</span></span><strong>{{ $money($computedGoodsSubtotal) }}</strong></div>
-                        @else
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCustomerSelfPurchase): ?>
+                            <div class="flex justify-between"><span class="text-slate-500">Goods value <span class="text-[10px] font-black uppercase text-sky-600">ref</span></span><strong><?php echo e($money($computedGoodsSubtotal)); ?></strong></div>
+                        <?php else: ?>
                             <div class="flex justify-between"><span class="text-slate-500">Items subtotal</span><strong x-text="money(totals.itemsSubtotal)"></strong></div>
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         <div class="flex justify-between"><span class="text-slate-500">Delivery fees</span><strong x-text="money(totals.retailerDelivery)"></strong></div>
                         <div class="flex justify-between"><span class="text-slate-500">Dabba fee</span><strong x-text="money(totals.dabbaFee)"></strong></div>
                     </div>
                     <div class="mt-3 border-t border-slate-200 pt-3">
                         <div class="flex items-end justify-between"><span
-                                class="text-sm font-black text-slate-600">{{ $isCustomerSelfPurchase ? 'Billable total' : 'Total' }}</span><strong
+                                class="text-sm font-black text-slate-600"><?php echo e($isCustomerSelfPurchase ? 'Billable total' : 'Total'); ?></span><strong
                                 class="text-2xl font-black text-slate-950"
                                 x-text="money(totals.grandTotal)"
                             ></strong></div>
                         <span
                             class="mt-3 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600"
-                        >Qty {{ $qtyTotal }}</span>
+                        >Qty <?php echo e($qtyTotal); ?></span>
                     </div>
                 </section>
 
@@ -1844,17 +1868,17 @@
                         >Edit</button>
                     </div>
                     <div class="mt-3 space-y-1.5 text-[13px] text-slate-600">
-                        <p class="font-black text-slate-950">{{ $customerName }}</p>
-                        <p>{{ $customerDetails['phone'] ?? '—' }}</p>
-                        <p>{{ $customerDetails['email'] ?? '—' }}</p>
-                        <p class="whitespace-pre-line">{{ $customerDetails['address'] ?? '—' }}</p>
-                        @if (!empty($requestNotes['has_notes']))
+                        <p class="font-black text-slate-950"><?php echo e($customerName); ?></p>
+                        <p><?php echo e($customerDetails['phone'] ?? '—'); ?></p>
+                        <p><?php echo e($customerDetails['email'] ?? '—'); ?></p>
+                        <p class="whitespace-pre-line"><?php echo e($customerDetails['address'] ?? '—'); ?></p>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($requestNotes['has_notes'])): ?>
                             <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
                                 <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Customer request note</p>
-                                <p class="mt-1 line-clamp-4 whitespace-pre-line text-xs font-semibold leading-5 text-amber-900">{{ $requestNotes['notes'] ?: $requestNotes['converted_note_body'] }}</p>
+                                <p class="mt-1 line-clamp-4 whitespace-pre-line text-xs font-semibold leading-5 text-amber-900"><?php echo e($requestNotes['notes'] ?: $requestNotes['converted_note_body']); ?></p>
                                 <button type="button" @click="tab='notes'; window.scrollTo({top: 0, behavior: 'smooth'});" class="mt-2 text-xs font-black text-amber-800 hover:text-amber-950">View notes →</button>
                             </div>
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
                 </section>
 
@@ -1868,23 +1892,23 @@
                     </div>
                     <form
                         method="POST"
-                        action="{{ route('draft-orders.update', $draft->id) }}"
+                        action="<?php echo e(route('draft-orders.update', $draft->id)); ?>"
                         data-allow-cancelled-submit="1"
                         class="mt-3 space-y-2.5"
                     >
-                        @csrf
-                        @method('PATCH')
+                        <?php echo csrf_field(); ?>
+                        <?php echo method_field('PATCH'); ?>
                         <div><label
                                 class="text-xs font-black uppercase tracking-widest text-slate-500">Status</label><select
                                 name="status"
                                 class="mt-1 w-full rounded-2xl border-slate-300 text-sm focus:border-purple-500 focus:ring-purple-500"
                             >
-                                @foreach ($statusOptions as $status)
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $statusOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $status): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                                     <option
-                                        value="{{ $status }}"
-                                        @selected(($draft->status ?? 'open') === $status)
-                                    >{{ ucfirst($status) }}</option>
-                                @endforeach
+                                        value="<?php echo e($status); ?>"
+                                        <?php if(($draft->status ?? 'open') === $status): echo 'selected'; endif; ?>
+                                    ><?php echo e(ucfirst($status)); ?></option>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                             </select></div>
                         <div><label class="text-xs font-black uppercase tracking-widest text-slate-500">Fee
                                 mode</label><select
@@ -1893,11 +1917,11 @@
                             >
                                 <option
                                     value="standard"
-                                    @selected(($draft->fee_mode ?? 'standard') === 'standard')
+                                    <?php if(($draft->fee_mode ?? 'standard') === 'standard'): echo 'selected'; endif; ?>
                                 >Standard fee</option>
                                 <option
                                     value="fee_disabled"
-                                    @selected(($draft->fee_mode ?? '') === 'fee_disabled')
+                                    <?php if(($draft->fee_mode ?? '') === 'fee_disabled'): echo 'selected'; endif; ?>
                                 >Fee disabled</option>
                             </select></div>
                         <label
@@ -1906,7 +1930,7 @@
                                 type="checkbox"
                                 name="home_delivery_requested"
                                 value="1"
-                                @checked(!empty($draft->home_delivery_requested))
+                                <?php if(!empty($draft->home_delivery_requested)): echo 'checked'; endif; ?>
                                 class="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                             > Home delivery requested</label>
                         <button
@@ -1920,7 +1944,7 @@
             </aside>
         </div>
 
-        {{-- Finalise / new version modal --}}
+        
         <div x-show="finaliseModal.open" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" @keydown.escape.window="finaliseModal.open=false">
             <div @click.outside="finaliseModal.open=false" class="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
                 <div class="flex items-start gap-4">
@@ -1931,28 +1955,28 @@
                             This will consume the draft and create a new immutable order snapshot from the current basket, customer and fee details.
                         </p>
                         <p class="mt-2 text-sm leading-6 text-slate-600" x-show="hasChildOrder">
-                            This draft has already created <strong>{{ $finalizedOrderLabel ?: 'an order' }}</strong>. Creating a new version will supersede the previous active order and create a new immutable order snapshot.
+                            This draft has already created <strong><?php echo e($finalizedOrderLabel ?: 'an order'); ?></strong>. Creating a new version will supersede the previous active order and create a new immutable order snapshot.
                         </p>
-                        @if ($isCustomerSelfPurchase)
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isCustomerSelfPurchase): ?>
                             <div class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-6 text-sky-900">
                                 <p class="font-black text-sky-950">Customer Self Purchase confirmation</p>
                                 <p class="mt-1">Dabba will not purchase these items. Only service, shipping and handling charges will be invoiced. Goods values remain for reference, arrivals and customs documentation.</p>
                             </div>
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
                 </div>
-                <form method="POST" action="{{ route('draft-orders.finalise', $draft->id) }}" data-allow-consumed-submit="1" class="mt-6 flex justify-end gap-3">
-                    @csrf
-                    @if ($hasChildOrder)
+                <form method="POST" action="<?php echo e(route('draft-orders.finalise', $draft->id)); ?>" data-allow-consumed-submit="1" class="mt-6 flex justify-end gap-3">
+                    <?php echo csrf_field(); ?>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($hasChildOrder): ?>
                         <input type="hidden" name="confirm_new_version" value="1">
-                    @endif
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     <button type="button" @click="finaliseModal.open=false" class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
                     <button type="submit" class="rounded-2xl bg-purple-600 px-5 py-3 text-sm font-black text-white hover:bg-purple-700" x-text="hasChildOrder ? 'Create New Version' : 'Create Order'"></button>
                 </form>
             </div>
         </div>
 
-        {{-- Consumed draft edit warning modal --}}
+        
         <div x-show="consumedEditModal.open" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" @keydown.escape.window="consumedEditModal.open=false">
             <div @click.outside="consumedEditModal.open=false" class="w-full max-w-lg rounded-3xl border border-amber-200 bg-white p-6 shadow-2xl">
                 <div class="flex items-start gap-4">
@@ -1960,7 +1984,7 @@
                     <div class="min-w-0">
                         <h2 class="text-xl font-black text-slate-950">Edit consumed draft?</h2>
                         <p class="mt-2 text-sm leading-6 text-slate-600">
-                            This draft already created {{ $finalizedOrderLabel ?: 'an order' }}. Any changes you make now are for a future order version. The existing child order remains unchanged.
+                            This draft already created <?php echo e($finalizedOrderLabel ?: 'an order'); ?>. Any changes you make now are for a future order version. The existing child order remains unchanged.
                         </p>
                     </div>
                 </div>
@@ -1971,7 +1995,7 @@
             </div>
         </div>
 
-        {{-- Modern delete confirmation modal --}}
+        
         <div
             x-show="deleteModal.open"
             x-cloak
@@ -2051,7 +2075,7 @@
             </div>
         </div>
 
-        {{-- Retailer-not-detected modal --}}
+        
         <div
             x-show="retailerModal.open"
             x-cloak
@@ -2114,8 +2138,8 @@
     </div>
 
     <script>
-        window.dabbaCancelledDraft = @js($isCancelledDraft);
-        window.dabbaConsumedDraft = @js($isConsumedDraft);
+        window.dabbaCancelledDraft = <?php echo \Illuminate\Support\Js::from($isCancelledDraft)->toHtml() ?>;
+        window.dabbaConsumedDraft = <?php echo \Illuminate\Support\Js::from($isConsumedDraft)->toHtml() ?>;
         window.dabbaConsumedDraftEditAcknowledged = false;
 
         window.dabbaDraftAutosave = async function(form) {
@@ -2173,7 +2197,7 @@
 
                 const csrf = data.get('_token') ||
                     document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ||
-                    '{{ csrf_token() }}';
+                    '<?php echo e(csrf_token()); ?>';
 
                 console.info('Draft autosave starting', {
                     action: form.action,
@@ -2555,4 +2579,14 @@
             }
         }
     </script>
-</x-app-layout>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $attributes = $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $component = $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php /**PATH /var/www/dabba-live/dabbadesk-v2/resources/views/draft-orders/show.blade.php ENDPATH**/ ?>
