@@ -40,7 +40,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/order-requests/{orderRequest}/review', [OrderRequestsController::class, 'markReviewed'])->name('order-requests.review');
     Route::post('/order-requests/{orderRequest}/cancel', [OrderRequestsController::class, 'cancel'])->name('order-requests.cancel');
     Route::post('/order-requests/{orderRequest}/retailers', [OrderRequestsController::class, 'storeRetailerForRequest'])->name('order-requests.retailers.store');
+    Route::post('/order-requests/{orderRequest}/items/{item}', [OrderRequestsController::class, 'updateItem'])->name('order-requests.items.update');
     Route::post('/order-requests/{orderRequest}/convert', [OrderRequestsController::class, 'convert'])->name('order-requests.convert');
+    Route::get('/order-requests/{orderRequest}/attachments/{attachment}', [OrderRequestsController::class, 'openAttachment'])->name('order-requests.attachments.show');
     Route::get('/order-requests/{orderRequest}', [OrderRequestsController::class, 'show'])->name('order-requests.show');
 
     Route::get('/draft-orders', [DraftOrdersController::class, 'index'])->name('draft-orders.index');

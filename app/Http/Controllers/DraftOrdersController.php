@@ -39,12 +39,22 @@ class DraftOrdersController extends Controller
         $draft = $drafts->find($draftOrder);
         abort_if(! $draft, 404);
 
+        $requestAttachments = collect();
+
+        if (! empty($draft->order_request_id)) {
+            $requestAttachments = DB::table('order_request_attachments')
+                ->where('order_request_id', (int) $draft->order_request_id)
+                ->orderBy('id')
+                ->get();
+        }
+
         return view('draft-orders.show', [
             'draft' => $draft,
             'items' => $drafts->items($draftOrder),
             'retailerSummaries' => $drafts->retailerSummaries($draftOrder),
             'notes' => $drafts->notes($draftOrder),
             'requestNotes' => $drafts->requestNotes($draftOrder),
+            'requestAttachments' => $requestAttachments,
             'activityLogs' => $drafts->activity($draftOrder),
             'customerDetails' => $drafts->customerDetails((int) $draft->customer_id),
             'countries' => $drafts->countries(),

@@ -1,11 +1,12 @@
 <x-app-layout>
     <x-slot name="header">
-        <div class="flex items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
-                <h2 class="text-xl font-semibold leading-tight text-gray-800">Order Request {{ $requestRow->request_ref }}</h2>
-                <p class="mt-1 text-sm text-gray-500">Confirm the customer, tidy details, then convert to draft.</p>
+                <p class="text-xs font-black uppercase tracking-[0.22em] text-indigo-500">Intake Review Desk</p>
+                <h2 class="mt-1 text-2xl font-black leading-tight text-slate-950">Order Request {{ $requestRow->request_ref }}</h2>
+                <p class="mt-1 text-sm text-slate-500">Review the customer request, correct bad links, resolve retailers, then convert to Draft Workbench.</p>
             </div>
-            <a href="{{ route('order-requests.index') }}" class="rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm hover:bg-gray-50">Back to requests</a>
+            <a href="{{ route('order-requests.index') }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50">Back to requests</a>
         </div>
     </x-slot>
 
@@ -26,146 +27,388 @@
         $isConverted = ! empty($requestRow->converted_at) || ($requestRow->status ?? '') === 'converted';
         $isCancelled = ($requestRow->status ?? '') === 'cancelled';
         $hasUnresolvedRetailers = isset($unresolvedRetailers) && $unresolvedRetailers->isNotEmpty();
+        $resolvedRetailerCount = $items->filter(fn ($item) => ! empty($item->retailer_id) && ! empty($item->matched_retailer_name))->count();
+        $unresolvedItemCount = max(0, $items->count() - $resolvedRetailerCount);
         $isCustomerSelfPurchase = ($requestRow->purchase_mode ?? 'standard') === 'customer_self_purchase';
+        $submittedAt = $requestRow->submitted_at ?: $requestRow->created_at;
+        $canEdit = ! $isConverted && ! $isCancelled;
+        $canConvert = $canEdit && ! $hasUnresolvedRetailers;
+        $statusLabel = $isConverted ? 'Converted' : ($isCancelled ? 'Cancelled' : ucfirst((string) ($requestRow->status ?: 'received')));
     @endphp
 
     <style>[x-cloak] { display: none !important; }</style>
 
-    <div class="space-y-5">
+    <div class="space-y-5 pb-24" x-data="{ cancelOpen: false }">
         @if (session('status'))
-            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-semibold text-emerald-800">{{ session('status') }}</div>
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800">{{ session('status') }}</div>
+        @endif
+
+        @if (session('success'))
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800">{{ session('success') }}</div>
         @endif
 
         @if ($errors->any())
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-800">
+            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-800">
                 @foreach ($errors->all() as $error)
                     <div>{{ $error }}</div>
                 @endforeach
             </div>
         @endif
 
-        <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
-            <section class="space-y-5">
-
-                @if ($isCustomerSelfPurchase)
-                    <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-sm">
-                        <p class="text-xs font-black uppercase tracking-[0.18em] text-sky-700">Customer self-purchase request</p>
-                        <p class="mt-1 text-sm font-semibold leading-6 text-sky-900">Company policy: this request must contain only goods the customer will buy/pay for directly. Dabba will charge service/delivery and manage arrival/collection after goods reach Dabba.</p>
+        @if ($isCustomerSelfPurchase)
+            <div class="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-sky-700">Customer self-purchase request</p>
+                        <p class="mt-2 max-w-4xl text-sm font-semibold leading-6 text-sky-950">Customer buys/pays the retailer directly. Dabba should not put these items into Dabba purchasing-to-buy workflows, but the request still needs clean retailer/product data for arrival, customs and customer communication later.</p>
                     </div>
-                @endif
+                    <span class="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-700 ring-1 ring-sky-200">Service / shipping only</span>
+                </div>
+            </div>
+        @endif
 
-                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_430px]">
+            <main class="space-y-5">
+                <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
                         <div>
-                            <p class="text-xs font-black uppercase tracking-wide text-gray-400">Submitted by customer</p>
-                            <h3 class="mt-1 text-2xl font-black text-gray-900">{{ $requestName }}</h3>
-                            <p class="mt-1 text-sm text-gray-500">{{ $requestRow->customer_email ?: 'No email' }} · {{ $requestRow->customer_phone_digits ?: 'No phone' }}</p>
+                            <div class="flex flex-wrap items-start justify-between gap-4">
+                                <div>
+                                    <p class="text-xs font-black uppercase tracking-wide text-slate-400">Submitted customer</p>
+                                    <h3 class="mt-1 text-2xl font-black text-slate-950">{{ $requestName }}</h3>
+                                    <p class="mt-1 text-sm font-semibold text-slate-500">{{ $requestRow->customer_email ?: 'No email supplied' }}</p>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $isConverted ? 'bg-emerald-100 text-emerald-800' : ($isCancelled ? 'bg-rose-100 text-rose-800' : 'bg-indigo-100 text-indigo-700') }}">{{ $statusLabel }}</span>
+                                    <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $isCustomerSelfPurchase ? 'bg-sky-100 text-sky-800' : 'bg-slate-100 text-slate-700' }}">{{ $isCustomerSelfPurchase ? 'Self purchase' : 'Dabba purchase' }}</span>
+                                </div>
+                            </div>
+
+                            <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Request ref</p>
+                                    <p class="mt-1 text-sm font-black text-slate-950">{{ $requestRow->request_ref }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Submitted</p>
+                                    <p class="mt-1 text-sm font-black text-slate-950">{{ $submittedAt ?: '—' }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Source</p>
+                                    <p class="mt-1 text-sm font-black text-slate-950">{{ Str::of((string) ($requestRow->source ?: 'public'))->replace('_', ' ')->title() }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                                    <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Estimate</p>
+                                    <p class="mt-1 text-sm font-black text-slate-950">£{{ number_format((float) $requestRow->estimated_total, 2) }}</p>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            @if ($isCustomerSelfPurchase)
-                                <span class="rounded-full bg-sky-100 px-4 py-2 text-sm font-black text-sky-800">Customer self-purchase</span>
-                            @else
-                                <span class="rounded-full bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700">Dabba purchase</span>
-                            @endif
-                            <span class="rounded-full px-4 py-2 text-sm font-black {{ $requestRow->converted_at ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800' }}">{{ ucfirst($requestRow->status) }}</span>
+
+                        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Phone</p>
+                                <p class="mt-1 text-sm font-black text-slate-950">{{ $requestRow->customer_phone_digits ? (($requestRow->phone_country_code ? '+' . $requestRow->phone_country_code . ' ' : '') . $requestRow->customer_phone_digits) : '—' }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ $requestRow->phone_country_name ?: '' }}</p>
+                            </div>
+                            <div class="rounded-2xl border border-slate-200 bg-white p-4">
+                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Address</p>
+                                <p class="mt-1 text-sm font-black text-slate-950">{{ $requestRow->customer_address_line1 ?: '—' }}</p>
+                                <p class="mt-1 text-xs text-slate-500">{{ trim(($requestRow->customer_address_postcode ?: '') . ' ' . ($requestRow->address_country_name ?: '')) ?: 'No country/postcode' }}</p>
+                            </div>
                         </div>
                     </div>
 
-                    <div class="mt-5 grid gap-3 md:grid-cols-3">
-                        <div class="rounded-2xl bg-gray-50 p-4">
-                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Company</p>
-                            <p class="mt-1 text-sm font-semibold text-gray-900">{{ $requestRow->customer_company_name ?: '—' }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-gray-50 p-4">
-                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Phone</p>
-                            <p class="mt-1 text-sm font-semibold text-gray-900">{{ $requestRow->customer_phone_digits ? (($requestRow->phone_country_code ? '+' . $requestRow->phone_country_code . ' ' : '') . $requestRow->customer_phone_digits) : '—' }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-gray-50 p-4">
-                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Estimate</p>
-                            <p class="mt-1 text-sm font-black text-gray-900">£{{ number_format((float) $requestRow->estimated_total, 2) }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-gray-50 p-4 md:col-span-3">
-                            <p class="text-xs font-bold uppercase tracking-wide text-gray-400">Address</p>
-                            <p class="mt-1 text-sm font-semibold text-gray-900">
-                                {{ $requestRow->customer_address_line1 ?: '—' }}
-                                @if ($requestRow->customer_address_postcode)<span class="text-gray-500">{{ $requestRow->customer_address_postcode }}</span>@endif
-                                @if ($requestRow->address_country_name)<span class="text-gray-500">{{ $requestRow->address_country_name }}</span>@endif
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 rounded-2xl border {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'border-amber-200 bg-amber-50' : 'border-gray-200 bg-gray-50' }} p-4">
+                    <div class="mt-4 rounded-2xl border {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50' }} p-4">
                         <div class="flex flex-wrap items-center justify-between gap-2">
-                            <p class="text-xs font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700' : 'text-gray-500' }}">Customer order request notes</p>
-                            <span class="rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700 ring-1 ring-amber-200' : 'text-gray-400 ring-1 ring-gray-200' }}">
-                                {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'carried through lifecycle' : 'none supplied' }}
-                            </span>
+                            <p class="text-xs font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700' : 'text-slate-500' }}">Customer request notes</p>
+                            <span class="rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-wide {{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'text-amber-700 ring-1 ring-amber-200' : 'text-slate-400 ring-1 ring-slate-200' }}">{{ trim((string) ($requestRow->notes ?? '')) !== '' ? 'copied through lifecycle' : 'none supplied' }}</span>
                         </div>
                         @if (trim((string) ($requestRow->notes ?? '')) !== '')
                             <p class="mt-2 whitespace-pre-wrap text-sm leading-6 text-amber-950">{{ $requestRow->notes }}</p>
-                            <p class="mt-3 text-xs font-semibold text-amber-800">These notes are copied into the draft notes and remain visible on the final order timeline.</p>
                         @else
-                            <p class="mt-2 text-sm text-gray-500">The customer did not add order-level notes to this request.</p>
+                            <p class="mt-2 text-sm text-slate-500">The customer did not add order-level notes to this request.</p>
                         @endif
                     </div>
-                </div>
+                </section>
 
-                <div class="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
-                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-                        <div>
-                            <h3 class="text-lg font-black text-gray-900">Submitted items</h3>
-                            <p class="text-sm text-gray-500">Compact review; detailed polishing still happens in the draft workbench.</p>
+                <section class="grid gap-4 lg:grid-cols-3">
+                    <div class="rounded-3xl border {{ $hasUnresolvedRetailers ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }} p-5 shadow-sm lg:col-span-2">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasUnresolvedRetailers ? 'text-amber-700' : 'text-emerald-700' }}">Request health</p>
+                                <h3 class="mt-1 text-xl font-black text-slate-950">{{ $hasUnresolvedRetailers ? 'Review required before draft' : 'Ready for draft conversion' }}</h3>
+                                <p class="mt-1 text-sm font-semibold {{ $hasUnresolvedRetailers ? 'text-amber-900' : 'text-emerald-900' }}">
+                                    {{ $hasUnresolvedRetailers ? 'Order Requests are the correction stage. Resolve every retailer before this request can move forward.' : 'All request retailers are resolved. The draft can inherit clean intake data.' }}
+                                </p>
+                            </div>
+                            <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $hasUnresolvedRetailers ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white' }}">{{ $hasUnresolvedRetailers ? 'Locked' : 'Clean' }}</span>
                         </div>
-                        <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-black text-gray-600">{{ $items->count() }} item{{ $items->count() === 1 ? '' : 's' }}</span>
+                        <div class="mt-5 grid gap-3 sm:grid-cols-4">
+                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                                <p class="text-2xl font-black text-slate-950">{{ $items->count() }}</p>
+                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Items</p>
+                            </div>
+                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                                <p class="text-2xl font-black text-slate-950">{{ $resolvedRetailerCount }}/{{ $items->count() }}</p>
+                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Retailers resolved</p>
+                            </div>
+                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                                <p class="text-2xl font-black {{ $unresolvedItemCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $unresolvedItemCount }}</p>
+                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Needs attention</p>
+                            </div>
+                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                                <p class="text-2xl font-black text-slate-950">{{ $attachments->count() }}</p>
+                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Attachments</p>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Item</th>
-                                    <th class="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-gray-500">Retailer</th>
-                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Qty</th>
-                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Unit</th>
-                                    <th class="px-4 py-3 text-right text-xs font-bold uppercase tracking-wide text-gray-500">Line</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 bg-white">
-                                @foreach ($items as $item)
-                                    <tr>
-                                        <td class="px-4 py-3 align-top">
-                                            <div class="max-w-xl text-sm font-bold text-gray-900">{{ $item->description }}</div>
-                                            <div class="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
-                                                @if ($item->product_code)<span>Code: {{ $item->product_code }}</span>@endif
+                    <div class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Attachments</p>
+                                <h3 class="mt-1 text-lg font-black text-slate-950">Customer files</h3>
+                            </div>
+                            <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $attachments->count() }}</span>
+                        </div>
+                        @if ($attachments->isEmpty())
+                            <p class="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-semibold text-slate-500">No attachments supplied.</p>
+                        @else
+                            <div class="mt-4 space-y-2">
+                                @foreach ($attachments as $attachment)
+                                    <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                        <div class="min-w-0">
+                                            <p class="truncate text-sm font-black text-slate-900">{{ $attachment->original_name ?? basename((string) $attachment->path) ?? 'Attachment' }}</p>
+                                            <p class="mt-0.5 text-xs font-semibold text-slate-500">{{ $attachment->mime ?? 'file' }} @if(! empty($attachment->size)) · {{ number_format(((float) $attachment->size) / 1024, 1) }} KB @endif</p>
+                                        </div>
+                                        <a href="{{ route('order-requests.attachments.show', [$requestRow->id, $attachment->id]) }}" target="_blank" rel="noopener noreferrer" aria-label="Open attachment" title="Open attachment" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-indigo-200 bg-white text-lg font-black text-indigo-600 shadow-sm hover:bg-indigo-50">↗</a>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+                    </div>
+                </section>
+
+                <section class="rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+                        <div>
+                            <h3 class="text-xl font-black text-slate-950">Request items</h3>
+                            <p class="mt-1 text-sm text-slate-500">Correct bad links here. DabbaDesk re-runs retailer matching when an item is saved.</p>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $items->count() }} item{{ $items->count() === 1 ? '' : 's' }}</span>
+                    </div>
+
+                    <div class="grid gap-4 p-5">
+                        @forelse ($items as $item)
+                            @php
+                                $itemRetailerResolved = ! empty($item->retailer_id) && ! empty($item->matched_retailer_name);
+                                $itemTotal = (float) ($item->line_total ?? ((float) $item->unit_price * (int) $item->quantity));
+                            @endphp
+                            <article class="rounded-3xl border {{ $itemRetailerResolved ? 'border-slate-200 bg-white' : 'border-amber-300 bg-amber-50' }} p-4 shadow-sm">
+                                <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+                                    <div class="min-w-0">
+                                        <div class="flex flex-wrap items-start justify-between gap-3">
+                                            <div class="min-w-0">
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-slate-600">Item #{{ $loop->iteration }}</span>
+                                                    @if ($itemRetailerResolved)
+                                                        <span class="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-emerald-700">Retailer resolved</span>
+                                                    @else
+                                                        <span class="rounded-full bg-amber-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-white">Needs retailer</span>
+                                                    @endif
+                                                </div>
+                                                <h4 class="mt-2 text-base font-black leading-6 text-slate-950">{{ $item->description ?: 'No description supplied' }}</h4>
+                                            </div>
+                                            <div class="text-right">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Line total</p>
+                                                <p class="text-lg font-black text-slate-950">£{{ number_format($itemTotal, 2) }}</p>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-4 grid gap-3 md:grid-cols-3">
+                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100 md:col-span-2">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Customer/product link</p>
                                                 @if ($item->retailer_url)
-                                                    <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" aria-label="Open product link" title="Open product link" class="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
+                                                    <div class="mt-1 flex items-center gap-2">
+                                                        <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-white text-base font-black text-indigo-600 hover:bg-indigo-50" title="Open product link" aria-label="Open product link">↗</a>
+                                                        <p class="min-w-0 truncate text-sm font-semibold text-slate-700">{{ $item->retailer_url }}</p>
+                                                    </div>
+                                                @else
+                                                    <p class="mt-1 text-sm font-semibold text-slate-400">No link supplied</p>
                                                 @endif
                                             </div>
-                                            @if ($item->notes)<div class="mt-2 rounded-xl bg-gray-50 p-2 text-xs text-gray-600">{{ $item->notes }}</div>@endif
-                                        </td>
-                                        <td class="px-4 py-3 align-top text-sm text-gray-700">
-                                            <div class="font-bold">{{ $item->matched_retailer_name ?: ($item->retailer_name ?: 'Needs review') }}</div>
-                                            @if (! $item->matched_retailer_name)<div class="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-800">Needs retailer setup</div>@endif
-                                        </td>
-                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-bold text-gray-900">{{ $item->quantity }}</td>
-                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm text-gray-700">£{{ number_format((float) $item->unit_price, 2) }}</td>
-                                        <td class="whitespace-nowrap px-4 py-3 text-right align-top text-sm font-black text-gray-900">£{{ number_format((float) ($item->line_total ?? ($item->unit_price * $item->quantity)), 2) }}</td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Product code</p>
+                                                <p class="mt-1 text-sm font-black text-slate-900">{{ $item->product_code ?: '—' }}</p>
+                                            </div>
+                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Quantity</p>
+                                                <p class="mt-1 text-sm font-black text-slate-900">{{ (int) $item->quantity }}</p>
+                                            </div>
+                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Unit price</p>
+                                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $item->unit_price, 2) }}</p>
+                                            </div>
+                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Raw retailer name</p>
+                                                <p class="mt-1 text-sm font-black text-slate-900">{{ $item->retailer_name ?: '—' }}</p>
+                                            </div>
+                                        </div>
 
-            <aside class="space-y-5 xl:sticky xl:top-6 xl:self-start">
-                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-                    <div class="flex items-center justify-between gap-3">
-                        <div>
-                            <h3 class="text-lg font-black text-gray-900">Customer & conversion</h3>
-                            <p class="mt-1 text-sm text-gray-500">Auto-match is retained, but staff can edit before draft creation.</p>
-                        </div>
+                                        @if ($item->notes)
+                                            <div class="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                                                <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Item notes</p>
+                                                <p class="mt-1 whitespace-pre-wrap text-sm leading-6 text-amber-950">{{ $item->notes }}</p>
+                                            </div>
+                                        @endif
+
+                                        @if ($canEdit)
+                                            <details class="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                                                <summary class="cursor-pointer text-sm font-black text-indigo-800">Edit item / correct link</summary>
+                                                <form method="POST" action="{{ route('order-requests.items.update', [$requestRow->id, $item->id]) }}" class="mt-4 grid gap-3">
+                                                    @csrf
+                                                    <div>
+                                                        <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Product / retailer link</label>
+                                                        <input name="retailer_url" value="{{ old('retailer_url', $item->retailer_url) }}" placeholder="https://www.argos.co.uk/..." class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                        <p class="mt-1 text-[11px] font-semibold text-indigo-700">Example correction: change <span class="font-black">https://argos</span> to <span class="font-black">https://www.argos.co.uk</span>, then save.</p>
+                                                    </div>
+                                                    <div class="grid gap-3 md:grid-cols-2">
+                                                        <div>
+                                                            <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Retailer name</label>
+                                                            <input name="retailer_name" value="{{ old('retailer_name', $item->retailer_name ?: $item->matched_retailer_name) }}" placeholder="Argos" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                        </div>
+                                                        <div>
+                                                            <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Product code / SKU</label>
+                                                            <input name="product_code" value="{{ old('product_code', $item->product_code) }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Description</label>
+                                                        <textarea name="description" rows="2" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">{{ old('description', $item->description) }}</textarea>
+                                                    </div>
+                                                    <div class="grid gap-3 md:grid-cols-3">
+                                                        <div>
+                                                            <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Qty</label>
+                                                            <input type="number" min="1" name="quantity" value="{{ old('quantity', $item->quantity) }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                        </div>
+                                                        <div>
+                                                            <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Unit price</label>
+                                                            <input type="number" step="0.01" min="0" name="unit_price" value="{{ old('unit_price', number_format((float) $item->unit_price, 2, '.', '')) }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                        </div>
+                                                        <div class="flex items-end">
+                                                            <button type="submit" class="w-full rounded-xl bg-indigo-600 px-3 py-2 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Save & re-detect</button>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Item notes</label>
+                                                        <textarea name="notes" rows="2" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">{{ old('notes', $item->notes) }}</textarea>
+                                                    </div>
+                                                </form>
+                                            </details>
+                                        @endif
+                                    </div>
+
+                                    <aside class="rounded-2xl {{ $itemRetailerResolved ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-white ring-1 ring-amber-300' }} p-4">
+                                        <p class="text-[11px] font-black uppercase tracking-wide {{ $itemRetailerResolved ? 'text-emerald-700' : 'text-amber-700' }}">Retailer status</p>
+                                        <p class="mt-2 text-lg font-black {{ $itemRetailerResolved ? 'text-emerald-950' : 'text-slate-950' }}">{{ $item->matched_retailer_name ?: ($item->retailer_name ?: 'Unknown retailer') }}</p>
+                                        @if ($itemRetailerResolved)
+                                            <p class="mt-1 text-xs font-bold text-emerald-700">Matched to retailer ID #{{ $item->retailer_id }}</p>
+                                            @if ($item->matched_retailer_base_url)
+                                                <p class="mt-2 break-all text-xs text-emerald-800">{{ $item->matched_retailer_base_url }}</p>
+                                            @endif
+                                        @else
+                                            <p class="mt-1 text-sm font-bold text-amber-800">Correct the link or add/link the retailer before converting.</p>
+                                            @if ($canEdit)
+                                                <a href="#retailer-review-queue" class="mt-3 inline-flex rounded-xl bg-amber-600 px-3 py-2 text-xs font-black text-white hover:bg-amber-700">Resolve retailer</a>
+                                            @endif
+                                        @endif
+                                    </aside>
+                                </div>
+                            </article>
+                        @empty
+                            <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm font-semibold text-slate-500">No request items found.</div>
+                        @endforelse
                     </div>
+                </section>
+
+                @if ($canEdit && $hasUnresolvedRetailers)
+                    <section id="retailer-review-queue" class="rounded-3xl border border-amber-300 bg-white shadow-sm" x-data="retailerReviewQueue(@js($unresolvedRetailers->values()))">
+                        <div class="border-b border-amber-200 bg-amber-50 p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Action needed</p>
+                                    <h3 class="mt-1 text-xl font-black text-slate-950">Retailer review queue</h3>
+                                    <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900">Do not force-add retailers that already exist. First correct bad customer links in the item card, then use this queue only for genuinely new retailers.</p>
+                                </div>
+                                <span class="rounded-full bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">{{ $unresolvedRetailers->count() }} unresolved</span>
+                            </div>
+                        </div>
+
+                        <div class="divide-y divide-slate-100">
+                            @foreach ($unresolvedRetailers as $loopIndex => $retailer)
+                                <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
+                                        <h4 class="mt-1 truncate text-base font-black text-slate-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
+                                        <p class="mt-1 text-sm text-slate-600">Found on <span class="font-black text-slate-900">{{ $retailer['items_count'] ?? 1 }}</span> item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}</p>
+                                    </div>
+                                    <button type="button" @click="open({{ $loopIndex }})" class="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800">Review</button>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div x-cloak x-show="isOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                            <div @click.away="close()" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+                                <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="p-5 sm:p-6">
+                                    @csrf
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div>
+                                            <p class="text-xs font-black uppercase tracking-wide text-amber-700" x-text="currentLabel"></p>
+                                            <h3 class="mt-1 text-xl font-black text-slate-950">Resolve unknown retailer</h3>
+                                            <p class="mt-1 text-sm text-slate-600">Only add a retailer here if the retailer genuinely does not exist yet.</p>
+                                        </div>
+                                        <button type="button" @click="close()" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50" aria-label="Close retailer review">×</button>
+                                    </div>
+
+                                    <div class="mt-5 space-y-4">
+                                        <div>
+                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Retailer name</label>
+                                            <input name="name" required :value="current?.name || ''" placeholder="Argos" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Base domain</label>
+                                            <input name="base_url" required :value="current?.base_url || ''" placeholder="argos.co.uk" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
+                                            <p class="mt-1 text-xs text-slate-500">Use only the shop domain, not a product page.</p>
+                                        </div>
+                                    </div>
+
+                                    <details class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                        <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-slate-500">Source links (<span x-text="sourceCount"></span>)</summary>
+                                        <div class="mt-3 space-y-2">
+                                            <template x-for="sourceUrl in (current?.urls || [])" :key="sourceUrl">
+                                                <div class="flex items-start gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-100">
+                                                    <a :href="sourceUrl" target="_blank" rel="noopener noreferrer" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-base font-black text-indigo-600 hover:bg-indigo-100">↗</a>
+                                                    <p class="min-w-0 break-all text-xs font-semibold text-slate-600" x-text="sourceUrl"></p>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </details>
+
+                                    <div class="mt-6 flex flex-wrap justify-end gap-3">
+                                        <button type="button" @click="close()" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">Add/link retailer</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+                @endif
+            </main>
+
+            <aside class="space-y-5 2xl:sticky 2xl:top-6 2xl:self-start">
+                <section class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                    <h3 class="text-lg font-black text-slate-950">Customer match & conversion</h3>
+                    <p class="mt-1 text-sm text-slate-500">Choose/create the customer record before creating the draft.</p>
 
                     @if ($isConverted)
                         <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
@@ -195,264 +438,157 @@
                             </form>
                         @endif
 
-                        <details class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                            <summary class="cursor-pointer text-sm font-black text-rose-800">Cancel this request</summary>
-                            <form method="POST" action="{{ route('order-requests.cancel', $requestRow->id) }}" class="mt-3 space-y-3" onsubmit="return confirm('Cancel this order request? This prevents conversion to draft.');">
-                                @csrf
-                                <div>
-                                    <label class="text-xs font-black uppercase tracking-wide text-rose-700">Reason</label>
-                                    <textarea name="cancel_reason" rows="3" required minlength="3" placeholder="Customer changed mind, duplicate request, submitted by mistake…" class="mt-1 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm focus:border-rose-500 focus:ring-rose-500">{{ old('cancel_reason') }}</textarea>
-                                </div>
-                                <button type="submit" class="w-full rounded-2xl bg-rose-600 px-4 py-3 text-sm font-black text-white hover:bg-rose-700">Cancel order request</button>
-                            </form>
-                        </details>
-
-                        @if ($hasUnresolvedRetailers)
-                            <section id="retailer-review-queue" class="mt-4 overflow-hidden rounded-3xl border border-amber-300 bg-white shadow-sm" x-data="retailerReviewQueue(@js($unresolvedRetailers->values()))">
-                                <div class="border-b border-amber-200 bg-amber-50 p-5">
-                                    <div class="flex flex-wrap items-start justify-between gap-3">
-                                        <div class="max-w-2xl">
-                                            <div class="flex flex-wrap items-center gap-2">
-                                                <span class="rounded-full bg-amber-600 px-3 py-1 text-[11px] font-black uppercase tracking-wide text-white">Action needed</span>
-                                                <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-800 ring-1 ring-amber-200">
-                                                    {{ $unresolvedRetailers->count() }} unknown retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }}
-                                                </span>
-                                            </div>
-                                            <h3 class="mt-3 text-lg font-black text-gray-950">Retailer review required</h3>
-                                            <p class="mt-1 text-sm leading-6 text-amber-900">
-                                                Conversion is paused until each unknown retailer is linked to the retailer table. The list below stays compact; click <span class="font-black">Review</span> to check one retailer at a time.
-                                            </p>
-                                        </div>
-                                        <div class="rounded-2xl bg-white px-4 py-3 text-center ring-1 ring-amber-200">
-                                            <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Convert button</p>
-                                            <p class="mt-1 text-sm font-black text-gray-950">Locked</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="divide-y divide-gray-100 bg-white">
-                                    @foreach ($unresolvedRetailers as $loopIndex => $retailer)
-                                        <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                                            <div class="min-w-0">
-                                                <p class="text-[11px] font-black uppercase tracking-wide text-gray-400">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
-                                                <h4 class="mt-1 truncate text-base font-black text-gray-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
-                                                <p class="mt-1 text-sm text-gray-600">
-                                                    Found on <span class="font-black text-gray-900">{{ $retailer['items_count'] ?? 1 }}</span> request item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}
-                                                    @if (! empty($retailer['urls']))
-                                                        · {{ count($retailer['urls']) }} source link{{ count($retailer['urls']) === 1 ? '' : 's' }}
-                                                    @endif
-                                                </p>
-                                            </div>
-                                            <button type="button" @click="open({{ $loopIndex }})" class="rounded-2xl bg-gray-900 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-900 focus:ring-offset-2">
-                                                Review
-                                            </button>
-                                        </div>
-                                    @endforeach
-                                </div>
-
-                                <div x-cloak x-show="isOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 p-4">
-                                    <div @click.away="close()" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl ring-1 ring-gray-200">
-                                        <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="p-5 sm:p-6">
-                                            @csrf
-                                            <div class="flex items-start justify-between gap-4">
-                                                <div>
-                                                    <p class="text-xs font-black uppercase tracking-wide text-amber-700" x-text="currentLabel"></p>
-                                                    <h3 class="mt-1 text-xl font-black text-gray-950">Unknown retailer</h3>
-                                                    <p class="mt-1 text-sm text-gray-600">
-                                                        Check the display name and base domain, then add it to the retailer table and link matching request items.
-                                                    </p>
-                                                </div>
-                                                <button type="button" @click="close()" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-gray-200 bg-white text-xl font-black text-gray-500 hover:bg-gray-50" aria-label="Close retailer review">×</button>
-                                            </div>
-
-                                            <div class="mt-5 space-y-4">
-                                                <div>
-                                                    <label class="block text-[11px] font-black uppercase tracking-wide text-gray-500">Retailer name</label>
-                                                    <input name="name" required :value="current?.name || ''" placeholder="Mobiquip" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
-                                                    <p class="mt-1 text-xs text-gray-500">This is the name staff will see in drafts and purchasing.</p>
-                                                </div>
-
-                                                <div>
-                                                    <label class="block text-[11px] font-black uppercase tracking-wide text-gray-500">Base domain</label>
-                                                    <input name="base_url" required :value="current?.base_url || ''" placeholder="mobiquip.co.uk" class="mt-1 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
-                                                    <p class="mt-1 text-xs text-gray-500">Use only the shop domain, not the full product page.</p>
-                                                </div>
-                                            </div>
-
-                                            <details class="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                                                <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-gray-500">
-                                                    Source links (<span x-text="sourceCount"></span>)
-                                                </summary>
-                                                <div class="mt-3 space-y-2">
-                                                    <template x-for="sourceUrl in (current?.urls || [])" :key="sourceUrl">
-                                                        <div class="flex items-start gap-2 rounded-xl bg-white p-2 ring-1 ring-gray-100">
-                                                            <a :href="sourceUrl" target="_blank" rel="noopener noreferrer" aria-label="Open source link" title="Open source link" class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-lg font-black leading-none text-blue-600 shadow-sm hover:bg-blue-100 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">↗</a>
-                                                            <span class="min-w-0 break-all text-xs leading-5 text-gray-600" x-text="sourceUrl"></span>
-                                                        </div>
-                                                    </template>
-                                                    <p x-show="sourceCount === 0" class="text-xs text-gray-500">No source URL was supplied for this item.</p>
-                                                </div>
-                                            </details>
-
-                                            <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                                                <button type="button" @click="close()" class="rounded-2xl border border-gray-200 bg-white px-5 py-3 text-sm font-black text-gray-700 hover:bg-gray-50">Cancel</button>
-                                                <button type="submit" class="rounded-2xl bg-amber-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2">
-                                                    Add & link retailer
-                                                </button>
-                                            </div>
-                                        </form>
-                                    </div>
-                                </div>
-                            </section>
-
-                            <script>
-                                document.addEventListener('alpine:init', () => {
-                                    Alpine.data('retailerReviewQueue', (retailers) => ({
-                                        retailers: retailers || [],
-                                        currentIndex: null,
-                                        get isOpen() { return this.currentIndex !== null; },
-                                        get current() { return this.currentIndex === null ? null : this.retailers[this.currentIndex]; },
-                                        get sourceCount() { return (this.current?.urls || []).length; },
-                                        get currentLabel() { return this.currentIndex === null ? '' : `Unknown retailer ${this.currentIndex + 1} of ${this.retailers.length}`; },
-                                        open(index) { this.currentIndex = index; },
-                                        close() { this.currentIndex = null; },
-                                    }));
-                                });
-                            </script>
-                        @endif
-
-                        <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-gray-200 p-4">
-                            <label class="text-xs font-black uppercase tracking-wide text-gray-500">Search customer base</label>
+                        <form method="GET" action="{{ route('order-requests.show', $requestRow->id) }}" class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <label class="text-xs font-black uppercase tracking-wide text-slate-500">Search existing customer</label>
                             <div class="mt-2 flex gap-2">
-                                <input type="search" name="customer_q" value="{{ $customerSearch }}" placeholder="Name, email, phone, company…" class="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                                <button type="submit" class="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-black text-white hover:bg-gray-800">Find</button>
+                                <input name="customer_q" value="{{ $customerSearch }}" placeholder="Name, email, phone…" class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                                <button class="rounded-xl bg-slate-950 px-3 py-2 text-sm font-black text-white">Search</button>
                             </div>
-                            <p class="mt-2 text-xs text-gray-500">{{ $customerSearch !== '' ? 'Search results shown below.' : 'Suggested matches are auto-selected from request details.' }}</p>
                         </form>
 
                         <form method="POST" action="{{ route('order-requests.convert', $requestRow->id) }}" class="mt-4 space-y-4">
                             @csrf
 
-                            <div class="rounded-2xl border border-gray-200 p-4">
+                            <div class="rounded-2xl border border-slate-200 p-4">
                                 <label class="flex cursor-pointer items-start gap-3">
                                     <input type="radio" name="customer_mode" value="existing" class="mt-1" @checked($defaultMode === 'existing')>
                                     <span>
-                                        <span class="block text-sm font-black text-gray-900">Use existing customer</span>
-                                        <span class="block text-xs text-gray-500">Select, then edit the fields below if phone, email or address changed.</span>
+                                        <span class="block text-sm font-black text-slate-900">Use existing customer</span>
+                                        <span class="block text-xs text-slate-500">Recommended when a matching customer exists.</span>
                                     </span>
                                 </label>
 
-                                <div class="mt-3 flex gap-2">
-                                    <select name="customer_id" class="min-w-0 flex-1 rounded-2xl border border-gray-200 px-4 py-3 text-sm focus:border-indigo-500 focus:ring-indigo-500" onchange="const u=new URL(window.location.href); u.searchParams.set('customer_id', this.value); window.location.href=u.toString();">
-                                        <option value="">Select customer…</option>
-                                        @foreach ($customerOptions as $customer)
-                                            @php $customerName = trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: ($customer->company_name ?: 'Customer #' . $customer->id); @endphp
-                                            <option value="{{ $customer->id }}" @selected((int) $selectedCustomerId === (int) $customer->id)>#{{ $customer->id }} — {{ $customerName }}{{ $customer->email ? ' — ' . $customer->email : '' }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
+                                <select name="customer_id" class="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                                    <option value="">Choose customer…</option>
+                                    @foreach ($customerOptions as $customer)
+                                        <option value="{{ $customer->id }}" @selected((int) $selectedCustomerId === (int) $customer->id)>
+                                            #{{ $customer->id }} — {{ trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) ?: ($customer->company_name ?? 'Customer') }} @if(! empty($customer->email)) · {{ $customer->email }} @endif
+                                        </option>
+                                    @endforeach
+                                </select>
 
-                                @if ($selectedCustomer)
-                                    <div class="mt-3 rounded-2xl bg-emerald-50 p-3 text-xs text-emerald-900">
-                                        <strong>Selected:</strong> #{{ $selectedCustomer->id }} — {{ trim(($selectedCustomer->first_name ?? '') . ' ' . ($selectedCustomer->last_name ?? '')) ?: $selectedCustomer->company_name }}
-                                    </div>
-                                @elseif ($customerOptions->isEmpty())
-                                    <p class="mt-2 text-xs font-semibold text-amber-700">No match yet. Search again or use create new below.</p>
+                                @if (($customerOptions ?? collect())->isEmpty())
+                                    <p class="mt-2 text-xs font-semibold text-slate-500">No suggested customers found yet. Search above or create a new customer below.</p>
                                 @endif
 
+                                @if ($selectedCustomer && $hasCustomerDifferences)
+                                    <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                        <p class="font-black uppercase tracking-wide text-amber-700">Request differs from saved customer</p>
+                                        <div class="mt-2 space-y-2">
+                                            @foreach ($customerDifferences as $difference)
+                                                @php
+                                                    $differenceLabel = null;
+                                                    $differenceCurrent = null;
+                                                    $differenceIncoming = null;
+                                                    $differenceText = null;
 
-                                @if ($selectedCustomer)
-                                    <div class="mt-4 rounded-2xl border {{ $hasCustomerDifferences ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }} p-4">
-                                        <div class="flex items-start justify-between gap-3">
-                                            <div>
-                                                <h4 class="text-sm font-black {{ $hasCustomerDifferences ? 'text-amber-950' : 'text-emerald-950' }}">
-                                                    {{ $hasCustomerDifferences ? 'Customer details differ from stored record' : 'Submitted details match the selected customer' }}
-                                                </h4>
-                                                <p class="mt-1 text-xs {{ $hasCustomerDifferences ? 'text-amber-800' : 'text-emerald-800' }}">
-                                                    Existing customers are now kept unchanged unless you deliberately choose to update them.
-                                                </p>
-                                            </div>
-                                            <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide {{ $hasCustomerDifferences ? 'text-amber-700' : 'text-emerald-700' }}">
-                                                {{ $hasCustomerDifferences ? count($customerDifferences) . ' difference' . (count($customerDifferences) === 1 ? '' : 's') : 'safe' }}
-                                            </span>
-                                        </div>
+                                                    if (is_array($difference)) {
+                                                        $differenceLabel = $difference['label']
+                                                            ?? $difference['field']
+                                                            ?? $difference['name']
+                                                            ?? $difference['key']
+                                                            ?? 'Customer detail';
 
-                                        @if ($hasCustomerDifferences)
-                                            <div class="mt-3 space-y-2">
-                                                @foreach ($customerDifferences as $difference)
-                                                    <div class="rounded-xl bg-white p-3 ring-1 ring-amber-200">
-                                                        <p class="text-xs font-black uppercase tracking-wide text-amber-700">{{ $difference['label'] }}</p>
-                                                        <div class="mt-2 grid gap-2 text-xs sm:grid-cols-2">
-                                                            <div>
-                                                                <p class="font-bold text-gray-500">Stored customer record</p>
-                                                                <p class="mt-1 whitespace-pre-wrap font-semibold text-gray-900">{{ $difference['stored'] }}</p>
+                                                        $differenceCurrent = $difference['existing']
+                                                            ?? $difference['saved']
+                                                            ?? $difference['current']
+                                                            ?? $difference['database']
+                                                            ?? $difference['old']
+                                                            ?? null;
+
+                                                        $differenceIncoming = $difference['request']
+                                                            ?? $difference['submitted']
+                                                            ?? $difference['incoming']
+                                                            ?? $difference['new']
+                                                            ?? $difference['value']
+                                                            ?? null;
+
+                                                        $differenceText = $difference['message'] ?? null;
+                                                    } else {
+                                                        $differenceText = (string) $difference;
+                                                    }
+
+                                                    $differenceLabel = $differenceLabel ? Str::of((string) $differenceLabel)->replace('_', ' ')->title() : null;
+                                                    $differenceCurrent = is_array($differenceCurrent) ? json_encode($differenceCurrent) : $differenceCurrent;
+                                                    $differenceIncoming = is_array($differenceIncoming) ? json_encode($differenceIncoming) : $differenceIncoming;
+                                                @endphp
+
+                                                @if ($differenceLabel && ($differenceCurrent !== null || $differenceIncoming !== null))
+                                                    <div class="rounded-xl bg-white/80 p-3 ring-1 ring-amber-100">
+                                                        <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">{{ $differenceLabel }}</p>
+                                                        <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                                                            <div class="rounded-lg bg-slate-50 p-2">
+                                                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Saved</p>
+                                                                <p class="mt-1 break-words text-xs font-bold text-slate-700">{{ filled($differenceCurrent) ? $differenceCurrent : '—' }}</p>
                                                             </div>
-                                                            <div>
-                                                                <p class="font-bold text-gray-500">Submitted in request</p>
-                                                                <p class="mt-1 whitespace-pre-wrap font-semibold text-gray-900">{{ $difference['submitted'] }}</p>
+                                                            <div class="rounded-lg bg-amber-50 p-2">
+                                                                <p class="text-[10px] font-black uppercase tracking-wide text-amber-600">Request</p>
+                                                                <p class="mt-1 break-words text-xs font-bold text-amber-950">{{ filled($differenceIncoming) ? $differenceIncoming : '—' }}</p>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                @endforeach
-                                            </div>
-                                        @endif
-
-                                        <div class="mt-4 grid gap-2">
-                                            <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 ring-1 ring-gray-200">
-                                                <input type="radio" name="existing_customer_action" value="keep" class="mt-1" @checked($existingCustomerAction !== 'update')>
-                                                <span>
-                                                    <span class="block text-sm font-black text-gray-900">Use existing customer without changing their saved details</span>
-                                                    <span class="block text-xs text-gray-500">Safest default. The request can still be converted to a draft for this customer.</span>
-                                                </span>
-                                            </label>
-                                            <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-white p-3 ring-1 ring-gray-200">
-                                                <input type="radio" name="existing_customer_action" value="update" class="mt-1" @checked($existingCustomerAction === 'update')>
-                                                <span>
-                                                    <span class="block text-sm font-black text-gray-900">Update existing customer using the editable details below</span>
-                                                    <span class="block text-xs text-gray-500">Use when the customer has changed address, phone or email, or the saved record needs correction.</span>
-                                                </span>
-                                            </label>
+                                                @else
+                                                    <p class="rounded-xl bg-white/80 p-3 text-xs font-bold text-amber-900 ring-1 ring-amber-100">{{ $differenceText ?: json_encode($difference) }}</p>
+                                                @endif
+                                            @endforeach
                                         </div>
                                     </div>
                                 @endif
+
+                                <div class="mt-3 grid gap-2">
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                        <input type="radio" name="existing_customer_action" value="keep" class="mt-1" @checked($existingCustomerAction !== 'update')>
+                                        <span>
+                                            <span class="block text-sm font-black text-slate-900">Keep saved customer details</span>
+                                            <span class="block text-xs text-slate-500">Safest default.</span>
+                                        </span>
+                                    </label>
+                                    <label class="flex cursor-pointer items-start gap-3 rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+                                        <input type="radio" name="existing_customer_action" value="update" class="mt-1" @checked($existingCustomerAction === 'update')>
+                                        <span>
+                                            <span class="block text-sm font-black text-slate-900">Update saved customer details</span>
+                                            <span class="block text-xs text-slate-500">Use when the request contains corrected contact/address details.</span>
+                                        </span>
+                                    </label>
+                                </div>
                             </div>
 
-                            <div class="rounded-2xl border border-gray-200 p-4">
+                            <div class="rounded-2xl border border-slate-200 p-4">
                                 <label class="flex cursor-pointer items-start gap-3">
                                     <input type="radio" name="customer_mode" value="create" class="mt-1" @checked($defaultMode === 'create')>
                                     <span>
-                                        <span class="block text-sm font-black text-gray-900">Create new customer</span>
-                                        <span class="block text-xs text-gray-500">Editable before saving, useful for typos in request details.</span>
+                                        <span class="block text-sm font-black text-slate-900">Create new customer</span>
+                                        <span class="block text-xs text-slate-500">Use when no existing match is suitable.</span>
                                     </span>
                                 </label>
                             </div>
 
-                            <div class="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                            <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
                                 <div class="flex items-center justify-between gap-2">
-                                    <h4 class="text-sm font-black text-blue-950">Submitted/editable customer details</h4>
-                                    <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide text-blue-700">editable</span>
+                                    <h4 class="text-sm font-black text-indigo-950">Submitted/editable customer details</h4>
+                                    <span class="rounded-full bg-white px-2 py-1 text-[11px] font-black uppercase tracking-wide text-indigo-700">editable</span>
                                 </div>
 
                                 <div class="mt-3 grid gap-3 sm:grid-cols-2">
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">First name</label>
-                                        <input name="first_name" value="{{ $existingFirst }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">First name</label>
+                                        <input name="first_name" value="{{ $existingFirst }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Last name</label>
-                                        <input name="last_name" value="{{ $existingLast }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Last name</label>
+                                        <input name="last_name" value="{{ $existingLast }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div class="sm:col-span-2">
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Company</label>
-                                        <input name="company_name" value="{{ $existingCompany }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Company</label>
+                                        <input name="company_name" value="{{ $existingCompany }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div class="sm:col-span-2">
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Email</label>
-                                        <input name="email" value="{{ $existingEmail }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Email</label>
+                                        <input name="email" value="{{ $existingEmail }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Phone country</label>
-                                        <select name="phone_country_id" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Phone country</label>
+                                        <select name="phone_country_id" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                             <option value="">—</option>
                                             @foreach ($countries as $country)
                                                 <option value="{{ $country->id }}" @selected((string) $existingPhoneCountry === (string) $country->id)>{{ $country->phone_code ? '+' . $country->phone_code . ' — ' : '' }}{{ $country->name }}</option>
@@ -460,20 +596,20 @@
                                         </select>
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Phone digits</label>
-                                        <input name="phone_digits" value="{{ $existingPhone }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Phone digits</label>
+                                        <input name="phone_digits" value="{{ $existingPhone }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div class="sm:col-span-2">
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Address</label>
-                                        <input name="address_line1" value="{{ $existingAddress }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Address</label>
+                                        <input name="address_line1" value="{{ $existingAddress }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Postcode</label>
-                                        <input name="address_postcode" value="{{ $existingPostcode }}" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Postcode</label>
+                                        <input name="address_postcode" value="{{ $existingPostcode }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                     </div>
                                     <div>
-                                        <label class="text-xs font-bold uppercase tracking-wide text-blue-800">Address country</label>
-                                        <select name="address_country_id" class="mt-1 w-full rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm">
+                                        <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Address country</label>
+                                        <select name="address_country_id" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
                                             <option value="">—</option>
                                             @foreach ($countries as $country)
                                                 <option value="{{ $country->id }}" @selected((string) $existingAddressCountry === (string) $country->id)>{{ $country->name }}</option>
@@ -483,35 +619,78 @@
                                 </div>
                             </div>
 
-                            <div class="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                                Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. For existing customers, saved customer details are only changed when you choose the update option above.
+                            <div class="rounded-2xl border {{ $canConvert ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900' }} p-3 text-xs font-semibold">
+                                Draft number will be <strong>{{ $requestRow->request_ref }}</strong>. {{ $canConvert ? 'All retailers are resolved.' : 'Resolve all retailers before conversion.' }}
                             </div>
 
-                            @if ($hasUnresolvedRetailers)
-                                <a href="#retailer-review-queue" class="block w-full rounded-2xl bg-amber-600 px-4 py-3 text-center text-sm font-black text-white shadow-sm hover:bg-amber-700">Resolve {{ $unresolvedRetailers->count() }} retailer{{ $unresolvedRetailers->count() === 1 ? '' : 's' }} before conversion</a>
+                            @if ($canConvert)
+                                <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to Draft Workbench</button>
                             @else
-                                <button type="submit" class="w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to draft order</button>
+                                <a href="#retailer-review-queue" class="block w-full rounded-2xl bg-amber-600 px-4 py-3 text-center text-sm font-black text-white shadow-sm hover:bg-amber-700">Resolve retailers before conversion</a>
                             @endif
                         </form>
                     @endif
-                </div>
-
-                <div class="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-                    <h3 class="text-lg font-black text-gray-900">Attachments</h3>
-                    @if ($attachments->isEmpty())
-                        <p class="mt-2 text-sm text-gray-500">No attachments.</p>
-                    @else
-                        <div class="mt-3 space-y-2">
-                            @foreach ($attachments as $attachment)
-                                <div class="rounded-xl border border-gray-200 p-3 text-sm">
-                                    <div class="font-bold text-gray-900">{{ $attachment->original_name ?? $attachment->path ?? 'Attachment' }}</div>
-                                    <div class="mt-1 text-xs text-gray-500">{{ $attachment->mime_type ?? 'file' }}</div>
-                                </div>
-                            @endforeach
-                        </div>
-                    @endif
-                </div>
+                </section>
             </aside>
         </div>
+
+        @if ($canEdit)
+            <div class="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-2xl backdrop-blur">
+                <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-wide text-slate-400">Order Request {{ $requestRow->request_ref }}</p>
+                        <p class="text-sm font-bold {{ $canConvert ? 'text-emerald-700' : 'text-amber-700' }}">{{ $canConvert ? 'Ready to convert to draft.' : 'Conversion locked until all retailers are resolved.' }}</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button type="button" @click="cancelOpen = true" class="rounded-2xl border border-rose-200 bg-white px-4 py-2 text-sm font-black text-rose-700 shadow-sm hover:bg-rose-50">Cancel Request</button>
+                        @if ($canConvert)
+                            <button type="button" onclick="document.querySelector('form[action=&quot;{{ route('order-requests.convert', $requestRow->id) }}&quot;]').requestSubmit()" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Convert to Draft</button>
+                        @else
+                            <a href="#retailer-review-queue" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">Resolve Retailers</a>
+                        @endif
+                    </div>
+                </div>
+            </div>
+
+            <div x-cloak x-show="cancelOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                <div @click.away="cancelOpen = false" class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-rose-600">Cancel request</p>
+                            <h3 class="mt-1 text-xl font-black text-slate-950">Cancel Order Request {{ $requestRow->request_ref }}?</h3>
+                            <p class="mt-2 text-sm font-semibold leading-6 text-slate-600">This prevents conversion to draft. Use this only for duplicates, customer cancellation, or invalid submissions.</p>
+                        </div>
+                        <button type="button" @click="cancelOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
+                    </div>
+
+                    <form method="POST" action="{{ route('order-requests.cancel', $requestRow->id) }}" class="mt-5 space-y-4">
+                        @csrf
+                        <div>
+                            <label class="text-xs font-black uppercase tracking-wide text-rose-700">Reason</label>
+                            <textarea name="cancel_reason" rows="4" required minlength="3" placeholder="Customer changed mind, duplicate request, submitted by mistake…" class="mt-1 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm focus:border-rose-500 focus:ring-rose-500">{{ old('cancel_reason') }}</textarea>
+                        </div>
+                        <div class="flex flex-wrap justify-end gap-3">
+                            <button type="button" @click="cancelOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Keep request</button>
+                            <button type="submit" class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-black text-white hover:bg-rose-700">Cancel request</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        @endif
     </div>
+
+    <script>
+        function retailerReviewQueue(retailers) {
+            return {
+                retailers: retailers || [],
+                index: null,
+                get isOpen() { return this.index !== null; },
+                get current() { return this.index === null ? null : this.retailers[this.index]; },
+                get currentLabel() { return this.current ? `Retailer ${this.index + 1} of ${this.retailers.length}` : ''; },
+                get sourceCount() { return (this.current?.urls || []).length; },
+                open(index) { this.index = index; },
+                close() { this.index = null; },
+            }
+        }
+    </script>
 </x-app-layout>

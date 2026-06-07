@@ -1606,6 +1606,31 @@
                             </div>
                         @endif
 
+
+
+                        @if (!empty($requestNotes['order_request_id']) && isset($requestAttachments) && $requestAttachments->isNotEmpty())
+                            <div class="mt-4 rounded-3xl border border-indigo-200 bg-indigo-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-xs font-black uppercase tracking-widest text-indigo-700">Customer file attachments</p>
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $requestAttachments->count() }} file{{ $requestAttachments->count() === 1 ? '' : 's' }}</span>
+                                </div>
+                                <div class="mt-3 grid gap-2 md:grid-cols-2">
+                                    @foreach ($requestAttachments as $attachment)
+                                        <a
+                                            href="{{ route('order-requests.attachments.show', [$requestNotes['order_request_id'], $attachment->id]) }}"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-indigo-300 hover:bg-indigo-50"
+                                        >
+                                            <span class="min-w-0 truncate">{{ $attachment->original_name ?? $attachment->path ?? 'Attachment' }}</span>
+                                            <span class="shrink-0 text-indigo-700">↗</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                                <p class="mt-3 text-xs font-bold text-indigo-700">These are the files originally attached to the customer order request.</p>
+                            </div>
+                        @endif
+
                         <form
                             method="POST"
                             action="{{ route('draft-orders.notes.store', $draft->id) }}"
@@ -1853,6 +1878,24 @@
                                 <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Customer request note</p>
                                 <p class="mt-1 line-clamp-4 whitespace-pre-line text-xs font-semibold leading-5 text-amber-900">{{ $requestNotes['notes'] ?: $requestNotes['converted_note_body'] }}</p>
                                 <button type="button" @click="tab='notes'; window.scrollTo({top: 0, behavior: 'smooth'});" class="mt-2 text-xs font-black text-amber-800 hover:text-amber-950">View notes →</button>
+                            </div>
+                        @endif
+                        @if (!empty($requestNotes['order_request_id']) && isset($requestAttachments) && $requestAttachments->isNotEmpty())
+                            <div class="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-3">
+                                <p class="text-[10px] font-black uppercase tracking-widest text-indigo-700">Customer attachments</p>
+                                <div class="mt-2 space-y-2">
+                                    @foreach ($requestAttachments as $attachment)
+                                        <a
+                                            href="{{ route('order-requests.attachments.show', [$requestNotes['order_request_id'], $attachment->id]) }}"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-50"
+                                        >
+                                            <span class="min-w-0 truncate">{{ $attachment->original_name ?? 'Attachment' }}</span>
+                                            <span class="shrink-0 text-indigo-700">↗</span>
+                                        </a>
+                                    @endforeach
+                                </div>
                             </div>
                         @endif
                     </div>
