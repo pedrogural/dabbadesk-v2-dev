@@ -79,7 +79,7 @@ class CreateOrderRequestService
 
                 DB::table('order_request_items')->insert([
                     'order_request_id' => $orderRequestId,
-                    'retailer_id' => null,
+                    'retailer_id' => $this->resolveRetailerId($item),
                     'retailer_name' => $item['retailer_name'] ?? null,
                     'retailer_url' => $item['retailer_url'] ?? null,
                     'product_code' => $item['product_code'] ?? null,
@@ -166,6 +166,90 @@ class CreateOrderRequestService
         $digits = preg_replace('/\D+/', '', $phone);
 
         return $digits !== '' ? $digits : null;
+    }
+
+
+    private function resolveRetailerId(array $item): ?int
+    {
+        $candidate = $item['retailer_id'] ?? null;
+
+        if (is_numeric($candidate) && (int) $candidate > 0) {
+            $exists = DB::table('retailers')
+                ->where('id', (int) $candidate)
+                ->where(function ($query) {
+                    $query->where('is_active', 1)
+                        ->orWhereNull('is_active');
+                })
+                ->whereNull('deleted_at')
+                ->exists();
+
+            if ($exists) {
+                return (int) $candidate;
+            }
+        }
+
+        $host = $this->normaliseHost((string) ($item['retailer_url'] ?? ''));
+
+        if ($host !== '') {
+            $retailer = DB::table('retailers')
+                ->whereNull('deleted_at')
+                ->where(function ($query) {
+                    $query->where('is_active', 1)
+                        ->orWhereNull('is_active');
+                })
+                ->where(function ($query) use ($host) {
+                    $query->where('base_url', $host)
+                        ->orWhere('base_url', 'www.' . $host);
+                })
+                ->first();
+
+            if ($retailer) {
+                return (int) $retailer->id;
+            }
+        }
+
+        $name = trim((string) ($item['retailer_name'] ?? ''));
+
+        if ($name !== '') {
+            $retailer = DB::table('retailers')
+                ->whereNull('deleted_at')
+                ->where(function ($query) {
+                    $query->where('is_active', 1)
+                        ->orWhereNull('is_active');
+                })
+                ->where('name', $name)
+                ->first();
+
+            if ($retailer) {
+                return (int) $retailer->id;
+            }
+        }
+
+        return null;
+    }
+
+    private function normaliseHost(string $url): string
+    {
+        $url = trim($url);
+
+        if ($url === '') {
+            return '';
+        }
+
+        if (! str_contains($url, '://')) {
+            $url = 'https://' . $url;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        if (! is_string($host) || trim($host) === '') {
+            return '';
+        }
+
+        $host = strtolower(trim($host));
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+
+        return $host;
     }
 
     private function descriptionForItem(array $item): string

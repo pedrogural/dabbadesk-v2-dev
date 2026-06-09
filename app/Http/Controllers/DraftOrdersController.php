@@ -39,12 +39,22 @@ class DraftOrdersController extends Controller
         $draft = $drafts->find($draftOrder);
         abort_if(! $draft, 404);
 
+        $requestAttachments = collect();
+
+        if (! empty($draft->order_request_id)) {
+            $requestAttachments = DB::table('order_request_attachments')
+                ->where('order_request_id', (int) $draft->order_request_id)
+                ->orderBy('id')
+                ->get();
+        }
+
         return view('draft-orders.show', [
             'draft' => $draft,
             'items' => $drafts->items($draftOrder),
             'retailerSummaries' => $drafts->retailerSummaries($draftOrder),
             'notes' => $drafts->notes($draftOrder),
             'requestNotes' => $drafts->requestNotes($draftOrder),
+            'requestAttachments' => $requestAttachments,
             'activityLogs' => $drafts->activity($draftOrder),
             'customerDetails' => $drafts->customerDetails((int) $draft->customer_id),
             'countries' => $drafts->countries(),
@@ -449,6 +459,33 @@ class DraftOrdersController extends Controller
             return redirect()
                 ->route('draft-orders.show', $draftOrder)
                 ->withErrors(['finalise' => 'This draft has already created an order. Confirm that you want to create a new order version.']);
+        }
+
+        $unresolvedRetailerCount = DB::table('draft_order_items as i')
+            ->leftJoin('retailers as r', 'r.id', '=', 'i.retailer_id')
+            ->where('i.draft_order_id', $draftOrder)
+            ->where(function ($query) {
+                $query->whereNull('i.retailer_id')->orWhereNull('r.id');
+            })
+            ->count();
+
+        $missingProductReferenceCount = DB::table('draft_order_items')
+            ->where('draft_order_id', $draftOrder)
+            ->where(function ($query) {
+                $query->where(function ($urlQuery) {
+                    $urlQuery->whereNull('url')->orWhereRaw("TRIM(COALESCE(url, '')) = ''");
+                })->where(function ($codeQuery) {
+                    $codeQuery->whereNull('product_code')->orWhereRaw("TRIM(COALESCE(product_code, '')) = ''");
+                });
+            })
+            ->count();
+
+        if ($unresolvedRetailerCount > 0 || $missingProductReferenceCount > 0) {
+            return redirect()
+                ->route('draft-orders.show', $draftOrder)
+                ->withErrors([
+                    'finalise' => 'Resolve all retailers and make sure every draft item has a product link or product code before creating the final order.',
+                ]);
         }
 
         try {

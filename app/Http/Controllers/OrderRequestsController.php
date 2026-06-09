@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\OrderRequests\ConvertOrderRequestService;
 use App\Support\Search\SmartSearch;
 use App\Services\Intake\OrderRequestAttachmentService;
+use App\Services\Intake\RetailerLookupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -446,6 +447,133 @@ class OrderRequestsController extends Controller
         return back()->with('status', 'Retailer added and linked to matching request item' . (count($itemIds) === 1 ? '' : 's') . '.');
     }
 
+
+    public function updateItem(Request $request, RetailerLookupService $retailerLookup, int $orderRequest, int $item): RedirectResponse
+    {
+        $validated = $request->validate([
+            'retailer_url' => ['nullable', 'string', 'max:2048'],
+            'retailer_name' => ['nullable', 'string', 'max:191'],
+            'product_code' => ['nullable', 'string', 'max:150'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:999'],
+            'notes' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        if ($requestRow->converted_at || ($requestRow->status ?? '') === 'converted') {
+            return back()->withErrors(['item' => 'Converted order requests cannot be edited here. Edit the draft instead.']);
+        }
+
+        if (($requestRow->status ?? '') === 'cancelled') {
+            return back()->withErrors(['item' => 'Cancelled order requests cannot be edited.']);
+        }
+
+        $itemRow = DB::table('order_request_items')
+            ->where('id', $item)
+            ->where('order_request_id', $orderRequest)
+            ->whereNull('deleted_at')
+            ->first();
+
+        abort_unless($itemRow, 404);
+
+        $retailerUrl = trim((string) ($validated['retailer_url'] ?? ''));
+        $retailerNameInput = trim((string) ($validated['retailer_name'] ?? ''));
+        $productCode = trim((string) ($validated['product_code'] ?? ''));
+        $description = trim((string) ($validated['description'] ?? ''));
+        $quantity = max(1, (int) $validated['quantity']);
+        $unitPrice = round((float) $validated['unit_price'], 2);
+        $lineTotal = round($unitPrice * $quantity, 2);
+        $notes = trim((string) ($validated['notes'] ?? ''));
+
+        $detected = $retailerLookup->detect($retailerUrl, $productCode, $retailerNameInput);
+        $retailerId = ! empty($detected['retailer_id']) ? (int) $detected['retailer_id'] : null;
+        $retailerName = trim((string) ($detected['name'] ?? '')) ?: ($retailerNameInput ?: null);
+
+        DB::transaction(function () use ($orderRequest, $item, $retailerUrl, $retailerName, $retailerId, $productCode, $description, $unitPrice, $quantity, $lineTotal, $notes): void {
+            DB::table('order_request_items')
+                ->where('id', $item)
+                ->where('order_request_id', $orderRequest)
+                ->update([
+                    'retailer_id' => $retailerId,
+                    'retailer_name' => $retailerName,
+                    'retailer_url' => $retailerUrl !== '' ? $retailerUrl : null,
+                    'product_code' => $productCode !== '' ? $productCode : null,
+                    'description' => $description !== '' ? $description : null,
+                    'unit_price' => $unitPrice,
+                    'quantity' => $quantity,
+                    'line_total' => $lineTotal,
+                    'notes' => $notes !== '' ? $notes : null,
+                    'updated_at' => now(),
+                ]);
+
+            $this->logOrderRequestActivity(
+                $orderRequest,
+                'item_updated',
+                'Order request item updated',
+                'Item #' . $item . ' was corrected before draft conversion.',
+                (int) auth()->id()
+            );
+        });
+
+        if ($retailerId) {
+            return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Item updated and retailer matched to ' . $retailerName . '.');
+        }
+
+        return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Item updated. Retailer still needs review because no existing retailer matched the corrected link/name.');
+    }
+
+    public function openAttachment(int $orderRequest, int $attachment)
+    {
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        $attachmentRow = DB::table('order_request_attachments')
+            ->where('id', $attachment)
+            ->where('order_request_id', $orderRequest)
+            ->first();
+
+        abort_unless($attachmentRow, 404);
+
+        $relativePath = str_replace('\\', '/', trim((string) ($attachmentRow->path ?? '')));
+        $relativePath = ltrim($relativePath, '/');
+        $relativePath = preg_replace('#^(public/|storage/app/public/|app/public/|storage/)#', '', $relativePath) ?: $relativePath;
+
+        if ($relativePath === '' || str_contains($relativePath, '..')) {
+            abort(404);
+        }
+
+        $projectRoot = base_path();
+        $siblingRoot = dirname($projectRoot);
+
+        $candidatePaths = array_filter(array_unique([
+            storage_path('app/public/' . $relativePath),
+            storage_path('app/' . $relativePath),
+            $siblingRoot . '/cms.dabbadirect.com/storage/app/public/' . $relativePath,
+            $siblingRoot . '/order.dabbadirect.com/storage/app/public/' . $relativePath,
+            env('DABBA_LEGACY_CMS_STORAGE') ? rtrim((string) env('DABBA_LEGACY_CMS_STORAGE'), '/') . '/' . $relativePath : null,
+            env('DABBA_ORDER_APP_STORAGE') ? rtrim((string) env('DABBA_ORDER_APP_STORAGE'), '/') . '/' . $relativePath : null,
+        ]));
+
+        foreach ($candidatePaths as $candidatePath) {
+            if (is_file($candidatePath) && is_readable($candidatePath)) {
+                $displayName = trim((string) ($attachmentRow->original_name ?? '')) ?: basename($candidatePath);
+                $displayName = str_replace(["\r", "\n", '"'], [' ', ' ', ''], $displayName);
+                $mime = trim((string) ($attachmentRow->mime ?? '')) ?: (mime_content_type($candidatePath) ?: 'application/octet-stream');
+
+                return response()->file($candidatePath, [
+                    'Content-Type' => $mime,
+                    'Content-Disposition' => 'inline; filename="' . $displayName . '"',
+                    'X-Dabba-Attachment-Source' => str_contains($candidatePath, '/cms.dabbadirect.com/') ? 'legacy-cms' : (str_contains($candidatePath, '/order.dabbadirect.com/') ? 'order-app' : 'dabbadesk'),
+                ]);
+            }
+        }
+
+        abort(404, 'Attachment file is listed on the request, but the stored file could not be found.');
+    }
+
     public function convert(Request $request, ConvertOrderRequestService $converter, int $orderRequest): RedirectResponse
     {
         $validated = $request->validate([
@@ -472,6 +600,21 @@ class OrderRequestsController extends Controller
 
         if ($requestRow->converted_at || $requestRow->status === 'converted') {
             return redirect()->route('order-requests.show', $orderRequest)->withErrors(['convert' => 'This order request has already been converted.']);
+        }
+
+        $unresolvedRetailerCount = DB::table('order_request_items as i')
+            ->leftJoin('retailers as r', 'r.id', '=', 'i.retailer_id')
+            ->where('i.order_request_id', $orderRequest)
+            ->whereNull('i.deleted_at')
+            ->where(function ($query) {
+                $query->whereNull('i.retailer_id')->orWhereNull('r.id');
+            })
+            ->count();
+
+        if ($unresolvedRetailerCount > 0) {
+            return back()->withInput()->withErrors([
+                'convert' => 'Resolve every retailer before converting this order request to Draft Workbench.',
+            ]);
         }
 
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {

@@ -237,10 +237,15 @@ class OrdersReadOnlyService
         return DB::table('orders')
             ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
             ->join('customers', 'customers.id', '=', 'draft_orders.customer_id')
+            ->leftJoin('order_requests', 'order_requests.id', '=', 'draft_orders.order_request_id')
+            ->leftJoin('countries as bill_country', 'bill_country.id', '=', 'orders.bill_to_country_id')
             ->select([
                 'orders.id',
                 'orders.draft_order_id',
                 'orders.source_draft_order_id',
+                'draft_orders.order_request_id',
+                'draft_orders.draft_number',
+                'order_requests.request_ref as order_request_ref',
                 'orders.parent_order_id',
                 DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number AND revision_orders.id <= orders.id) as revision_number"),
                 DB::raw("(SELECT COUNT(*) FROM orders as revision_orders WHERE revision_orders.order_number = orders.order_number) as revision_total"),
@@ -260,6 +265,9 @@ class OrdersReadOnlyService
                 'orders.bill_to_phone',
                 'orders.bill_to_address_line1',
                 'orders.bill_to_postcode',
+                'orders.bill_to_country_id',
+                'bill_country.name as bill_to_country_name',
+                'bill_country.phone_code as bill_to_country_phone_code',
                 'orders.invoiced_at',
                 'orders.sent_at',
                 'orders.paid_at',
@@ -277,6 +285,21 @@ class OrdersReadOnlyService
             ])
             ->where('orders.id', $orderId)
             ->first();
+    }
+
+
+    public function requestAttachments(object $order): Collection
+    {
+        $orderRequestId = (int) ($order->order_request_id ?? 0);
+
+        if ($orderRequestId <= 0) {
+            return collect();
+        }
+
+        return DB::table('order_request_attachments')
+            ->where('order_request_id', $orderRequestId)
+            ->orderBy('id')
+            ->get();
     }
 
     public function revisionHistory(object $order): Collection
@@ -303,7 +326,15 @@ class OrdersReadOnlyService
 
     public function financeSummary(int $orderId): array
     {
-        $order = DB::table('orders')->where('id', $orderId)->first();
+        $order = DB::table('orders')
+            ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
+            ->select([
+                'orders.id',
+                'orders.grand_total',
+                'draft_orders.customer_id',
+            ])
+            ->where('orders.id', $orderId)
+            ->first();
 
         if (! $order) {
             return [
@@ -313,25 +344,27 @@ class OrdersReadOnlyService
                 'payments_used' => 0,
                 'wallet_used' => 0,
                 'refunds' => 0,
+                'wallet_credit_from_overpayments' => 0,
+                'wallet_available' => 0,
             ];
         }
 
         $paymentsUsed = (float) DB::table('order_transactions')
             ->where('order_id', $orderId)
             ->where('status', 'recorded')
-            ->where('type', 'payment')
+            ->whereIn('type', ['payment', 'payment_void'])
             ->sum('amount');
 
         $walletUsed = (float) DB::table('order_transactions')
             ->where('order_id', $orderId)
             ->where('status', 'recorded')
-            ->where('type', 'credit_application')
+            ->whereIn('type', ['credit_application', 'credit_application_void'])
             ->sum('amount');
 
         $refunds = (float) DB::table('order_transactions')
             ->where('order_id', $orderId)
             ->where('status', 'recorded')
-            ->where('type', 'refund')
+            ->whereIn('type', ['refund', 'refund_void'])
             ->sum('amount');
 
         $settledTotal = (float) DB::table('order_transactions')
@@ -347,6 +380,17 @@ class OrdersReadOnlyService
             ])
             ->sum('amount');
 
+        $walletCreditFromOverpayments = (float) DB::table('customer_credits')
+            ->where('order_id', $orderId)
+            ->whereIn('source_type', ['overpayment', 'payment_overpayment'])
+            ->whereIn('status', ['open', 'part_used'])
+            ->sum('remaining_amount');
+
+        $walletAvailable = (float) DB::table('customer_credits')
+            ->where('customer_id', $order->customer_id)
+            ->whereIn('status', ['open', 'part_used'])
+            ->sum('remaining_amount');
+
         $orderTotal = (float) $order->grand_total;
 
         return [
@@ -356,7 +400,35 @@ class OrdersReadOnlyService
             'payments_used' => $paymentsUsed,
             'wallet_used' => $walletUsed,
             'refunds' => $refunds,
+            'wallet_credit_from_overpayments' => $walletCreditFromOverpayments,
+            'wallet_available' => $walletAvailable,
         ];
+    }
+
+    public function paymentTimeline(int $orderId): Collection
+    {
+        return DB::table('order_transactions')
+            ->leftJoin('payment_types', 'payment_types.id', '=', 'order_transactions.payment_type_id')
+            ->select([
+                'order_transactions.id',
+                'order_transactions.type',
+                'order_transactions.amount',
+                'order_transactions.currency',
+                'order_transactions.status',
+                'order_transactions.received_at',
+                'order_transactions.method',
+                'order_transactions.channel',
+                'order_transactions.provider',
+                'order_transactions.reference',
+                'order_transactions.note',
+                'order_transactions.created_at',
+                'payment_types.name as payment_type_name',
+                DB::raw("EXISTS (SELECT 1 FROM order_transactions voids WHERE voids.order_id = order_transactions.order_id AND voids.type = 'payment_void' AND voids.reference = CONCAT('OT#', order_transactions.id) AND voids.status = 'recorded') as has_void"),
+            ])
+            ->where('order_transactions.order_id', $orderId)
+            ->orderByDesc('order_transactions.created_at')
+            ->limit(30)
+            ->get();
     }
 
     public function progressSummary(int $orderId): array

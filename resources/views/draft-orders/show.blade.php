@@ -50,6 +50,12 @@
         $isDraftEditable = ! $isCancelledDraft;
         $isReopenedVersionDraft = $hasChildOrder && ! $isConsumedDraft;
         $finalizedOrderLabel = $draft->finalized_order_number ? ('Order #' . $draft->finalized_order_number) : ($draft->finalized_order_id ? ('Order ID #' . $draft->finalized_order_id) : null);
+        $draftItemCount = $items->count();
+        $draftRetailersResolvedCount = $items->filter(fn ($item) => ! empty($item->retailer_id) && ! empty($item->retailer_name))->count();
+        $draftUnresolvedRetailerCount = max(0, $draftItemCount - $draftRetailersResolvedCount);
+        $draftMissingReferenceCount = $items->filter(fn ($item) => trim((string) ($item->url ?? '')) === '' && trim((string) ($item->product_code ?? '')) === '')->count();
+        $draftAttentionCount = $draftUnresolvedRetailerCount + $draftMissingReferenceCount;
+        $canFinaliseDraft = ! $isCancelledDraft && $draftItemCount > 0 && $draftAttentionCount === 0;
         $retailerLogoUrl = function ($logoPath) {
             $path = trim((string) ($logoPath ?? ''));
             if ($path === '') {
@@ -852,12 +858,12 @@
                             class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"
                         >Open {{ $finalizedOrderLabel }}</a>
                     @endif
-                    @if ($isCancelledDraft)
+                    @if (! $canFinaliseDraft)
                         <button
                             type="button"
                             disabled
                             class="cursor-not-allowed rounded-2xl bg-slate-200 px-4 py-2.5 text-sm font-black text-slate-500"
-                            title="Cancelled drafts must be reopened before they can be finalised."
+                            title="Resolve draft readiness issues before finalising."
                         >Finalise locked</button>
                     @else
                         <button
@@ -883,6 +889,37 @@
             </div>
         </section>
 
+        <section class="rounded-3xl border {{ $canFinaliseDraft ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50' }} p-4 shadow-sm">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p class="text-xs font-black uppercase tracking-[0.18em] {{ $canFinaliseDraft ? 'text-emerald-700' : 'text-amber-700' }}">Draft readiness</p>
+                    <h2 class="mt-1 text-lg font-black text-slate-950">{{ $canFinaliseDraft ? 'Ready to create final order' : 'Commercial preparation still needs attention' }}</h2>
+                    <p class="mt-1 max-w-4xl text-sm font-semibold leading-6 {{ $canFinaliseDraft ? 'text-emerald-900' : 'text-amber-900' }}">
+                        {{ $canFinaliseDraft ? 'All draft items have valid retailers and product references. Order UX can receive a clean, invoice-ready snapshot.' : 'Draft Workbench is the final correction stage. Resolve retailers and missing product references before creating the order.' }}
+                    </p>
+                </div>
+                <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $canFinaliseDraft ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white' }}">{{ $canFinaliseDraft ? 'Clean' : 'Locked' }}</span>
+            </div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-4">
+                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                    <p class="text-2xl font-black text-slate-950">{{ $draftItemCount }}</p>
+                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Items</p>
+                </div>
+                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                    <p class="text-2xl font-black text-slate-950">{{ $draftRetailersResolvedCount }}/{{ $draftItemCount }}</p>
+                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Retailers resolved</p>
+                </div>
+                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                    <p class="text-2xl font-black {{ $draftMissingReferenceCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $draftMissingReferenceCount }}</p>
+                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Missing link/code</p>
+                </div>
+                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
+                    <p class="text-2xl font-black {{ $draftAttentionCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $draftAttentionCount }}</p>
+                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Needs attention</p>
+                </div>
+            </div>
+        </section>
+
         <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_290px]">
             <main class="space-y-4">
                 <section
@@ -899,13 +936,15 @@
                             </div>
                         </section>
                     @else
-                    <section class="rounded-3xl border-2 border-purple-200 bg-white p-6 shadow-sm ring-4 ring-purple-50">
+                    <section class="rounded-3xl border-2 border-sky-200 bg-sky-50/80 p-6 shadow-sm ring-4 ring-sky-100/70">
                         <div class="mb-5 flex flex-wrap items-start justify-between gap-3">
                             <div>
-                                <h2 class="text-xl font-black text-slate-950">Add product</h2>
-                                <p class="mt-1 text-sm text-slate-500">Paste the URL, confirm the retailer, enter
+                                <p class="text-xs font-black uppercase tracking-[0.2em] text-sky-700">Product entry</p>
+                                <h2 class="mt-1 text-xl font-black text-slate-950">Add product</h2>
+                                <p class="mt-1 text-sm font-semibold text-sky-900/80">Paste the URL, confirm the retailer, enter
                                     quantity and unit price. Delivery fees are adjusted in the basket rows below.</p>
                             </div>
+                            <span class="rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-wide text-sky-700 ring-1 ring-sky-200">Workbench area</span>
                         </div>
 
                         <form
@@ -929,7 +968,7 @@
                                         <button
                                             type="button"
                                             @click="detectRetailer()"
-                                            class="row-action shrink-0"
+                                            class="shrink-0 rounded-2xl border border-sky-200 bg-white px-4 py-2 text-sm font-black text-sky-700 shadow-sm hover:bg-sky-100"
                                             title="Detect retailer"
                                         >Detect</button>
                                     </div>
@@ -998,11 +1037,11 @@
                                 </div>
                                 <button
                                     type="submit"
-                                    class="min-h-[46px] whitespace-nowrap rounded-2xl bg-purple-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-purple-700"
+                                    class="min-h-[46px] whitespace-nowrap rounded-2xl bg-sky-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-sky-700"
                                 >Add item</button>
                             </div>
                             <div
-                                class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600"
+                                class="rounded-2xl border border-sky-200 bg-white/75 px-4 py-3 text-sm font-semibold text-sky-900"
                                 x-text="detectMessage || 'Retailer detection is automatic. If a short URL resolves, the full product URL will be saved.'"
                             ></div>
                         </form>
@@ -1606,6 +1645,31 @@
                             </div>
                         @endif
 
+
+
+                        @if (!empty($requestNotes['order_request_id']) && isset($requestAttachments) && $requestAttachments->isNotEmpty())
+                            <div class="mt-4 rounded-3xl border border-indigo-200 bg-indigo-50 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-xs font-black uppercase tracking-widest text-indigo-700">Customer file attachments</p>
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $requestAttachments->count() }} file{{ $requestAttachments->count() === 1 ? '' : 's' }}</span>
+                                </div>
+                                <div class="mt-3 grid gap-2 md:grid-cols-2">
+                                    @foreach ($requestAttachments as $attachment)
+                                        <a
+                                            href="{{ route('order-requests.attachments.show', [$requestNotes['order_request_id'], $attachment->id]) }}"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="flex items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 hover:border-indigo-300 hover:bg-indigo-50"
+                                        >
+                                            <span class="min-w-0 truncate">{{ $attachment->original_name ?? $attachment->path ?? 'Attachment' }}</span>
+                                            <span class="shrink-0 text-indigo-700">↗</span>
+                                        </a>
+                                    @endforeach
+                                </div>
+                                <p class="mt-3 text-xs font-bold text-indigo-700">These are the files originally attached to the customer order request.</p>
+                            </div>
+                        @endif
+
                         <form
                             method="POST"
                             action="{{ route('draft-orders.notes.store', $draft->id) }}"
@@ -1853,6 +1917,24 @@
                                 <p class="text-[10px] font-black uppercase tracking-widest text-amber-700">Customer request note</p>
                                 <p class="mt-1 line-clamp-4 whitespace-pre-line text-xs font-semibold leading-5 text-amber-900">{{ $requestNotes['notes'] ?: $requestNotes['converted_note_body'] }}</p>
                                 <button type="button" @click="tab='notes'; window.scrollTo({top: 0, behavior: 'smooth'});" class="mt-2 text-xs font-black text-amber-800 hover:text-amber-950">View notes →</button>
+                            </div>
+                        @endif
+                        @if (!empty($requestNotes['order_request_id']) && isset($requestAttachments) && $requestAttachments->isNotEmpty())
+                            <div class="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-3">
+                                <p class="text-[10px] font-black uppercase tracking-widest text-indigo-700">Customer attachments</p>
+                                <div class="mt-2 space-y-2">
+                                    @foreach ($requestAttachments as $attachment)
+                                        <a
+                                            href="{{ route('order-requests.attachments.show', [$requestNotes['order_request_id'], $attachment->id]) }}"
+                                            target="_blank"
+                                            rel="noopener"
+                                            class="flex items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-50"
+                                        >
+                                            <span class="min-w-0 truncate">{{ $attachment->original_name ?? 'Attachment' }}</span>
+                                            <span class="shrink-0 text-indigo-700">↗</span>
+                                        </a>
+                                    @endforeach
+                                </div>
                             </div>
                         @endif
                     </div>

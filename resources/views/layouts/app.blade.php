@@ -50,30 +50,30 @@
 
     <!-- Sidebar -->
     <aside
-        class="fixed inset-y-0 left-0 z-50 w-72 transform bg-slate-950 text-slate-200 transition-transform duration-300 lg:translate-x-0"
+        class="fixed inset-y-0 left-0 z-50 flex w-64 transform flex-col bg-slate-950 text-slate-200 transition-transform duration-300 lg:translate-x-0"
         :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
-        <div class="flex h-20 items-center justify-between border-b border-slate-800 px-6">
+        <div class="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 px-4">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight text-white">
+                <h1 class="text-lg font-black tracking-tight text-white">
                     DabbaDesk
                 </h1>
 
-                <p class="mt-1 text-xs text-slate-400">
+                <p class="text-[11px] font-semibold text-slate-400">
                     Dabba Direct CMS
                 </p>
             </div>
 
             <button
                 type="button"
-                class="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
+                class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
                 @click="sidebarOpen = false"
             >
                 ✕
             </button>
         </div>
 
-        <nav class="space-y-2 px-4 py-6">
+        <nav class="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-visible px-2.5 py-3 pr-3 scroll-smooth [scrollbar-width:thin] [scrollbar-color:#475569_transparent]">
 
             @php
                 $navItems = [
@@ -104,18 +104,18 @@
 
                 <a
                     href="{{ $href }}"
-                    class="group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition
+                    class="group flex min-w-0 items-center gap-2.5 overflow-visible rounded-xl px-3 py-2 pr-3.5 text-[13px] font-semibold leading-tight transition
                     {{
                         $isActive
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30'
                             : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                     }}"
                 >
-                    <span class="text-lg">
+                    <span class="w-6 shrink-0 text-center text-base leading-none">
                         {{ $item['icon'] }}
                     </span>
 
-                    <span>
+                    <span class="min-w-0 flex-1 truncate">
                         {{ $item['label'] }}
                     </span>
 
@@ -123,14 +123,14 @@
                         <template x-if="orderRequestCount > 0">
                             <span
                                 x-text="orderRequestCount"
-                                class="ml-auto rounded-full bg-rose-500 px-2 py-0.5 text-xs font-black text-white"
+                                class="ml-1 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-indigo-600/20"
                             ></span>
                         </template>
                     @endif
 
                     @unless($item['route'])
-                        <span class="ml-auto rounded-full bg-slate-800 px-2 py-0.5 text-[10px] text-slate-400 group-hover:bg-slate-700">
-                            Soon
+                        <span class="ml-1 inline-flex shrink-0 items-center rounded-full bg-slate-800/80 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-400 group-hover:bg-slate-700/80 group-hover:text-slate-300">
+                            soon
                         </span>
                     @endunless
 
@@ -140,14 +140,14 @@
 
         </nav>
 
-        <div class="absolute bottom-0 left-0 right-0 border-t border-slate-800 p-4">
+        <div class="shrink-0 border-t border-slate-800 p-3">
 
-            <div class="mb-4 rounded-2xl bg-slate-900 p-4">
-                <p class="text-sm font-semibold text-white">
+            <div class="mb-2 rounded-xl bg-slate-900 px-3 py-2">
+                <p class="truncate text-xs font-black text-white">
                     {{ Auth::user()->name }}
                 </p>
 
-                <p class="mt-1 text-xs text-slate-400">
+                <p class="text-[10px] font-semibold text-slate-400">
                     Staff account
                 </p>
             </div>
@@ -157,7 +157,7 @@
 
                 <button
                     type="submit"
-                    class="w-full rounded-2xl bg-rose-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-600"
+                    class="w-full rounded-xl bg-rose-500 px-3 py-2 text-xs font-black text-white transition hover:bg-rose-600"
                 >
                     Logout
                 </button>
@@ -168,12 +168,12 @@
     </aside>
 
     <!-- Main wrapper -->
-    <div class="lg:pl-72">
+    <div class="lg:pl-64">
 
         <!-- Topbar -->
-        <header class="sticky top-0 z-30 flex h-20 items-center justify-between border-b border-slate-200 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6">
+        <header class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-5">
 
-            <div class="flex items-center gap-4">
+            <div class="flex min-w-0 items-center gap-3">
 
                 <button
                     type="button"
@@ -183,12 +183,12 @@
                     ☰
                 </button>
 
-                <div>
-                    <h2 class="text-xl font-bold text-slate-900 sm:text-2xl">
+                <div class="min-w-0">
+                    <h2 class="truncate text-lg font-black text-slate-900 sm:text-xl">
                         {{ $header ?? 'Dashboard' }}
                     </h2>
 
-                    <p class="mt-1 hidden text-sm text-slate-500 sm:block">
+                    <p class="hidden text-xs font-semibold text-slate-500 sm:block">
                         DabbaDesk operations
                     </p>
                 </div>
@@ -207,7 +207,7 @@
                     </p>
                 </div>
 
-                <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
                     {{ strtoupper(substr(Auth::user()->name, 0, 1)) }}
                 </div>
 
@@ -216,7 +216,7 @@
         </header>
 
         <!-- Page content -->
-        <main class="p-4 sm:p-6 lg:p-8">
+        <main class="p-3 sm:p-5 lg:p-6">
             {{ $slot }}
         </main>
 
