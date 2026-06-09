@@ -41,7 +41,16 @@
         $walletAvailable = round((float) ($finance['wallet_available'] ?? 0), 2);
         $paymentStatusLabel = $balanceDue <= 0.004 && $orderTotal > 0 ? 'Paid in full' : ($settledTotal > 0 ? 'Partially paid' : 'Awaiting payment');
         $paymentStatusClasses = $balanceDue <= 0.004 && $orderTotal > 0 ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : ($settledTotal > 0 ? 'bg-amber-100 text-amber-700 ring-amber-200' : 'bg-rose-100 text-rose-700 ring-rose-200');
-        $invoiceStatusLabel = $isInvoiced ? 'Invoice issued' : 'Awaiting invoice';
+        $invoiceWorkspace = $invoiceWorkspace ?? [];
+        $invoiceRoot = $invoiceWorkspace['invoice'] ?? null;
+        $latestInvoiceVersion = $invoiceWorkspace['latest_version'] ?? null;
+        $invoiceVersions = collect($invoiceWorkspace['versions'] ?? []);
+        $hasInvoiceWorkspace = ! empty($invoiceRoot) && ! empty($latestInvoiceVersion);
+        $invoiceNumber = $invoiceRoot->invoice_number ?? $order->order_number;
+        $invoiceStatusLabel = $hasInvoiceWorkspace
+            ? Str::of((string) ($latestInvoiceVersion->status ?? 'ISSUED'))->replace('_', ' ')->title()
+            : 'No invoice created';
+        $invoiceStatusClasses = $hasInvoiceWorkspace ? 'bg-emerald-100 text-emerald-700 ring-emerald-200' : 'bg-amber-100 text-amber-700 ring-amber-200';
         $purchaseStatusLabel = $isCustomerSelfPurchase ? 'Customer purchased' : (((int) ($progress['remaining_purchase_qty'] ?? 0) > 0) ? 'Awaiting purchase' : 'Purchased');
         $paymentTypeOptions = [
             'Online Payment Link (Card)',
@@ -427,7 +436,7 @@
                 <div class="mt-4 grid gap-2 sm:grid-cols-3">
                     <div class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
                         <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Invoice status</p>
-                        <p class="mt-1 text-sm font-black {{ $isInvoiced ? 'text-emerald-700' : 'text-amber-700' }}">{{ $invoiceStatusLabel }}</p>
+                        <p class="mt-1 text-sm font-black {{ $hasInvoiceWorkspace ? 'text-emerald-700' : 'text-amber-700' }}">{{ $invoiceStatusLabel }}</p>
                     </div>
                     <div class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
                         <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Payment status</p>
@@ -439,8 +448,57 @@
                     </div>
                 </div>
 
+                <div class="mt-4 rounded-3xl border {{ $hasInvoiceWorkspace ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' }} p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasInvoiceWorkspace ? 'text-emerald-700' : 'text-amber-700' }}">Invoice workspace</p>
+                            <h3 class="mt-1 text-base font-black text-slate-950">
+                                @if ($hasInvoiceWorkspace)
+                                    Invoice #{{ $invoiceNumber }} · v{{ $latestInvoiceVersion->version }}
+                                @else
+                                    No invoice created yet
+                                @endif
+                            </h3>
+                            <p class="mt-1 text-xs font-semibold {{ $hasInvoiceWorkspace ? 'text-emerald-900' : 'text-amber-900' }}">
+                                @if ($hasInvoiceWorkspace)
+                                    Issued {{ $latestInvoiceVersion->issued_at ? \Carbon\Carbon::parse($latestInvoiceVersion->issued_at)->format('d M Y H:i') : 'date unknown' }} · Total £{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}
+                                @else
+                                    Create the first invoice snapshot from this clean order.
+                                @endif
+                            </p>
+                        </div>
+                        <span class="rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ring-1 {{ $invoiceStatusClasses }}">{{ $invoiceStatusLabel }}</span>
+                    </div>
+
+                    @if ($hasInvoiceWorkspace)
+                        <div class="mt-3 grid gap-2 sm:grid-cols-3">
+                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</p>
+                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->items_subtotal, 2) }}</p>
+                            </div>
+                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Delivery + fee</p>
+                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->delivery_total + (float) $latestInvoiceVersion->dabba_fee_total, 2) }}</p>
+                            </div>
+                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Grand total</p>
+                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}</p>
+                            </div>
+                        </div>
+                    @endif
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-black text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'Create new version' : 'Create invoice' }}</button>
+                        @if ($hasInvoiceWorkspace && ! empty($invoiceRoot->pdf_path))
+                            <a href="{{ asset('storage/' . ltrim($invoiceRoot->pdf_path, '/')) }}" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">View / download ↗</a>
+                        @else
+                            <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">PDF next</button>
+                        @endif
+                        <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">Send next</button>
+                    </div>
+                </div>
+
                 <div class="mt-4 flex flex-wrap gap-2">
-                    <button type="button" disabled class="cursor-not-allowed rounded-2xl bg-slate-200 px-4 py-2 text-sm font-black text-slate-500">Create invoice · next</button>
                     <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Record payment</button>
                     <button type="button" data-copy-value="{{ e($copyPaymentDetails) }}" class="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 hover:bg-indigo-100">Copy payment details</button>
                 </div>
@@ -455,10 +513,38 @@
                 @endif
             </div>
 
-            <div class="xl:col-span-7 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Payment history</p>
+            <div class="xl:col-span-7 space-y-5">
+                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Invoice history</p>
+                            <h2 class="mt-1 text-lg font-black text-slate-950">Invoice versions</h2>
+                            <p class="mt-1 text-sm text-slate-500">Invoice snapshots issued from this order. PDFs and email sending come in the next invoice phase.</p>
+                        </div>
+                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $invoiceVersions->count() }} version{{ $invoiceVersions->count() === 1 ? '' : 's' }}</span>
+                    </div>
+                    <div class="mt-4 space-y-2">
+                        @forelse ($invoiceVersions->take(5) as $version)
+                            <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                                <div>
+                                    <p class="text-sm font-black text-slate-950">Invoice #{{ $invoiceNumber }} · version {{ $version->version }}</p>
+                                    <p class="mt-1 text-xs font-semibold text-slate-500">{{ $version->issued_at ? \Carbon\Carbon::parse($version->issued_at)->format('d M Y H:i') : 'Issued date unknown' }} @if(! empty($version->issued_by_name)) · {{ $version->issued_by_name }} @endif</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-sm font-black text-slate-950">£{{ number_format((float) $version->grand_total, 2) }}</p>
+                                    <p class="mt-1 text-xs font-black uppercase tracking-wide text-emerald-700">{{ Str::of((string) $version->status)->replace('_', ' ')->title() }}</p>
+                                </div>
+                            </div>
+                        @empty
+                            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-slate-500">No invoice versions yet.</div>
+                        @endforelse
+                    </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Payment history</p>
                         <h2 class="mt-1 text-lg font-black text-slate-950">Settlement timeline</h2>
                         <p class="mt-1 text-sm text-slate-500">Shows payment, wallet-credit, refund and correction events that affect this order.</p>
                     </div>
@@ -803,6 +889,56 @@
 
 
     </div>
+
+
+        <div x-data="{ invoiceOpen: false }" @open-invoice-modal.window="invoiceOpen = true" x-cloak x-show="invoiceOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+            <div @click.away="invoiceOpen = false" class="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Invoice workspace</p>
+                        <h3 class="mt-1 text-xl font-black text-slate-950">{{ $hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice' }}</h3>
+                        <p class="mt-1 text-sm font-semibold text-slate-500">This creates an issued invoice snapshot from the current order totals. PDF/email sending comes next.</p>
+                    </div>
+                    <button type="button" @click="invoiceOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
+                </div>
+
+                <form method="POST" action="{{ route('orders.invoices.store', $order->id) }}" class="mt-5 space-y-4">
+                    @csrf
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Invoice no.</p>
+                            <p class="mt-1 text-sm font-black text-slate-950">{{ $invoiceNumber }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Next version</p>
+                            <p class="mt-1 text-sm font-black text-slate-950">v{{ ($invoiceVersions->max('version') ?? 0) + 1 }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Total</p>
+                            <p class="mt-1 text-sm font-black text-slate-950">£{{ number_format($orderTotal, 2) }}</p>
+                        </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">
+                        @if ($hasInvoiceWorkspace)
+                            A previous invoice version already exists. Creating a new version preserves the older snapshot for history.
+                        @else
+                            This will mark the order as invoiced and create the first invoice version. It will not generate or send a PDF yet.
+                        @endif
+                    </div>
+
+                    <div>
+                        <label class="text-xs font-black uppercase tracking-wide text-slate-500">Customer note for invoice snapshot</label>
+                        <textarea name="customer_note" rows="3" maxlength="2000" placeholder="Optional note to carry on the invoice snapshot…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-amber-500 focus:ring-amber-500">{{ old('customer_note') }}</textarea>
+                    </div>
+
+                    <div class="flex flex-wrap justify-end gap-3">
+                        <button type="button" @click="invoiceOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">{{ $hasInvoiceWorkspace ? 'Create new version' : 'Create invoice' }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
 
         <div x-data="{ paymentOpen: false }" @open-payment-modal.window="paymentOpen = true" x-cloak x-show="paymentOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">

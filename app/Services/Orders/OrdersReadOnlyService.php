@@ -431,6 +431,39 @@ class OrdersReadOnlyService
             ->get();
     }
 
+
+    public function invoiceWorkspace(int $orderId): array
+    {
+        $invoice = DB::table('invoices')
+            ->where('order_id', $orderId)
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $invoice) {
+            return [
+                'invoice' => null,
+                'latest_version' => null,
+                'versions' => collect(),
+            ];
+        }
+
+        $versions = DB::table('invoice_versions')
+            ->leftJoin('users as issued_user', 'issued_user.id', '=', 'invoice_versions.issued_by_user_id')
+            ->select([
+                'invoice_versions.*',
+                'issued_user.name as issued_by_name',
+            ])
+            ->where('invoice_versions.order_id', $orderId)
+            ->orderByDesc('invoice_versions.version')
+            ->get();
+
+        return [
+            'invoice' => $invoice,
+            'latest_version' => $versions->first(),
+            'versions' => $versions,
+        ];
+    }
+
     public function progressSummary(int $orderId): array
     {
         $itemQty = (int) DB::table('order_items')

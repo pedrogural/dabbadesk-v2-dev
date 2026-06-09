@@ -44,6 +44,7 @@ class OrdersController extends Controller
             'revisionHistory' => $orders->revisionHistory($orderProfile),
             'requestAttachments' => $orders->requestAttachments($orderProfile),
             'paymentTimeline' => $orders->paymentTimeline($order),
+            'invoiceWorkspace' => $orders->invoiceWorkspace($order),
         ]);
     }
 
@@ -415,6 +416,154 @@ class OrdersController extends Controller
         return redirect()
             ->route('orders.show', $order)
             ->with('success', 'Payment reversed.');
+    }
+
+
+    public function createInvoice(Request $request, int $order)
+    {
+        $orderRow = DB::table('orders')
+            ->where('id', $order)
+            ->first();
+
+        abort_if(! $orderRow, 404);
+
+        $validated = $request->validate([
+            'customer_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $customerNote = trim((string) ($validated['customer_note'] ?? ''));
+        $userId = Auth::id();
+        $now = now();
+
+        DB::transaction(function () use ($order, $orderRow, $customerNote, $userId, $now) {
+            $invoice = DB::table('invoices')
+                ->where('order_id', $order)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $invoice) {
+                $invoiceId = (int) DB::table('invoices')->insertGetId([
+                    'order_id' => $order,
+                    'invoice_number' => (string) $orderRow->order_number,
+                    'pdf_path' => null,
+                    'sent_to_customer_at' => null,
+                    'created_by_user_id' => $userId,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            } else {
+                $invoiceId = (int) $invoice->id;
+            }
+
+            $nextVersion = ((int) DB::table('invoice_versions')
+                ->where('order_id', $order)
+                ->lockForUpdate()
+                ->max('version')) + 1;
+
+            $invoiceVersionId = (int) DB::table('invoice_versions')->insertGetId([
+                'order_id' => $order,
+                'version' => $nextVersion,
+                'status' => 'ISSUED',
+                'approved_at' => $now,
+                'approved_by_user_id' => $userId,
+                'approval_channel' => 'dabbadesk_order_page',
+                'approval_notes' => null,
+                'items_subtotal' => round((float) ($orderRow->subtotal ?? 0), 2),
+                'delivery_total' => round((float) ($orderRow->retailer_delivery_fee_total ?? 0), 2),
+                'dabba_fee_total' => round((float) ($orderRow->dabba_fee_amount ?? 0), 2),
+                'grand_total' => round((float) ($orderRow->grand_total ?? 0), 2),
+                'issued_at' => $now,
+                'issued_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+                'customer_note' => $customerNote !== '' ? $customerNote : null,
+            ]);
+
+            $retailers = DB::table('order_retailers')
+                ->where('order_id', $order)
+                ->orderBy('id')
+                ->get();
+
+            foreach ($retailers as $retailer) {
+                DB::table('invoice_version_retailers')->insert([
+                    'invoice_version_id' => $invoiceVersionId,
+                    'retailer_id' => $retailer->retailer_id,
+                    'retailer_name' => $retailer->retailer_name,
+                    'retailer_subtotal' => round((float) ($retailer->retailer_items_subtotal ?? 0), 2),
+                    'retailer_delivery_fee_total' => round((float) ($retailer->retailer_delivery_fee_total ?? 0), 2),
+                    'item_delivery_fee_total' => 0,
+                    'dabba_fee_rate' => $retailer->dabba_fee_rate,
+                    'dabba_fee_min' => $retailer->dabba_fee_min,
+                    'dabba_fee_is_disabled' => (int) ($retailer->dabba_fee_is_disabled ?? 0),
+                    'dabba_fee' => round((float) ($retailer->dabba_fee ?? 0), 2),
+                    'dabba_fee_min_applied' => ((float) ($retailer->dabba_fee ?? 0)) <= ((float) ($retailer->dabba_fee_min ?? 0)) ? 1 : 0,
+                    'retailer_grand_total' => round(((float) ($retailer->retailer_items_subtotal ?? 0)) + ((float) ($retailer->retailer_delivery_fee_total ?? 0)) + ((float) ($retailer->dabba_fee ?? 0)), 2),
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+
+            $items = DB::table('order_items')
+                ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
+                ->select([
+                    'order_items.*',
+                    'order_retailers.retailer_id as actual_retailer_id',
+                ])
+                ->where('order_items.order_id', $order)
+                ->orderBy('order_items.sort_order')
+                ->orderBy('order_items.id')
+                ->get();
+
+            foreach ($items as $item) {
+                $qty = (float) ($item->quantity ?? 1);
+                $unitPrice = round((float) ($item->unit_price ?? 0), 2);
+                $lineSubtotal = round((float) ($item->line_subtotal ?? 0), 2);
+                if ($lineSubtotal <= 0 && $unitPrice > 0 && $qty > 0) {
+                    $lineSubtotal = round($unitPrice * $qty, 2);
+                }
+
+                DB::table('invoice_version_items')->insert([
+                    'invoice_version_id' => $invoiceVersionId,
+                    'retailer_id' => $item->actual_retailer_id,
+                    'sort_order' => (int) ($item->sort_order ?? 0),
+                    'description' => $item->description ?: $item->item_name,
+                    'url' => $item->product_url,
+                    'sku' => $item->product_code,
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'line_subtotal' => $lineSubtotal,
+                    'item_delivery_fee' => $item->item_retailer_delivery_fee,
+                    'item_retailer_delivery_fee' => $item->retailer_delivery_allocated,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+
+            DB::table('orders')->where('id', $order)->update([
+                'status' => in_array((string) $orderRow->status, ['created', 'ready'], true) ? 'invoiced' : $orderRow->status,
+                'invoiced_at' => $orderRow->invoiced_at ?: $now,
+                'updated_by_user_id' => $userId,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => $order,
+                'type' => 'invoice_note',
+                'is_pinned' => 0,
+                'title' => $nextVersion === 1 ? 'Invoice created' : 'Invoice version created',
+                'body' => 'Invoice #' . $orderRow->order_number . ' version ' . $nextVersion . ' was issued from the Order page. Total £' . number_format((float) ($orderRow->grand_total ?? 0), 2) . '.',
+                'occurred_at' => $now,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return redirect()
+            ->route('orders.show', $order)
+            ->with('success', 'Invoice workspace created / updated.');
     }
 
     private function ensurePaymentType(string $name): ?int
