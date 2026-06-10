@@ -200,7 +200,7 @@
                             </div>
                             <div class="md:col-span-2">
                                 <label class="{{ $labelClass }}">Address line</label>
-                                <input name="address_line1" value="{{ old('address_line1') }}" class="{{ $inputClass }}">
+                                <textarea name="address_line1" rows="3" class="{{ $inputClass }}">{{ old('address_line1') }}</textarea>
                             </div>
                             <div>
                                 <label class="{{ $labelClass }}">Postcode</label>

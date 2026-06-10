@@ -54,7 +54,10 @@
         $draftRetailersResolvedCount = $items->filter(fn ($item) => ! empty($item->retailer_id) && ! empty($item->retailer_name))->count();
         $draftUnresolvedRetailerCount = max(0, $draftItemCount - $draftRetailersResolvedCount);
         $draftMissingReferenceCount = $items->filter(fn ($item) => trim((string) ($item->url ?? '')) === '' && trim((string) ($item->product_code ?? '')) === '')->count();
-        $draftAttentionCount = $draftUnresolvedRetailerCount + $draftMissingReferenceCount;
+        $draftReviewedCount = $items->filter(fn ($item) => ! empty($item->reviewed_at))->count();
+        $draftNeedsAttentionCount = $items->filter(fn ($item) => ! empty($item->needs_attention_at))->count();
+        $draftAttentionCount = $draftUnresolvedRetailerCount + $draftMissingReferenceCount + $draftNeedsAttentionCount;
+        $draftUnreviewedCount = max(0, $draftItemCount - $draftReviewedCount - $draftNeedsAttentionCount);
         $canFinaliseDraft = ! $isCancelledDraft && $draftItemCount > 0 && $draftAttentionCount === 0;
         $retailerLogoUrl = function ($logoPath) {
             $path = trim((string) ($logoPath ?? ''));
@@ -381,6 +384,19 @@
         .draft-ui .basket-row.is-reviewed {
             background: #ecfdf5;
             box-shadow: inset 5px 0 0 #86efac
+        }
+
+        .draft-ui .basket-row.needs-attention {
+            background: #fff1f2;
+            box-shadow: inset 5px 0 0 #fda4af
+        }
+
+        .draft-ui .attention-note-box {
+            border: 1px solid #fecdd3 !important;
+            background: #fffafa !important;
+            color: #881337 !important;
+            min-height: 48px !important;
+            resize: vertical
         }
 
         .draft-ui .basket-row:last-child {
@@ -736,7 +752,7 @@
             totals: @js($initialDraftTotals)
         })"
         x-init="boot()"
-        @delete-item.window="deleteModal = { open: true, url: $event.detail.url, title: $event.detail.title }"
+        @delete-item.window="openDeleteModal($event.detail)"
         @consumed-draft-edit-attempt.window="openConsumedEditModal($event.detail.form || null)"
     >
         @if ($errors->any())
@@ -889,34 +905,23 @@
             </div>
         </section>
 
-        <section class="rounded-3xl border {{ $canFinaliseDraft ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50' }} p-4 shadow-sm">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <p class="text-xs font-black uppercase tracking-[0.18em] {{ $canFinaliseDraft ? 'text-emerald-700' : 'text-amber-700' }}">Draft readiness</p>
-                    <h2 class="mt-1 text-lg font-black text-slate-950">{{ $canFinaliseDraft ? 'Ready to create final order' : 'Commercial preparation still needs attention' }}</h2>
-                    <p class="mt-1 max-w-4xl text-sm font-semibold leading-6 {{ $canFinaliseDraft ? 'text-emerald-900' : 'text-amber-900' }}">
-                        {{ $canFinaliseDraft ? 'All draft items have valid retailers and product references. Order UX can receive a clean, invoice-ready snapshot.' : 'Draft Workbench is the final correction stage. Resolve retailers and missing product references before creating the order.' }}
+        <section class="rounded-2xl border {{ $canFinaliseDraft ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50' }} px-4 py-3 shadow-sm">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-xs font-black uppercase tracking-[0.18em] {{ $canFinaliseDraft ? 'text-emerald-700' : 'text-amber-700' }}">Draft readiness</p>
+                        <span class="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide {{ $canFinaliseDraft ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white' }}">{{ $canFinaliseDraft ? 'Clean' : 'Action required' }}</span>
+                    </div>
+                    <p class="mt-1 text-sm font-black text-slate-950">{{ $canFinaliseDraft ? 'Ready to create final order' : 'Commercial preparation still needs attention' }}</p>
+                    <p class="mt-1 text-xs font-bold {{ $canFinaliseDraft ? 'text-emerald-900' : 'text-amber-900' }}">
+                        {{ $draftItemCount }} items · {{ $draftRetailersResolvedCount }}/{{ $draftItemCount }} retailers · {{ $draftMissingReferenceCount }} missing link/code · {{ $draftReviewedCount }} reviewed · {{ $draftNeedsAttentionCount }} needs attention · {{ $draftUnreviewedCount }} unreviewed
                     </p>
                 </div>
-                <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $canFinaliseDraft ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white' }}">{{ $canFinaliseDraft ? 'Clean' : 'Locked' }}</span>
-            </div>
-            <div class="mt-4 grid gap-3 sm:grid-cols-4">
-                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                    <p class="text-2xl font-black text-slate-950">{{ $draftItemCount }}</p>
-                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Items</p>
-                </div>
-                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                    <p class="text-2xl font-black text-slate-950">{{ $draftRetailersResolvedCount }}/{{ $draftItemCount }}</p>
-                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Retailers resolved</p>
-                </div>
-                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                    <p class="text-2xl font-black {{ $draftMissingReferenceCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $draftMissingReferenceCount }}</p>
-                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Missing link/code</p>
-                </div>
-                <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                    <p class="text-2xl font-black {{ $draftAttentionCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $draftAttentionCount }}</p>
-                    <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Needs attention</p>
-                </div>
+                @if ($draftNeedsAttentionCount > 0)
+                    <div class="rounded-xl border border-rose-200 bg-white/80 px-3 py-2 text-xs font-black text-rose-700">
+                        ⚠ {{ $draftNeedsAttentionCount }} item{{ $draftNeedsAttentionCount === 1 ? '' : 's' }} need attention before finalising
+                    </div>
+                @endif
             </div>
         </section>
 
@@ -1257,17 +1262,21 @@
                                                         : '';
                                                     $isJustAdded = $lastAddedItemId === (int) $item->id;
                                                     $isReviewed = ! empty($item->reviewed_at);
+                                                    $needsAttention = ! empty($item->needs_attention_at);
+                                                    $attentionNote = (string) ($item->needs_attention_note ?? '');
                                                 @endphp
                                                 <form
                                                     method="POST"
                                                     action="{{ route('draft-orders.items.update', [$draft->id, $item->id]) }}"
                                                     id="item-{{ $item->id }}"
-                                                    class="basket-grid basket-row {{ $isJustAdded ? 'bg-purple-50/70' : '' }}" :class="{ 'is-reviewed': reviewed }"
+                                                    class="basket-grid basket-row {{ $isJustAdded ? 'bg-purple-50/70' : '' }}" :class="{ 'is-reviewed': reviewed && !needsAttention, 'needs-attention': needsAttention }"
                                                     x-data="{
                                                         qty: {{ (int) $item->qty }},
                                                         unit: {{ number_format((float) $item->unit_price, 2, '.', '') }},
                                                         delivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
                                                         reviewed: @js($isReviewed),
+                                                        needsAttention: @js($needsAttention),
+                                                        attentionNote: @js($attentionNote),
                                                         previousSubtotal: {{ number_format((float) (($item->qty ?? 1) * ($item->unit_price ?? 0)), 2, '.', '') }},
                                                         previousDelivery: {{ number_format((float) ($item->item_retailer_delivery_fee ?? ($item->item_delivery_fee ?? 0)), 2, '.', '') }},
                                                         retailerId: @js((string) $retailerId),
@@ -1292,6 +1301,20 @@
                                                         },
                                                         toggleReviewed() {
                                                             this.reviewed = ! this.reviewed;
+                                                            if (this.reviewed) {
+                                                                this.needsAttention = false;
+                                                                this.attentionNote = '';
+                                                            }
+                                                            this.markDirty();
+                                                            this.save();
+                                                        },
+                                                        toggleNeedsAttention() {
+                                                            this.needsAttention = ! this.needsAttention;
+                                                            if (this.needsAttention) {
+                                                                this.reviewed = false;
+                                                            } else {
+                                                                this.attentionNote = '';
+                                                            }
                                                             this.markDirty();
                                                             this.save();
                                                         },
@@ -1313,6 +1336,7 @@
                                                     @csrf
                                                     @method('PATCH')
                                                     <input type="hidden" name="reviewed" :value="reviewed ? 1 : 0">
+                                                    <input type="hidden" name="needs_attention" :value="needsAttention ? 1 : 0">
                                                     <input
                                                         type="hidden"
                                                         name="retailer_id"
@@ -1337,6 +1361,19 @@
                                                                 @blur="save()"
                                                                 class="description-input"
                                                             >{{ $item->description }}</textarea>
+                                                        </div>
+                                                        <div x-show="needsAttention" x-cloak class="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3">
+                                                            <label class="block text-[10px] font-black uppercase tracking-widest text-rose-700">Needs attention note</label>
+                                                            <textarea
+                                                                name="needs_attention_note"
+                                                                rows="2"
+                                                                maxlength="255"
+                                                                x-model="attentionNote"
+                                                                @input="markDirty()"
+                                                                @blur="save()"
+                                                                placeholder="Example: waiting for customer approval of revised price"
+                                                                class="attention-note-box mt-2 w-full rounded-xl px-3 py-2 text-sm font-semibold"
+                                                            ></textarea>
                                                         </div>
                                                         <label
                                                             class="mt-3 block text-[10px] font-black uppercase tracking-widest text-slate-400"
@@ -1451,6 +1488,14 @@
                                                         ></button>
                                                         <button
                                                             type="button"
+                                                            @click.prevent="toggleNeedsAttention()"
+                                                            class="rounded-xl border px-3 py-2 text-[11px] font-black uppercase tracking-wide transition"
+                                                            :class="needsAttention ? 'border-rose-300 bg-rose-100 text-rose-800' : 'border-slate-200 bg-white text-slate-500 hover:bg-rose-50 hover:text-rose-700'"
+                                                            x-text="needsAttention ? 'Attention' : 'Needs attention'"
+                                                            title="Mark item as needing attention"
+                                                        ></button>
+                                                        <button
+                                                            type="button"
                                                             @click.prevent="$dispatch('delete-item', { url: '{{ route('draft-orders.items.destroy', [$draft->id, $item->id]) }}', title: @js(Str::limit($title, 90)) })"
                                                             class="trash-btn"
                                                             title="Remove item"
@@ -1538,7 +1583,7 @@
                         @php
                             $addressRow = $customerDetails['address_row'] ?? [];
                             $selectedCountryId = old('country_id', $addressRow['country_id'] ?? null);
-                            $selectedPhoneCountryId = old('phone_country_id', $customerDetails['phone_country_id'] ?? $selectedCountryId);
+                            $selectedPhoneCountryId = old('phone_country_id', $customerDetails['phone_country_id'] ?? null);
                         @endphp
 
                         <form method="POST" action="{{ route('draft-orders.customer.update', $draft->id) }}" class="mt-5 space-y-5">
@@ -1585,11 +1630,11 @@
                                 <div class="mt-4 grid gap-4 md:grid-cols-2">
                                     <div class="md:col-span-2">
                                         <label class="field-label">Address line 1</label>
-                                        <input name="line1" value="{{ old('line1', $addressRow['line1'] ?? '') }}" class="input-clean text-sm">
+                                        <textarea name="line1" rows="3" class="input-clean text-sm">{{ old('line1', $addressRow['line1'] ?? '') }}</textarea>
                                     </div>
                                     <div class="md:col-span-2">
                                         <label class="field-label">Address line 2</label>
-                                        <input name="line2" value="{{ old('line2', $addressRow['line2'] ?? '') }}" class="input-clean text-sm">
+                                        <textarea name="line2" rows="2" class="input-clean text-sm">{{ old('line2', $addressRow['line2'] ?? '') }}</textarea>
                                     </div>
                                     <div>
                                         <label class="field-label">City</label>
@@ -2461,7 +2506,19 @@
                     this.finaliseModal.open = true;
                 },
 
+                openDeleteModal(detail) {
+                    this.deleteModal = {
+                        open: true,
+                        url: detail?.url || '',
+                        title: detail?.title || ''
+                    };
+                    this.consumedEditModal.pendingDelete = false;
+                    this.consumedEditModal.pendingForm = null;
+                },
+
                 openConsumedEditModal(form) {
+                    this.deleteModal.open = false;
+                    this.consumedEditModal.pendingDelete = false;
                     this.consumedEditModal.pendingForm = form || null;
                     this.consumedEditModal.open = true;
                 },
@@ -2499,6 +2556,8 @@
 
                 async confirmDeleteItem() {
                     if (this.isConsumedDraft && !window.dabbaConsumedDraftEditAcknowledged) {
+                        this.deleteModal.open = false;
+                        this.consumedEditModal.pendingForm = null;
                         this.consumedEditModal.pendingDelete = true;
                         this.consumedEditModal.open = true;
                         return;

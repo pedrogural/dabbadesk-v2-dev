@@ -251,6 +251,8 @@ class DraftOrdersController extends Controller
                 'unit_price' => ['required', 'numeric', 'min:0'],
                 'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
                 'reviewed' => ['nullable', 'boolean'],
+                'needs_attention' => ['nullable', 'boolean'],
+                'needs_attention_note' => ['nullable', 'string', 'max:255'],
             ]);
         } catch (ValidationException $exception) {
             Log::warning('Draft item autosave validation failed', [
@@ -278,6 +280,8 @@ class DraftOrdersController extends Controller
         $data['product_code'] = $data['product_code'] ?? null;
         $data['sku'] = $data['sku'] ?? null;
         $data['reviewed'] = $request->boolean('reviewed');
+        $data['needs_attention'] = $request->boolean('needs_attention');
+        $data['needs_attention_note'] = $data['needs_attention_note'] ?? null;
 
         if (! empty($data['url'])) {
             try {

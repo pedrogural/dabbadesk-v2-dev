@@ -141,7 +141,12 @@
                                     {{ $hasUnresolvedRetailers ? 'Order Requests are the correction stage. Resolve every retailer before this request can move forward.' : 'All request retailers are resolved. The draft can inherit clean intake data.' }}
                                 </p>
                             </div>
-                            <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $hasUnresolvedRetailers ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white' }}">{{ $hasUnresolvedRetailers ? 'Locked' : 'Clean' }}</span>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $hasUnresolvedRetailers ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white' }}">{{ $hasUnresolvedRetailers ? 'Locked' : 'Clean' }}</span>
+                                @if ($canEdit && $hasUnresolvedRetailers)
+                                    <a href="#retailer-review-queue" class="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-slate-800">Review / add retailer</a>
+                                @endif
+                            </div>
                         </div>
                         <div class="mt-5 grid gap-3 sm:grid-cols-4">
                             <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
@@ -188,6 +193,83 @@
                         @endif
                     </div>
                 </section>
+
+                @if ($canEdit && $hasUnresolvedRetailers)
+                    <section id="retailer-review-queue" class="rounded-3xl border border-amber-300 bg-white shadow-sm" x-data="retailerReviewQueue(@js($unresolvedRetailers->values()))">
+                        <div class="border-b border-amber-200 bg-amber-50 p-5">
+                            <div class="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Action needed</p>
+                                    <h3 class="mt-1 text-xl font-black text-slate-950">Review / add unknown retailers</h3>
+                                    <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900">This is where unresolved retailers are fixed. If the link is wrong, correct it on the item first. If the retailer is genuinely new, review it here and add/link it to the affected items.</p>
+                                </div>
+                                <span class="rounded-full bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">{{ $unresolvedRetailers->count() }} unresolved</span>
+                            </div>
+                        </div>
+
+                        <div class="divide-y divide-slate-100">
+                            @foreach ($unresolvedRetailers as $loopIndex => $retailer)
+                                <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+                                    <div class="min-w-0">
+                                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
+                                        <h4 class="mt-1 truncate text-base font-black text-slate-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
+                                        <p class="mt-1 text-sm text-slate-600">Found on <span class="font-black text-slate-900">{{ $retailer['items_count'] ?? 1 }}</span> item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}</p>
+                                    </div>
+                                    <button type="button" @click="open({{ $loopIndex }})" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">Review / add</button>
+                                </div>
+                            @endforeach
+                        </div>
+
+                        <div x-cloak x-show="isOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+                            <div @click.away="close()" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
+                                <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="p-5 sm:p-6">
+                                    @csrf
+                                    <template x-for="itemId in (current?.item_ids || [])" :key="itemId">
+                                        <input type="hidden" name="item_ids[]" :value="itemId">
+                                    </template>
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div>
+                                            <p class="text-xs font-black uppercase tracking-wide text-amber-700" x-text="currentLabel"></p>
+                                            <h3 class="mt-1 text-xl font-black text-slate-950">Review / add unknown retailer</h3>
+                                            <p class="mt-1 text-sm text-slate-600">This will create the retailer if it does not already exist, then link the affected request items.</p>
+                                        </div>
+                                        <button type="button" @click="close()" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50" aria-label="Close retailer review">×</button>
+                                    </div>
+
+                                    <div class="mt-5 space-y-4">
+                                        <div>
+                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Retailer name</label>
+                                            <input name="name" required :value="current?.name || ''" placeholder="Argos" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Base domain</label>
+                                            <input name="base_url" required :value="current?.base_url || ''" placeholder="argos.co.uk" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
+                                            <p class="mt-1 text-xs text-slate-500">Use only the shop domain, not a product page.</p>
+                                        </div>
+                                    </div>
+
+                                    <details class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                        <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-slate-500">Source links (<span x-text="sourceCount"></span>)</summary>
+                                        <div class="mt-3 space-y-2">
+                                            <template x-for="sourceUrl in (current?.urls || [])" :key="sourceUrl">
+                                                <div class="flex items-start gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-100">
+                                                    <a :href="sourceUrl" target="_blank" rel="noopener noreferrer" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-base font-black text-indigo-600 hover:bg-indigo-100">↗</a>
+                                                    <p class="min-w-0 break-all text-xs font-semibold text-slate-600" x-text="sourceUrl"></p>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </details>
+
+                                    <div class="mt-6 flex flex-wrap justify-end gap-3">
+                                        <button type="button" @click="close()" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">Add/link retailer</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+                @endif
+
 
                 <section class="rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
                     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
@@ -317,9 +399,9 @@
                                                 <p class="mt-2 break-all text-xs text-emerald-800">{{ $item->matched_retailer_base_url }}</p>
                                             @endif
                                         @else
-                                            <p class="mt-1 text-sm font-bold text-amber-800">Correct the link or add/link the retailer before converting.</p>
+                                            <p class="mt-1 text-sm font-bold text-amber-800">Correct the link, or use Review / add retailer before converting.</p>
                                             @if ($canEdit)
-                                                <a href="#retailer-review-queue" class="mt-3 inline-flex rounded-xl bg-amber-600 px-3 py-2 text-xs font-black text-white hover:bg-amber-700">Resolve retailer</a>
+                                                <a href="#retailer-review-queue" class="mt-3 inline-flex rounded-xl bg-amber-600 px-3 py-2 text-xs font-black text-white hover:bg-amber-700">Review / add retailer</a>
                                             @endif
                                         @endif
                                     </aside>
@@ -331,78 +413,6 @@
                     </div>
                 </section>
 
-                @if ($canEdit && $hasUnresolvedRetailers)
-                    <section id="retailer-review-queue" class="rounded-3xl border border-amber-300 bg-white shadow-sm" x-data="retailerReviewQueue(@js($unresolvedRetailers->values()))">
-                        <div class="border-b border-amber-200 bg-amber-50 p-5">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div>
-                                    <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Action needed</p>
-                                    <h3 class="mt-1 text-xl font-black text-slate-950">Retailer review queue</h3>
-                                    <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900">Do not force-add retailers that already exist. First correct bad customer links in the item card, then use this queue only for genuinely new retailers.</p>
-                                </div>
-                                <span class="rounded-full bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">{{ $unresolvedRetailers->count() }} unresolved</span>
-                            </div>
-                        </div>
-
-                        <div class="divide-y divide-slate-100">
-                            @foreach ($unresolvedRetailers as $loopIndex => $retailer)
-                                <div class="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
-                                    <div class="min-w-0">
-                                        <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Unknown retailer {{ $loop->iteration }} of {{ $unresolvedRetailers->count() }}</p>
-                                        <h4 class="mt-1 truncate text-base font-black text-slate-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</h4>
-                                        <p class="mt-1 text-sm text-slate-600">Found on <span class="font-black text-slate-900">{{ $retailer['items_count'] ?? 1 }}</span> item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}</p>
-                                    </div>
-                                    <button type="button" @click="open({{ $loopIndex }})" class="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800">Review</button>
-                                </div>
-                            @endforeach
-                        </div>
-
-                        <div x-cloak x-show="isOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-                            <div @click.away="close()" class="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl ring-1 ring-slate-200">
-                                <form method="POST" action="{{ route('order-requests.retailers.store', $requestRow->id) }}" class="p-5 sm:p-6">
-                                    @csrf
-                                    <div class="flex items-start justify-between gap-4">
-                                        <div>
-                                            <p class="text-xs font-black uppercase tracking-wide text-amber-700" x-text="currentLabel"></p>
-                                            <h3 class="mt-1 text-xl font-black text-slate-950">Resolve unknown retailer</h3>
-                                            <p class="mt-1 text-sm text-slate-600">Only add a retailer here if the retailer genuinely does not exist yet.</p>
-                                        </div>
-                                        <button type="button" @click="close()" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50" aria-label="Close retailer review">×</button>
-                                    </div>
-
-                                    <div class="mt-5 space-y-4">
-                                        <div>
-                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Retailer name</label>
-                                            <input name="name" required :value="current?.name || ''" placeholder="Argos" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[11px] font-black uppercase tracking-wide text-slate-500">Base domain</label>
-                                            <input name="base_url" required :value="current?.base_url || ''" placeholder="argos.co.uk" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-amber-500 focus:ring-amber-500">
-                                            <p class="mt-1 text-xs text-slate-500">Use only the shop domain, not a product page.</p>
-                                        </div>
-                                    </div>
-
-                                    <details class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                        <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-slate-500">Source links (<span x-text="sourceCount"></span>)</summary>
-                                        <div class="mt-3 space-y-2">
-                                            <template x-for="sourceUrl in (current?.urls || [])" :key="sourceUrl">
-                                                <div class="flex items-start gap-2 rounded-xl bg-white p-2 ring-1 ring-slate-100">
-                                                    <a :href="sourceUrl" target="_blank" rel="noopener noreferrer" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-base font-black text-indigo-600 hover:bg-indigo-100">↗</a>
-                                                    <p class="min-w-0 break-all text-xs font-semibold text-slate-600" x-text="sourceUrl"></p>
-                                                </div>
-                                            </template>
-                                        </div>
-                                    </details>
-
-                                    <div class="mt-6 flex flex-wrap justify-end gap-3">
-                                        <button type="button" @click="close()" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
-                                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">Add/link retailer</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    </section>
-                @endif
             </main>
 
             <aside class="space-y-5 2xl:sticky 2xl:top-6 2xl:self-start">
@@ -569,7 +579,7 @@
                                     </div>
                                     <div class="sm:col-span-2">
                                         <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Address</label>
-                                        <input name="address_line1" value="{{ $existingAddress }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">
+                                        <textarea name="address_line1" rows="3" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm">{{ $existingAddress }}</textarea>
                                     </div>
                                     <div>
                                         <label class="text-xs font-bold uppercase tracking-wide text-indigo-800">Postcode</label>

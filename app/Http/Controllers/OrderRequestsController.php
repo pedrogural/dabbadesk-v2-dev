@@ -384,6 +384,8 @@ class OrderRequestsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'base_url' => ['required', 'string', 'max:191'],
+            'item_ids' => ['nullable', 'array'],
+            'item_ids.*' => ['integer'],
         ]);
 
         $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
@@ -426,14 +428,30 @@ class OrderRequestsController extends Controller
             $retailerId = (int) $retailer->id;
         }
 
-        $itemIds = DB::table('order_request_items')
-            ->where('order_request_id', $orderRequest)
-            ->whereNull('deleted_at')
-            ->get(['id', 'retailer_url'])
-            ->filter(fn ($item) => $this->cleanRetailerBaseUrl((string) $item->retailer_url) === $baseUrl)
-            ->pluck('id')
-            ->values()
-            ->all();
+        $submittedItemIds = collect($validated['item_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($submittedItemIds->isNotEmpty()) {
+            $itemIds = DB::table('order_request_items')
+                ->where('order_request_id', $orderRequest)
+                ->whereIn('id', $submittedItemIds->all())
+                ->when(Schema::hasColumn('order_request_items', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
+                ->pluck('id')
+                ->values()
+                ->all();
+        } else {
+            $itemIds = DB::table('order_request_items')
+                ->where('order_request_id', $orderRequest)
+                ->when(Schema::hasColumn('order_request_items', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
+                ->get(['id', 'retailer_url'])
+                ->filter(fn ($item) => $this->cleanRetailerBaseUrl((string) $item->retailer_url) === $baseUrl)
+                ->pluck('id')
+                ->values()
+                ->all();
+        }
 
         if (! empty($itemIds)) {
             DB::table('order_request_items')

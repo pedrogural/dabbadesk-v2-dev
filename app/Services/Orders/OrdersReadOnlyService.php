@@ -268,6 +268,7 @@ class OrdersReadOnlyService
                 'orders.bill_to_country_id',
                 'bill_country.name as bill_to_country_name',
                 'bill_country.phone_code as bill_to_country_phone_code',
+                DB::raw("(SELECT pc.phone_code FROM customer_phones cpx JOIN phones px ON px.id = cpx.phone_id LEFT JOIN countries pc ON pc.id = px.country_id WHERE cpx.customer_id = customers.id AND cpx.is_active = 1 ORDER BY cpx.is_primary DESC, cpx.id ASC LIMIT 1) as customer_phone_country_code"),
                 'orders.invoiced_at',
                 'orders.sent_at',
                 'orders.paid_at',
@@ -345,6 +346,9 @@ class OrdersReadOnlyService
                 'wallet_used' => 0,
                 'refunds' => 0,
                 'wallet_credit_from_overpayments' => 0,
+                'wallet_credit_from_revisions' => 0,
+                'wallet_attention_total' => 0,
+                'wallet_attention_sources' => [],
                 'wallet_available' => 0,
             ];
         }
@@ -386,6 +390,21 @@ class OrdersReadOnlyService
             ->whereIn('status', ['open', 'part_used'])
             ->sum('remaining_amount');
 
+        $walletCreditFromRevisions = (float) DB::table('customer_credits')
+            ->where('order_id', $orderId)
+            ->whereIn('source_type', ['superseded_order_balance', 'order_revision_credit', 'revision_overpayment'])
+            ->whereIn('status', ['open', 'part_used'])
+            ->sum('remaining_amount');
+
+        $walletAttentionSources = [];
+        if ($walletCreditFromRevisions > 0.004) {
+            $walletAttentionSources[] = 'order revision / superseded order balance';
+        }
+        if ($walletCreditFromOverpayments > 0.004) {
+            $walletAttentionSources[] = 'overpayment';
+        }
+        $walletAttentionTotal = $walletCreditFromOverpayments + $walletCreditFromRevisions;
+
         $walletAvailable = (float) DB::table('customer_credits')
             ->where('customer_id', $order->customer_id)
             ->whereIn('status', ['open', 'part_used'])
@@ -401,6 +420,9 @@ class OrdersReadOnlyService
             'wallet_used' => $walletUsed,
             'refunds' => $refunds,
             'wallet_credit_from_overpayments' => $walletCreditFromOverpayments,
+            'wallet_credit_from_revisions' => $walletCreditFromRevisions,
+            'wallet_attention_total' => $walletAttentionTotal,
+            'wallet_attention_sources' => $walletAttentionSources,
             'wallet_available' => $walletAvailable,
         ];
     }
