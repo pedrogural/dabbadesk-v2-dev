@@ -20,8 +20,6 @@
         if ($rawCustomerPhone !== '' && ! str_starts_with($rawCustomerPhone, '+') && $phoneCountryCode !== '') {
             $customerPhone = '+' . ltrim($phoneCountryCode, '+') . ' ' . $customerPhoneDigits;
         }
-        $whatsappDigits = preg_replace('/\D+/', '', $customerPhone);
-        $whatsappUrl = $whatsappDigits !== '' ? 'https://wa.me/' . $whatsappDigits : null;
         $addressLines = collect([
             trim((string) ($order->bill_to_address_line1 ?? '')),
             trim((string) ($order->bill_to_postcode ?? '')),
@@ -74,8 +72,34 @@
             'Order #' . $order->order_number,
             'Outstanding £' . number_format($balanceDue, 2),
         ])->filter(fn ($line) => trim((string) $line) !== '')->implode("\n");
+        $copyOrderNumber = 'Order #' . $order->order_number;
+        $copyCustomerId = ! empty($order->customer_id) ? 'Customer #' . $order->customer_id : '';
+        $whatsappDigits = preg_replace('/\D+/', '', $customerPhone);
+        if (str_starts_with($whatsappDigits, '00')) {
+            $whatsappDigits = substr($whatsappDigits, 2);
+        }
+        $whatsappUrl = $whatsappDigits !== '' ? 'https://wa.me/' . $whatsappDigits : null;
+        $revisionNumber = (int) ($order->revision_number ?? 1);
+        $revisionTotal = (int) ($order->revision_total ?? 1);
+        $revisionState = (string) ($order->revision_state ?? 'current');
+        $revisionBadgeLabel = $revisionTotal > 1 ? 'Revision ' . $revisionNumber . ' of ' . $revisionTotal : 'Original order';
+        $revisionBadgeClasses = $revisionState === 'superseded' ? 'bg-rose-100 text-rose-700 ring-rose-200' : ($revisionTotal > 1 ? 'bg-violet-100 text-violet-700 ring-violet-200' : 'bg-slate-100 text-slate-600 ring-slate-200');
+        $retailerItems = collect($retailerGroups ?? [])->flatMap(fn ($group) => collect($group->items ?? []));
+        $needsAttentionItems = $retailerItems->filter(function ($item) use ($isCustomerSelfPurchase) {
+            if ($isCustomerSelfPurchase) {
+                return false;
+            }
+
+            return (int) ($item->purchase_remaining_qty ?? 0) > 0 || filled($item->inspection_note ?? null);
+        })->count();
+        $arrivalIssueItems = $retailerItems->filter(function ($item) {
+            $status = (string) ($item->latest_arrival_status ?? '');
+
+            return str_contains($status, 'problem') || str_contains($status, 'issue') || str_contains($status, 'missing') || str_contains($status, 'damaged');
+        })->count();
+        $hasAlerts = $walletAttentionTotal > 0.004 || $needsAttentionItems > 0 || $arrivalIssueItems > 0 || $isCustomerSelfPurchase || $walletCreditFromRevisions > 0.004;
     @endphp
-    <div class="space-y-5" data-order-copy-scope x-data="{ tab: 'overview', amendOrderOpen: false }">
+    <div class="space-y-5" data-order-copy-scope x-data="{ tab: 'overview' }">
         @if (session('success'))
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800">{{ session('success') }}</div>
         @endif
@@ -89,31 +113,50 @@
         @endif
 
         <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div class="min-w-0">
                     <a href="{{ route('orders.index') }}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">← Back to Orders</a>
                     <div class="mt-2 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-semibold tracking-tight text-slate-950">Order #{{ $order->order_number }}</h1>
+                        <button type="button" data-copy-value="{{ $copyOrderNumber }}" class="copy-btn rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $revisionBadgeClasses }}">{{ $revisionBadgeLabel }}</span>
                         <span class="rounded-full {{ $isCustomerSelfPurchase ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700' }} px-2.5 py-1 text-xs font-semibold">
                             {{ $isCustomerSelfPurchase ? 'Self-purchase' : 'Dabba purchase' }}
                         </span>
                         <span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $paymentStatusClasses }}">{{ $paymentStatusLabel }}</span>
+                        @if ($walletAttentionTotal > 0.004)
+                            <span class="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">Wallet credit £{{ number_format($walletAttentionTotal, 2) }}</span>
+                        @endif
+                        @if ($balanceDue > 0.004)
+                            <span class="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">Outstanding £{{ number_format($balanceDue, 2) }}</span>
+                        @else
+                            <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">No outstanding balance</span>
+                        @endif
                     </div>
-                    <p class="mt-1 text-sm text-slate-500">{{ $customerFullName ?: 'Unknown customer' }} · Outstanding £{{ number_format($balanceDue, 2) }}</p>
+                    <p class="mt-1 text-sm text-slate-500">{{ $customerFullName ?: 'Unknown customer' }} · Total £{{ number_format($orderTotal, 2) }} · Settled £{{ number_format($settledTotal, 2) }}</p>
                 </div>
 
                 <div class="flex flex-wrap gap-2">
-                    @if (! empty($order->draft_order_id))
-                        <button
-                            type="button"
-                            @click="amendOrderOpen = true"
-                            title="Create a draft revision of this order for editing."
-                            class="rounded-2xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700"
-                        >Amend Order</button>
-                    @endif
                     <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">Record payment</button>
                     <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-semibold text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'New invoice version' : 'Create invoice' }}</button>
                 </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2 ring-1 ring-slate-100">
+                @if ($whatsappUrl)
+                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">WhatsApp ↗</a>
+                @endif
+                @if ($customerEmail)
+                    <a href="mailto:{{ $customerEmail }}" class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">Email ↗</a>
+                @endif
+                @if ($copyFullAddress)
+                    <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy address</button>
+                @endif
+                <button type="button" data-copy-value="{{ $copyOrderNumber }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy order #</button>
+                @if (! empty($order->customer_id))
+                    <a href="{{ route('customers.edit', $order->customer_id) }}" class="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-100 hover:text-indigo-700">Customer ↗</a>
+                @endif
+                <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">Finance ↗</a>
             </div>
 
             <div class="mt-5 overflow-x-auto">
@@ -127,55 +170,77 @@
             </div>
         </section>
 
-        @if (! empty($order->draft_order_id))
-            <div
-                x-show="amendOrderOpen"
-                x-cloak
-                x-transition.opacity
-                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
-                role="dialog"
-                aria-modal="true"
-            >
-                <div @click.outside="amendOrderOpen = false" class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
-                    <p class="text-xs font-black uppercase tracking-[0.2em] text-purple-700">Amend Order</p>
-                    <h2 class="mt-2 text-2xl font-black text-slate-950">Create a draft revision?</h2>
-                    <div class="mt-4 space-y-2 text-sm font-semibold leading-6 text-slate-600">
-                        <p>This will open the related draft in Draft Workbench so the order can be amended safely.</p>
-                        <p>The existing order will remain unchanged until the draft is finalised into a new order version.</p>
-                    </div>
-                    <div class="mt-6 flex flex-wrap justify-end gap-2">
-                        <button type="button" @click="amendOrderOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
-                        <a href="{{ route('draft-orders.show', $order->draft_order_id) }}" class="rounded-2xl bg-purple-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-purple-700">Open Draft Workbench</a>
-                    </div>
-                </div>
-            </div>
-        @endif
-
         <div x-show="tab === 'overview'" x-cloak class="space-y-5">
-        @if ($walletAttentionTotal > 0.004)
-            <div class="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
-                <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-sky-700">Customer wallet credit</p>
-                        <h2 class="mt-1 text-xl font-black text-sky-950">Customer has £{{ number_format($walletAttentionTotal, 2) }} credit</h2>
-                        <p class="mt-2 text-sm font-semibold leading-6 text-sky-900">
-                            This credit was generated from {{ $walletAttentionSources->isNotEmpty() ? $walletAttentionSources->implode(' and ') : 'this order history' }}. Staff should inform the customer. It can be applied to a future order or handled by a later refund workflow.
-                        </p>
-                    </div>
-                    <span class="rounded-2xl bg-white px-4 py-2 text-sm font-black text-sky-700 ring-1 ring-sky-200">Wallet total £{{ number_format($walletAvailable, 2) }}</span>
-                </div>
-            </div>
-        @endif
-
-            <div class="flex flex-col items-start gap-5 xl:flex-row">
-                <section class="w-full max-w-[760px] flex-none rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            @if ($hasAlerts)
+                <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Customer</p>
-                            <h2 class="mt-1 text-xl font-semibold text-slate-950">{{ $customerFullName ?: 'Unknown customer' }}</h2>
-                            @if ($customerCompany)
-                                <p class="mt-1 text-sm text-slate-600">{{ $customerCompany }}</p>
-                            @endif
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Alerts</p>
+                            <h2 class="mt-1 text-lg font-black text-amber-950">Operator reminders for this order</h2>
+                        </div>
+                        <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-200">Shows only when needed</span>
+                    </div>
+
+                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        @if ($walletAttentionTotal > 0.004)
+                            <div class="rounded-2xl bg-white/90 p-4 ring-1 ring-sky-100">
+                                <p class="text-xs font-black uppercase tracking-wide text-sky-700">Wallet credit exists</p>
+                                <p class="mt-1 text-xl font-black text-sky-950">£{{ number_format($walletAttentionTotal, 2) }}</p>
+                                <p class="mt-1 text-sm font-semibold leading-5 text-sky-900">Generated from {{ $walletAttentionSources->isNotEmpty() ? $walletAttentionSources->implode(' and ') : 'this order history' }}. Staff should inform the customer.</p>
+                            </div>
+                        @endif
+
+                        @if ($walletCreditFromRevisions > 0.004)
+                            <div class="rounded-2xl bg-white/90 p-4 ring-1 ring-violet-100">
+                                <p class="text-xs font-black uppercase tracking-wide text-violet-700">Revision-generated credit</p>
+                                <p class="mt-1 text-xl font-black text-violet-950">£{{ number_format($walletCreditFromRevisions, 2) }}</p>
+                                <p class="mt-1 text-sm font-semibold leading-5 text-violet-900">This came from a revised or superseded order. Make the credit obvious to the customer before they ask.</p>
+                            </div>
+                        @endif
+
+                        @if ($needsAttentionItems > 0)
+                            <div class="rounded-2xl bg-white/90 p-4 ring-1 ring-rose-100">
+                                <p class="text-xs font-black uppercase tracking-wide text-rose-700">Needs attention</p>
+                                <p class="mt-1 text-xl font-black text-rose-950">{{ $needsAttentionItems }} item{{ $needsAttentionItems === 1 ? '' : 's' }}</p>
+                                <p class="mt-1 text-sm font-semibold leading-5 text-rose-900">There are pending purchase or inspection reminders in the item list.</p>
+                            </div>
+                        @endif
+
+                        @if ($arrivalIssueItems > 0)
+                            <div class="rounded-2xl bg-white/90 p-4 ring-1 ring-orange-100">
+                                <p class="text-xs font-black uppercase tracking-wide text-orange-700">Arrival issue</p>
+                                <p class="mt-1 text-xl font-black text-orange-950">{{ $arrivalIssueItems }} item{{ $arrivalIssueItems === 1 ? '' : 's' }}</p>
+                                <p class="mt-1 text-sm font-semibold leading-5 text-orange-900">Arrival status contains an issue, problem, damaged or missing marker.</p>
+                            </div>
+                        @endif
+
+                        @if ($isCustomerSelfPurchase)
+                            <div class="rounded-2xl bg-white/90 p-4 ring-1 ring-sky-100">
+                                <p class="text-xs font-black uppercase tracking-wide text-sky-700">Self-purchase reminder</p>
+                                <p class="mt-1 text-sm font-semibold leading-5 text-sky-900">Do not buy these goods for the customer. Continue with arrival, customs, collection and delivery once goods reach Dabba.</p>
+                            </div>
+                        @endif
+                    </div>
+                </section>
+            @endif
+
+            <div class="flex flex-col items-start gap-5 xl:flex-row xl:items-stretch">
+                <section class="w-full max-w-[720px] rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div class="flex min-w-0 items-start gap-3">
+                            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M20 21a8 8 0 0 0-16 0" />
+                                    <circle cx="12" cy="7" r="4" />
+                                </svg>
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Customer</p>
+                                <h2 class="mt-1 truncate text-xl font-black text-slate-950">{{ $customerFullName ?: 'Unknown customer' }}</h2>
+                                @if ($customerCompany)
+                                    <p class="mt-1 truncate text-sm font-semibold text-slate-500">{{ $customerCompany }}</p>
+                                @endif
+                            </div>
                         </div>
                         <div class="flex flex-wrap gap-2">
                             @if (! empty($order->customer_id))
@@ -184,61 +249,81 @@
                             @if ($customerFullName)
                                 <button type="button" data-copy-value="{{ $customerFullName }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy name</button>
                             @endif
+                            @if ($copyCustomerId)
+                                <button type="button" data-copy-value="{{ $copyCustomerId }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy ID</button>
+                            @endif
                         </div>
                     </div>
 
-                    <div class="mt-4 overflow-hidden rounded-2xl bg-slate-50 ring-1 ring-slate-100">
-                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-200 px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Email</p>
-                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ $customerEmail ?: 'No email' }}</p>
+                    <div class="mt-4 space-y-2">
+                        <div class="grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 md:grid-cols-[30px_92px_minmax(0,1fr)_auto] md:items-center">
+                            <div class="hidden text-slate-400 md:block">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+                            </div>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Email</p>
+                            <p class="min-w-0 break-all text-sm font-semibold text-slate-800">{{ $customerEmail ?: 'No email' }}</p>
                             @if ($customerEmail)
-                                <button type="button" data-copy-value="{{ $customerEmail }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                                <button type="button" data-copy-value="{{ $customerEmail }}" class="copy-btn justify-self-start rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 md:justify-self-end">Copy</button>
                             @endif
                         </div>
 
-                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-200 px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Phone</p>
-                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ $customerPhone ?: 'No phone' }}</p>
-                            <div class="flex flex-wrap justify-end gap-2">
+                        <div class="grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 md:grid-cols-[30px_92px_minmax(0,1fr)_auto] md:items-center">
+                            <div class="hidden text-slate-400 md:block">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.32 1.78.59 2.63a2 2 0 0 1-.45 2.11L8 9.71a16 16 0 0 0 6.29 6.29l1.25-1.25a2 2 0 0 1 2.11-.45c.85.27 1.73.47 2.63.59A2 2 0 0 1 22 16.92z"/></svg>
+                            </div>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Phone</p>
+                            <p class="text-sm font-semibold text-slate-800">{{ $customerPhone ?: 'No phone' }}</p>
+                            <div class="flex flex-wrap gap-2 md:justify-self-end">
                                 @if ($customerPhone)
                                     <button type="button" data-copy-value="{{ $customerPhone }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
                                 @endif
                                 @if ($whatsappUrl)
-                                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">WhatsApp ↗</a>
+                                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">WhatsApp ↗</a>
                                 @endif
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-start gap-3 border-b border-slate-200 px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Address</p>
-                            @if ($addressLines->isNotEmpty())
-                                <div class="min-w-0 space-y-0.5 text-sm font-semibold text-slate-800">
-                                    @foreach ($addressLines as $line)
-                                        <p>{{ $line }}</p>
-                                    @endforeach
-                                </div>
-                            @else
-                                <p class="text-sm font-semibold text-slate-400">No billing address captured.</p>
-                            @endif
+                        <div class="grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 md:grid-cols-[30px_92px_minmax(0,1fr)_auto] md:items-start">
+                            <div class="hidden pt-0.5 text-slate-400 md:block">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                            </div>
+                            <p class="pt-0.5 text-[10px] font-black uppercase tracking-wide text-slate-400">Address</p>
+                            <div class="min-w-0">
+                                @if ($addressLines->isNotEmpty())
+                                    <div class="space-y-0.5 text-sm font-semibold leading-5 text-slate-800">
+                                        @foreach ($addressLines as $line)
+                                            <p>{{ $line }}</p>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <p class="text-sm text-slate-400">No billing address captured.</p>
+                                @endif
+                            </div>
                             @if ($copyFullAddress)
-                                <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                                <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn justify-self-start rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 md:justify-self-end">Copy</button>
                             @endif
                         </div>
 
-                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Customer ID</p>
-                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ ! empty($order->customer_id) ? '#' . $order->customer_id : 'Not linked' }}</p>
-                            @if (! empty($order->customer_id))
-                                <button type="button" data-copy-value="{{ $order->customer_id }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
-                            @endif
-                        </div>
+                        @if ($copyCustomerId)
+                            <div class="grid gap-3 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100 md:grid-cols-[30px_92px_minmax(0,1fr)_auto] md:items-center">
+                                <div class="hidden text-slate-400 md:block">
+                                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="5" rx="2"/><path d="M7 9h4"/><path d="M7 13h2"/><circle cx="16" cy="11" r="2"/></svg>
+                                </div>
+                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Customer ID</p>
+                                <p class="text-sm font-semibold text-slate-800">#{{ $order->customer_id }}</p>
+                                <button type="button" data-copy-value="{{ $copyCustomerId }}" class="copy-btn justify-self-start rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 md:justify-self-end">Copy</button>
+                            </div>
+                        @endif
                     </div>
                 </section>
 
-                <section class="w-full max-w-[360px] flex-none rounded-3xl {{ $balanceDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50' }} border p-5 shadow-sm">
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">Balance</p>
+                <section class="w-full max-w-[360px] rounded-3xl {{ $balanceDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50' }} border p-5 shadow-sm">
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">Outstanding balance</p>
                     <p class="mt-2 text-4xl font-semibold {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">£{{ number_format($balanceDue, 2) }}</p>
-                    <p class="mt-2 text-sm text-slate-600">Total £{{ number_format($orderTotal, 2) }} · Paid £{{ number_format($settledTotal, 2) }}</p>
+                    <p class="mt-2 text-sm text-slate-600">Total £{{ number_format($orderTotal, 2) }} · Settled £{{ number_format($settledTotal, 2) }}</p>
+                    @if ($walletAvailable > 0.004)
+                        <p class="mt-2 rounded-2xl bg-white/70 px-3 py-2 text-sm font-semibold text-sky-800 ring-1 ring-sky-100">Wallet available: £{{ number_format($walletAvailable, 2) }}</p>
+                    @endif
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Record payment</button>
                         <button type="button" data-copy-value="{{ e($copyPaymentDetails) }}" class="copy-btn rounded-2xl border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-50">Copy payment details</button>
@@ -281,6 +366,52 @@
                 </div>
             </div>
         @endif
+        @if ($revisionTotal > 1 || $walletCreditFromRevisions > 0.004)
+            <div class="rounded-3xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-violet-700">Revision impact</p>
+                        <h2 class="mt-1 text-lg font-black text-violet-950">{{ $revisionBadgeLabel }}</h2>
+                        <p class="mt-1 text-sm font-semibold leading-6 text-violet-900">
+                            @if ($walletCreditFromRevisions > 0.004)
+                                This revision chain generated £{{ number_format($walletCreditFromRevisions, 2) }} wallet credit for the customer.
+                            @else
+                                This order has saved historical snapshots. Older versions remain viewable for audit.
+                            @endif
+                        </p>
+                    </div>
+                    @if (($revisionHistory ?? collect())->count() > 1)
+                        <span class="rounded-2xl bg-white px-4 py-2 text-sm font-black text-violet-700 ring-1 ring-violet-200">{{ ($revisionHistory ?? collect())->count() }} snapshot{{ ($revisionHistory ?? collect())->count() === 1 ? '' : 's' }}</span>
+                    @endif
+                </div>
+
+                @if (($revisionHistory ?? collect())->count() > 1)
+                    <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach (($revisionHistory ?? collect())->take(6) as $revision)
+                            @php
+                                $isCurrentRevision = (int) $revision->id === (int) $order->id;
+                                $isSupersededRevision = ($revision->revision_state ?? '') === 'superseded';
+                            @endphp
+                            <div class="rounded-2xl {{ $isCurrentRevision ? 'bg-white ring-2 ring-violet-200' : 'bg-white/80 ring-1 ring-violet-100' }} p-4">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <p class="text-sm font-black text-slate-950">Rev {{ $revision->revision_number }}</p>
+                                    @if ($isCurrentRevision)
+                                        <span class="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-black text-emerald-700">Current</span>
+                                    @elseif ($isSupersededRevision)
+                                        <span class="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-black text-rose-700">Superseded</span>
+                                    @endif
+                                </div>
+                                <p class="mt-1 text-xs font-semibold text-slate-500">£{{ number_format($revision->grand_total ?? 0, 2) }} · {{ $revision->created_at ? \Carbon\Carbon::parse($revision->created_at)->format('d M Y') : 'Date unknown' }}</p>
+                                @if (! $isCurrentRevision)
+                                    <a href="{{ route('orders.show', $revision->id) }}" class="mt-3 inline-flex rounded-xl bg-white px-3 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100">View snapshot ↗</a>
+                                @endif
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        @endif
+
         @if ($customerRequestNotes->isNotEmpty())
             <div class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -307,125 +438,165 @@
 
         <div x-show="tab === 'finance'" x-cloak class="space-y-5">
             <div class="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                <div class="space-y-5">
-            <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Finance workspace</p>
-                        <h2 class="mt-1 text-lg font-black text-slate-950">Invoice & payment</h2>
-                        <p class="mt-1 text-sm text-slate-500">Routine payment recording now lives on the order page. Money Desk remains the analysis view.</p>
-                    </div>
-                    <span class="rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ring-1 {{ $paymentStatusClasses }}">{{ $paymentStatusLabel }}</span>
-                </div>
-
-                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Order total</p>
-                        <p class="mt-1 text-base font-black text-slate-950">£{{ number_format($orderTotal, 2) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-emerald-700">Paid / settled</p>
-                        <p class="mt-1 text-base font-black text-emerald-700">£{{ number_format($settledTotal, 2) }}</p>
-                    </div>
-                    <div class="rounded-2xl {{ $balanceDue > 0 ? 'bg-rose-50 ring-rose-100' : 'bg-emerald-50 ring-emerald-100' }} p-3 ring-1">
-                        <p class="text-[10px] font-black uppercase tracking-wide {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">Outstanding</p>
-                        <p class="mt-1 text-base font-black {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">£{{ number_format($balanceDue, 2) }}</p>
-                    </div>
-                    <div class="rounded-2xl {{ $walletAttentionTotal > 0 ? 'bg-sky-50 ring-sky-100' : 'bg-slate-50 ring-slate-100' }} p-3 ring-1">
-                        <p class="text-[10px] font-black uppercase tracking-wide {{ $walletAttentionTotal > 0 ? 'text-sky-700' : 'text-slate-400' }}">Wallet credit</p>
-                        <p class="mt-1 text-base font-black {{ $walletAttentionTotal > 0 ? 'text-sky-700' : 'text-slate-500' }}">£{{ number_format($walletAttentionTotal, 2) }}</p>
-                        @if ($walletAvailable > $walletAttentionTotal + 0.004)
-                            <p class="mt-1 text-[10px] font-bold text-slate-400">Customer wallet total £{{ number_format($walletAvailable, 2) }}</p>
-                        @endif
-                    </div>
-                </div>
-
-                <div class="mt-4 grid gap-2 sm:grid-cols-3">
-                    <div class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Invoice status</p>
-                        <p class="mt-1 text-sm font-black {{ $hasInvoiceWorkspace ? 'text-emerald-700' : 'text-amber-700' }}">{{ $invoiceStatusLabel }}</p>
-                    </div>
-                    <div class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Payment status</p>
-                        <p class="mt-1 text-sm font-black {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $paymentStatusLabel }}</p>
-                    </div>
-                    <div class="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Purchasing status</p>
-                        <p class="mt-1 text-sm font-black text-slate-800">{{ $purchaseStatusLabel }}</p>
-                    </div>
-                </div>
-
-                <div class="mt-4 rounded-3xl border {{ $hasInvoiceWorkspace ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' }} p-4">
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasInvoiceWorkspace ? 'text-emerald-700' : 'text-amber-700' }}">Invoice workspace</p>
-                            <h3 class="mt-1 text-base font-black text-slate-950">
-                                @if ($hasInvoiceWorkspace)
-                                    Invoice #{{ $invoiceNumber }} · v{{ $latestInvoiceVersion->version }}
-                                @else
-                                    No invoice created yet
-                                @endif
-                            </h3>
-                            <p class="mt-1 text-xs font-semibold {{ $hasInvoiceWorkspace ? 'text-emerald-900' : 'text-amber-900' }}">
-                                @if ($hasInvoiceWorkspace)
-                                    Issued {{ $latestInvoiceVersion->issued_at ? \Carbon\Carbon::parse($latestInvoiceVersion->issued_at)->format('d M Y H:i') : 'date unknown' }} · Total £{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}
-                                @else
-                                    Create the first invoice snapshot from this clean order.
-                                @endif
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Finance summary</p>
+                            <h2 class="mt-1 text-lg font-black text-slate-950">What does the customer owe?</h2>
+                            <p class="mt-1 text-sm text-slate-500">A plain-English view of the money position for this order.</p>
+                        </div>
+                        <span class="rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ring-1 {{ $paymentStatusClasses }}">{{ $paymentStatusLabel }}</span>
+                    </div>
+
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Order total</p>
+                            <p class="mt-1 text-2xl font-black text-slate-950">£{{ number_format($orderTotal, 2) }}</p>
+                            <p class="mt-1 text-xs font-semibold text-slate-500">Full value of this order snapshot.</p>
+                        </div>
+                        <div class="rounded-3xl {{ $balanceDue > 0.004 ? 'bg-rose-50 ring-rose-100' : 'bg-emerald-50 ring-emerald-100' }} p-4 ring-1">
+                            <p class="text-[10px] font-black uppercase tracking-wide {{ $balanceDue > 0.004 ? 'text-rose-700' : 'text-emerald-700' }}">Outstanding balance</p>
+                            <p class="mt-1 text-2xl font-black {{ $balanceDue > 0.004 ? 'text-rose-700' : 'text-emerald-700' }}">£{{ number_format($balanceDue, 2) }}</p>
+                            <p class="mt-1 text-xs font-semibold {{ $balanceDue > 0.004 ? 'text-rose-700' : 'text-emerald-700' }}">
+                                {{ $balanceDue > 0.004 ? 'Customer still needs to settle this amount.' : 'This order is financially settled.' }}
                             </p>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 grid gap-3 sm:grid-cols-3">
+                        <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-emerald-700">Payments received</p>
+                            <p class="mt-1 text-lg font-black text-emerald-700">£{{ number_format((float) ($finance['payments_used'] ?? 0), 2) }}</p>
+                            <p class="mt-1 text-[11px] font-semibold text-emerald-700">Real customer payments applied to this order.</p>
+                        </div>
+                        <div class="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-sky-700">Wallet used</p>
+                            <p class="mt-1 text-lg font-black text-sky-700">£{{ number_format((float) ($finance['wallet_used'] ?? 0), 2) }}</p>
+                            <p class="mt-1 text-[11px] font-semibold text-sky-700">Existing wallet balance used on this order.</p>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Net settled</p>
+                            <p class="mt-1 text-lg font-black text-slate-900">£{{ number_format($settledTotal, 2) }}</p>
+                            <p class="mt-1 text-[11px] font-semibold text-slate-500">Payments plus wallet use, minus reversals/refunds.</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Record payment</button>
+                        <button type="button" data-copy-value="{{ e($copyPaymentDetails) }}" class="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 hover:bg-indigo-100">Copy payment details</button>
+                        <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-sm font-black text-emerald-700 hover:bg-emerald-50">Money Desk ↗</a>
+                    </div>
+
+                    <p class="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500">
+                        Payment default is <span class="font-black text-slate-800">Online Payment Link (Card)</span>, matching Dabba's normal payment flow.
+                    </p>
+                </section>
+
+                <section class="rounded-3xl border {{ $walletAvailable > 0.004 ? 'border-sky-200 bg-sky-50' : 'border-slate-200 bg-white' }} p-5 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] {{ $walletAvailable > 0.004 ? 'text-sky-700' : 'text-slate-400' }}">Customer wallet</p>
+                            <h2 class="mt-1 text-lg font-black text-slate-950">Does the customer have credit?</h2>
+                            <p class="mt-1 text-sm {{ $walletAvailable > 0.004 ? 'text-sky-900' : 'text-slate-500' }}">Shows reusable customer-owned balance, not ordinary payments already consumed by this order.</p>
+                        </div>
+                        <span class="rounded-full {{ $walletAvailable > 0.004 ? 'bg-sky-100 text-sky-700 ring-sky-200' : 'bg-slate-100 text-slate-500 ring-slate-200' }} px-3 py-1 text-xs font-black uppercase tracking-wide ring-1">
+                            {{ $walletAvailable > 0.004 ? 'Credit available' : 'No wallet credit' }}
+                        </span>
+                    </div>
+
+                    <div class="mt-5 rounded-3xl bg-white/80 p-4 ring-1 ring-black/5">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Wallet available</p>
+                        <p class="mt-1 text-3xl font-black {{ $walletAvailable > 0.004 ? 'text-sky-700' : 'text-slate-400' }}">£{{ number_format($walletAvailable, 2) }}</p>
+                        <p class="mt-1 text-xs font-semibold text-slate-500">Total open wallet balance for this customer.</p>
+                    </div>
+
+                    <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/5">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-violet-700">From order amendments</p>
+                            <p class="mt-1 text-lg font-black text-violet-700">£{{ number_format($walletCreditFromRevisions, 2) }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-white/80 px-4 py-3 ring-1 ring-black/5">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-amber-700">From overpayments</p>
+                            <p class="mt-1 text-lg font-black text-amber-700">£{{ number_format($walletCreditFromOverpayments, 2) }}</p>
+                        </div>
+                    </div>
+
+                    @if ($walletAttentionTotal > 0.004)
+                        <div class="mt-4 rounded-2xl border border-sky-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-sky-950">
+                            <span class="font-black">Staff action:</span>
+                            Tell the customer they have <span class="font-black">£{{ number_format($walletAttentionTotal, 2) }}</span> wallet credit generated from {{ $walletAttentionSources->isNotEmpty() ? $walletAttentionSources->implode(' and ') : 'this order history' }}.
+                        </div>
+                    @else
+                        <div class="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-500">
+                            No amendment or overpayment credit needs staff attention for this order.
+                        </div>
+                    @endif
+                </section>
+            </div>
+
+            <div class="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Invoice</p>
+                            <h2 class="mt-1 text-lg font-black text-slate-950">Invoice snapshot</h2>
+                            <p class="mt-1 text-sm text-slate-500">Invoice PDFs are historical outputs from this order snapshot.</p>
                         </div>
                         <span class="rounded-full px-3 py-1 text-xs font-black uppercase tracking-wide ring-1 {{ $invoiceStatusClasses }}">{{ $invoiceStatusLabel }}</span>
                     </div>
 
-                    @if ($hasInvoiceWorkspace)
-                        <div class="mt-3 grid gap-2 sm:grid-cols-3">
-                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
-                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</p>
-                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->items_subtotal, 2) }}</p>
-                            </div>
-                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
-                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Delivery + fee</p>
-                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->delivery_total + (float) $latestInvoiceVersion->dabba_fee_total, 2) }}</p>
-                            </div>
-                            <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
-                                <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Grand total</p>
-                                <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}</p>
-                            </div>
-                        </div>
-                    @endif
+                    <div class="mt-4 rounded-3xl border {{ $hasInvoiceWorkspace ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50' }} p-4">
+                        <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasInvoiceWorkspace ? 'text-emerald-700' : 'text-amber-700' }}">{{ $hasInvoiceWorkspace ? 'Current invoice' : 'Invoice needed' }}</p>
+                        <h3 class="mt-1 text-base font-black text-slate-950">
+                            @if ($hasInvoiceWorkspace)
+                                Invoice #{{ $invoiceNumber }} · version {{ $latestInvoiceVersion->version }}
+                            @else
+                                No invoice created yet
+                            @endif
+                        </h3>
+                        <p class="mt-1 text-xs font-semibold {{ $hasInvoiceWorkspace ? 'text-emerald-900' : 'text-amber-900' }}">
+                            @if ($hasInvoiceWorkspace)
+                                Issued {{ $latestInvoiceVersion->issued_at ? \Carbon\Carbon::parse($latestInvoiceVersion->issued_at)->format('d M Y H:i') : 'date unknown' }} · Total £{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}
+                            @else
+                                Create the first invoice snapshot from this order when ready.
+                            @endif
+                        </p>
 
-                    <div class="mt-3 flex flex-wrap gap-2">
-                        <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-black text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'Create new version' : 'Create invoice' }}</button>
-                        @if ($hasInvoiceWorkspace && ! empty($invoiceRoot->pdf_path))
-                            <a href="{{ asset('storage/' . ltrim($invoiceRoot->pdf_path, '/')) }}" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">View / download ↗</a>
-                        @else
-                            <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">PDF next</button>
+                        @if ($hasInvoiceWorkspace)
+                            <div class="mt-3 grid gap-2 sm:grid-cols-3">
+                                <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</p>
+                                    <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->items_subtotal, 2) }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Delivery + fee</p>
+                                    <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->delivery_total + (float) $latestInvoiceVersion->dabba_fee_total, 2) }}</p>
+                                </div>
+                                <div class="rounded-2xl bg-white p-3 ring-1 ring-black/5">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Grand total</p>
+                                    <p class="mt-1 text-sm font-black text-slate-900">£{{ number_format((float) $latestInvoiceVersion->grand_total, 2) }}</p>
+                                </div>
+                            </div>
                         @endif
-                        <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">Send next</button>
-                    </div>
-                </div>
 
-                <div class="mt-4 flex flex-wrap gap-2">
-                    <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Record payment</button>
-                    <button type="button" data-copy-value="{{ e($copyPaymentDetails) }}" class="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 hover:bg-indigo-100">Copy payment details</button>
-                </div>
-
-                <p class="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-500">
-                    Payment default is <span class="font-black text-slate-800">Online Payment Link (Card)</span>, matching Dabba's normal payment flow.
-                </p>
-                @if ($walletAttentionTotal > 0.004)
-                    <div class="mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold leading-5 text-sky-900">
-                        <span class="font-black">Action needed:</span> Customer has <span class="font-black">£{{ number_format($walletAttentionTotal, 2) }}</span> wallet credit generated from {{ $walletAttentionSources->isNotEmpty() ? $walletAttentionSources->implode(' and ') : 'this order history' }}. Inform customer; apply to future order or handle by refund workflow later.
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-black text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice' }}</button>
+                            @if ($hasInvoiceWorkspace && ! empty($invoiceRoot->pdf_path))
+                                <a href="{{ asset('storage/' . ltrim($invoiceRoot->pdf_path, '/')) }}" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">View / download ↗</a>
+                            @else
+                                <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">PDF next</button>
+                            @endif
+                            <button type="button" disabled class="cursor-not-allowed rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-400">Send next</button>
+                        </div>
                     </div>
-                @endif
-            </div>
-                </div>
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                </section>
+
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Invoice history</p>
                             <h2 class="mt-1 text-lg font-black text-slate-950">Invoice versions</h2>
-                            <p class="mt-1 text-sm text-slate-500">Invoice snapshots issued from this order. PDFs and email sending come in the next invoice phase.</p>
+                            <p class="mt-1 text-sm text-slate-500">Previous invoice snapshots for this order.</p>
                         </div>
                         <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ $invoiceVersions->count() }} version{{ $invoiceVersions->count() === 1 ? '' : 's' }}</span>
                     </div>
@@ -445,24 +616,39 @@
                             <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold text-slate-500">No invoice versions yet.</div>
                         @endforelse
                     </div>
-                </div>
+                </section>
+            </div>
 
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Payment history</p>
-                        <h2 class="mt-1 text-lg font-black text-slate-950">Settlement timeline</h2>
-                        <p class="mt-1 text-sm text-slate-500">Shows payment, wallet-credit, refund and correction events that affect this order.</p>
+            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Money story</p>
+                        <h2 class="mt-1 text-lg font-black text-slate-950">What happened over time?</h2>
+                        <p class="mt-1 text-sm text-slate-500">Payments, wallet use, refunds and reversals affecting this order.</p>
                     </div>
                     <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl bg-emerald-50 px-4 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100">Finance detail ↗</a>
                 </div>
 
                 <div class="mt-4 space-y-2">
-                    @forelse ($paymentTimeline->take(8) as $event)
+                    @forelse ($paymentTimeline->take(10) as $event)
+                        @php
+                            $eventType = (string) ($event->type ?? 'event');
+                            $eventLabel = match ($eventType) {
+                                'payment' => 'Payment received',
+                                'payment_void' => 'Payment reversed',
+                                'credit_application' => 'Wallet credit used',
+                                'credit_application_void' => 'Wallet use reversed',
+                                'refund' => 'Refund recorded',
+                                'refund_void' => 'Refund reversed',
+                                default => Str::of($eventType)->replace('_', ' ')->title(),
+                            };
+                            $eventAmount = (float) ($event->amount ?? 0);
+                            $eventAmountClasses = $eventAmount < 0 ? 'text-rose-700' : ($eventType === 'credit_application' ? 'text-sky-700' : 'text-emerald-700');
+                        @endphp
                         <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-200">{{ str_replace('_', ' ', ucfirst($event->type)) }}</span>
+                                    <span class="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-200">{{ $eventLabel }}</span>
                                     @if ($event->payment_type_name)
                                         <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $event->payment_type_name }}</span>
                                     @endif
@@ -479,7 +665,7 @@
                                 @endif
                             </div>
                             <div class="text-right">
-                                <p class="text-sm font-black {{ ((float) $event->amount) < 0 ? 'text-rose-700' : 'text-emerald-700' }}">£{{ number_format((float) $event->amount, 2) }}</p>
+                                <p class="text-sm font-black {{ $eventAmountClasses }}">£{{ number_format($eventAmount, 2) }}</p>
                                 <p class="mt-0.5 text-[11px] font-semibold text-slate-400">{{ ($event->received_at ?: $event->created_at) ? \Carbon\Carbon::parse($event->received_at ?: $event->created_at)->format('d M Y H:i') : 'No date' }}</p>
                                 @if (($event->type ?? '') === 'payment' && ($event->status ?? '') === 'recorded' && empty($event->has_void))
                                     <button type="button" @click="$dispatch('open-reverse-payment-modal', { action: '{{ route('orders.payments.void', [$order->id, $event->id]) }}', label: '£{{ number_format((float) $event->amount, 2) }} · {{ addslashes($event->payment_type_name ?: 'Payment') }}' })" class="mt-2 rounded-xl border border-rose-200 bg-white px-3 py-1 text-[11px] font-black text-rose-700 hover:bg-rose-50">Reverse</button>
@@ -489,11 +675,10 @@
                             </div>
                         </div>
                     @empty
-                        <div class="rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">No settlement events recorded yet.</div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">No finance events recorded yet.</div>
                     @endforelse
                 </div>
-            </div>
-            </div>
+            </section>
         </div>
 
         <div x-show="tab === 'items'" x-cloak>
