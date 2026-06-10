@@ -590,13 +590,37 @@ class DraftOrderWorkspaceService
 
         $reviewChanged = false;
         $reviewNow = null;
+        $attentionChanged = false;
+        $attentionNow = null;
+        $attentionNoteChanged = false;
         $itemBefore = DB::table('draft_order_items')
             ->where('id', $itemId)
             ->where('draft_order_id', $draftId)
             ->first();
 
+        if (array_key_exists('needs_attention', $data) && Schema::hasColumn('draft_order_items', 'needs_attention_at')) {
+            $needsAttention = (bool) $data['needs_attention'];
+            $hadAttention = ! empty($itemBefore?->needs_attention_at);
+            $attentionChanged = $needsAttention !== $hadAttention;
+            $attentionNow = $needsAttention;
+            $attentionNote = Str::limit(trim((string) ($data['needs_attention_note'] ?? '')), 255, '');
+
+            $update['needs_attention_at'] = $needsAttention ? ($hadAttention ? $itemBefore->needs_attention_at : now()) : null;
+            $update['needs_attention_note'] = $needsAttention ? ($attentionNote ?: null) : null;
+            $attentionNoteChanged = $needsAttention && $attentionNote !== trim((string) ($itemBefore?->needs_attention_note ?? ''));
+
+            if (Schema::hasColumn('draft_order_items', 'needs_attention_by_user_id')) {
+                $update['needs_attention_by_user_id'] = $needsAttention ? $userId : null;
+            }
+        }
+
         if (array_key_exists('reviewed', $data) && Schema::hasColumn('draft_order_items', 'reviewed_at')) {
             $isReviewed = (bool) $data['reviewed'];
+
+            if (! empty($update['needs_attention_at'])) {
+                $isReviewed = false;
+            }
+
             $wasReviewed = ! empty($itemBefore?->reviewed_at);
             $reviewChanged = $isReviewed !== $wasReviewed;
             $reviewNow = $isReviewed;
@@ -612,12 +636,27 @@ class DraftOrderWorkspaceService
             ->where('draft_order_id', $draftId)
             ->update($update);
 
+        $description = trim((string) ($update['description'] ?: ($itemBefore?->description ?? 'Draft item')));
+
         if ($reviewChanged) {
-            $description = trim((string) ($update['description'] ?: ($itemBefore?->description ?? 'Draft item')));
             $this->addSystemNote(
                 $draftId,
                 $reviewNow ? 'Item reviewed' : 'Item review removed',
                 ($reviewNow ? 'Marked reviewed: ' : 'Removed reviewed mark from: ') . Str::limit($description, 160),
+                $userId
+            );
+        }
+
+        if ($attentionChanged || $attentionNoteChanged) {
+            $note = trim((string) ($update['needs_attention_note'] ?? ''));
+            $body = $attentionNow
+                ? 'Marked needs attention: ' . Str::limit($description, 140) . ($note !== '' ? ' — ' . $note : '')
+                : 'Removed needs attention from: ' . Str::limit($description, 160);
+
+            $this->addSystemNote(
+                $draftId,
+                $attentionNow ? 'Item needs attention' : 'Item attention cleared',
+                $body,
                 $userId
             );
         }

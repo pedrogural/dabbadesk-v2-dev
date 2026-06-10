@@ -138,12 +138,12 @@
         <div class="mt-6 grid gap-5 md:grid-cols-2">
             <div class="md:col-span-2">
                 <label class="{{ $label }}">Address line 1 *</label>
-                <input name="line1" value="{{ old('line1', $address->line1 ?? '') }}" required minlength="7" @blur="titleCase($event.target)" class="{{ $input }}" placeholder="House / apartment / street">
+                <textarea name="line1" rows="3" required minlength="7" @blur="titleCase($event.target)" class="{{ $input }}" placeholder="House / apartment / street">{{ old('line1', $address->line1 ?? '') }}</textarea>
                 @error('line1')<p class="{{ $errorText }}">{{ $message }}</p>@enderror
             </div>
             <div>
                 <label class="{{ $label }}">Line 2</label>
-                <input name="line2" value="{{ old('line2', $address->line2 ?? '') }}" @blur="titleCase($event.target)" class="{{ $input }}" placeholder="Optional">
+                <textarea name="line2" rows="2" @blur="titleCase($event.target)" class="{{ $input }}" placeholder="Optional">{{ old('line2', $address->line2 ?? '') }}</textarea>
                 @error('line2')<p class="{{ $errorText }}">{{ $message }}</p>@enderror
             </div>
             <div>

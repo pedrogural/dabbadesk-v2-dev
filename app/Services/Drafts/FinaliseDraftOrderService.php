@@ -204,8 +204,12 @@ class FinaliseDraftOrderService
 
     private function draftCommercialSignature(object $draft, Collection $items): array
     {
+        $customer = DB::table('customers')->where('id', $draft->customer_id)->first();
+        $billing = $customer ? $this->billingSnapshot((int) $draft->customer_id, $customer) : [];
+
         return [
             'customer_id' => (int) ($draft->customer_id ?? 0),
+            'customer_snapshot' => $this->normaliseCustomerSnapshot($billing),
             'purchase_mode' => $this->normalisePurchaseMode((string) ($draft->purchase_mode ?? 'standard')),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($draft->items_subtotal ?? 0),
@@ -237,12 +241,24 @@ class FinaliseDraftOrderService
             ])
             ->get();
 
-        $customerId = DB::table('draft_orders')
-            ->where('id', $order->draft_order_id)
-            ->value('customer_id');
+        $customerId = (int) ($order->customer_id ?? 0);
+        if ($customerId <= 0 && ! empty($order->draft_order_id)) {
+            $customerId = (int) DB::table('draft_orders')
+                ->where('id', $order->draft_order_id)
+                ->value('customer_id');
+        }
 
         return [
-            'customer_id' => (int) ($customerId ?? 0),
+            'customer_id' => $customerId,
+            'customer_snapshot' => $this->normaliseCustomerSnapshot([
+                'name' => $order->bill_to_name ?? null,
+                'company' => $order->bill_to_company ?? null,
+                'email' => $order->bill_to_email ?? null,
+                'phone' => $order->bill_to_phone ?? null,
+                'address_line1' => $order->bill_to_address_line1 ?? null,
+                'postcode' => $order->bill_to_postcode ?? null,
+                'country_id' => $order->bill_to_country_id ?? null,
+            ]),
             'purchase_mode' => $this->normalisePurchaseMode((string) ($order->purchase_mode ?? 'standard')),
             'totals' => [
                 'subtotal' => $this->normaliseMoney($order->subtotal ?? 0),
@@ -260,6 +276,19 @@ class FinaliseDraftOrderService
                 'unit_price' => $item->unit_price ?? 0,
                 'item_retailer_delivery_fee' => $item->item_retailer_delivery_fee ?? 0,
             ])),
+        ];
+    }
+
+    private function normaliseCustomerSnapshot(array $snapshot): array
+    {
+        return [
+            'name' => $this->normaliseScalar((string) ($snapshot['name'] ?? '')),
+            'company' => $this->normaliseScalar((string) ($snapshot['company'] ?? '')),
+            'email' => strtolower($this->normaliseScalar((string) ($snapshot['email'] ?? ''))),
+            'phone' => preg_replace('/\D+/', '', (string) ($snapshot['phone'] ?? '')) ?: '',
+            'address_line1' => $this->normaliseScalar((string) ($snapshot['address_line1'] ?? '')),
+            'postcode' => strtoupper($this->normaliseScalar((string) ($snapshot['postcode'] ?? ''))),
+            'country_id' => (int) ($snapshot['country_id'] ?? 0),
         ];
     }
 
@@ -1004,12 +1033,26 @@ class FinaliseDraftOrderService
             ->orderByDesc('ce.is_primary')
             ->value('e.email');
 
-        $phone = DB::table('customer_phones as cp')
+        $phoneRow = DB::table('customer_phones as cp')
             ->join('phones as p', 'p.id', '=', 'cp.phone_id')
+            ->leftJoin('countries as phone_country', 'phone_country.id', '=', 'p.country_id')
             ->where('cp.customer_id', $customerId)
             ->where('cp.is_active', 1)
             ->orderByDesc('cp.is_primary')
-            ->value('p.phone');
+            ->select('p.phone', 'phone_country.phone_code')
+            ->first();
+
+        $phone = null;
+        if ($phoneRow) {
+            $rawPhone = trim((string) ($phoneRow->phone ?? ''));
+            $phoneCode = trim((string) ($phoneRow->phone_code ?? ''));
+            $digits = preg_replace('/\D+/', '', $rawPhone);
+            $phone = $rawPhone;
+
+            if ($rawPhone !== '' && ! str_starts_with($rawPhone, '+') && $phoneCode !== '') {
+                $phone = '+' . ltrim($phoneCode, '+') . ' ' . $digits;
+            }
+        }
 
         $address = DB::table('customer_addresses as ca')
             ->join('addresses as a', 'a.id', '=', 'ca.address_id')

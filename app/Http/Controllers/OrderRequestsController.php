@@ -11,7 +11,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -309,30 +308,6 @@ class OrderRequestsController extends Controller
         ]);
     }
 
-    public function openAttachment(int $orderRequest, int $attachment)
-    {
-        $requestExists = DB::table('order_requests')->where('id', $orderRequest)->exists();
-        abort_unless($requestExists, 404);
-
-        $attachmentRow = DB::table('order_request_attachments')
-            ->where('id', $attachment)
-            ->where('order_request_id', $orderRequest)
-            ->first();
-
-        abort_unless($attachmentRow, 404);
-
-        $path = (string) ($attachmentRow->path ?? '');
-        abort_if($path === '' || str_contains($path, '..') || ! Storage::disk('local')->exists($path), 404);
-
-        $name = (string) ($attachmentRow->original_name ?? basename($path));
-        $mime = (string) ($attachmentRow->mime ?? 'application/octet-stream');
-
-        return Storage::disk('local')->response($path, $name, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => 'inline; filename="' . addslashes($name) . '"',
-        ]);
-    }
-
     public function markReviewed(int $orderRequest): RedirectResponse
     {
         $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
@@ -409,6 +384,8 @@ class OrderRequestsController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'base_url' => ['required', 'string', 'max:191'],
+            'item_ids' => ['nullable', 'array'],
+            'item_ids.*' => ['integer'],
         ]);
 
         $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
@@ -451,14 +428,30 @@ class OrderRequestsController extends Controller
             $retailerId = (int) $retailer->id;
         }
 
-        $itemIds = DB::table('order_request_items')
-            ->where('order_request_id', $orderRequest)
-            ->whereNull('deleted_at')
-            ->get(['id', 'retailer_url'])
-            ->filter(fn ($item) => $this->cleanRetailerBaseUrl((string) $item->retailer_url) === $baseUrl)
-            ->pluck('id')
-            ->values()
-            ->all();
+        $submittedItemIds = collect($validated['item_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($submittedItemIds->isNotEmpty()) {
+            $itemIds = DB::table('order_request_items')
+                ->where('order_request_id', $orderRequest)
+                ->whereIn('id', $submittedItemIds->all())
+                ->when(Schema::hasColumn('order_request_items', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
+                ->pluck('id')
+                ->values()
+                ->all();
+        } else {
+            $itemIds = DB::table('order_request_items')
+                ->where('order_request_id', $orderRequest)
+                ->when(Schema::hasColumn('order_request_items', 'deleted_at'), fn ($query) => $query->whereNull('deleted_at'))
+                ->get(['id', 'retailer_url'])
+                ->filter(fn ($item) => $this->cleanRetailerBaseUrl((string) $item->retailer_url) === $baseUrl)
+                ->pluck('id')
+                ->values()
+                ->all();
+        }
 
         if (! empty($itemIds)) {
             DB::table('order_request_items')
@@ -550,6 +543,55 @@ class OrderRequestsController extends Controller
         return redirect()->route('order-requests.show', $orderRequest)->with('status', 'Item updated. Retailer still needs review because no existing retailer matched the corrected link/name.');
     }
 
+    public function openAttachment(int $orderRequest, int $attachment)
+    {
+        $requestRow = DB::table('order_requests')->where('id', $orderRequest)->first();
+        abort_unless($requestRow, 404);
+
+        $attachmentRow = DB::table('order_request_attachments')
+            ->where('id', $attachment)
+            ->where('order_request_id', $orderRequest)
+            ->first();
+
+        abort_unless($attachmentRow, 404);
+
+        $relativePath = str_replace('\\', '/', trim((string) ($attachmentRow->path ?? '')));
+        $relativePath = ltrim($relativePath, '/');
+        $relativePath = preg_replace('#^(public/|storage/app/public/|app/public/|storage/)#', '', $relativePath) ?: $relativePath;
+
+        if ($relativePath === '' || str_contains($relativePath, '..')) {
+            abort(404);
+        }
+
+        $projectRoot = base_path();
+        $siblingRoot = dirname($projectRoot);
+
+        $candidatePaths = array_filter(array_unique([
+            storage_path('app/public/' . $relativePath),
+            storage_path('app/' . $relativePath),
+            $siblingRoot . '/cms.dabbadirect.com/storage/app/public/' . $relativePath,
+            $siblingRoot . '/order.dabbadirect.com/storage/app/public/' . $relativePath,
+            env('DABBA_LEGACY_CMS_STORAGE') ? rtrim((string) env('DABBA_LEGACY_CMS_STORAGE'), '/') . '/' . $relativePath : null,
+            env('DABBA_ORDER_APP_STORAGE') ? rtrim((string) env('DABBA_ORDER_APP_STORAGE'), '/') . '/' . $relativePath : null,
+        ]));
+
+        foreach ($candidatePaths as $candidatePath) {
+            if (is_file($candidatePath) && is_readable($candidatePath)) {
+                $displayName = trim((string) ($attachmentRow->original_name ?? '')) ?: basename($candidatePath);
+                $displayName = str_replace(["\r", "\n", '"'], [' ', ' ', ''], $displayName);
+                $mime = trim((string) ($attachmentRow->mime ?? '')) ?: (mime_content_type($candidatePath) ?: 'application/octet-stream');
+
+                return response()->file($candidatePath, [
+                    'Content-Type' => $mime,
+                    'Content-Disposition' => 'inline; filename="' . $displayName . '"',
+                    'X-Dabba-Attachment-Source' => str_contains($candidatePath, '/cms.dabbadirect.com/') ? 'legacy-cms' : (str_contains($candidatePath, '/order.dabbadirect.com/') ? 'order-app' : 'dabbadesk'),
+                ]);
+            }
+        }
+
+        abort(404, 'Attachment file is listed on the request, but the stored file could not be found.');
+    }
+
     public function convert(Request $request, ConvertOrderRequestService $converter, int $orderRequest): RedirectResponse
     {
         $validated = $request->validate([
@@ -578,19 +620,18 @@ class OrderRequestsController extends Controller
             return redirect()->route('order-requests.show', $orderRequest)->withErrors(['convert' => 'This order request has already been converted.']);
         }
 
-        $unresolvedCount = DB::table('order_request_items')
-            ->leftJoin('retailers', 'retailers.id', '=', 'order_request_items.retailer_id')
-            ->where('order_request_items.order_request_id', $orderRequest)
-            ->whereNull('order_request_items.deleted_at')
+        $unresolvedRetailerCount = DB::table('order_request_items as i')
+            ->leftJoin('retailers as r', 'r.id', '=', 'i.retailer_id')
+            ->where('i.order_request_id', $orderRequest)
+            ->whereNull('i.deleted_at')
             ->where(function ($query) {
-                $query->whereNull('order_request_items.retailer_id')
-                    ->orWhereNull('retailers.id');
+                $query->whereNull('i.retailer_id')->orWhereNull('r.id');
             })
             ->count();
 
-        if ($unresolvedCount > 0) {
+        if ($unresolvedRetailerCount > 0) {
             return back()->withInput()->withErrors([
-                'convert' => 'Resolve all request item retailers before converting to draft. Order Requests are the intake correction stage; drafts and orders must not inherit unresolved retailers.',
+                'convert' => 'Resolve every retailer before converting this order request to Draft Workbench.',
             ]);
         }
 

@@ -152,7 +152,7 @@
                         </div>
                         <div>
                             <label class="text-xs font-black uppercase tracking-widest text-slate-500">Address</label>
-                            <input name="customer_address_line1" value="{{ old('customer_address_line1') }}" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                            <textarea name="customer_address_line1" rows="3" class="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">{{ old('customer_address_line1') }}</textarea>
                         </div>
                         <div>
                             <label class="text-xs font-black uppercase tracking-widest text-slate-500">Postcode</label>

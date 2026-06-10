@@ -31,6 +31,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/admin/fees', [GlobalFeesController::class, 'index'])->name('admin.fees.index');
     Route::post('/admin/fees', [GlobalFeesController::class, 'store'])->name('admin.fees.store');
+    Route::post('/orders/{order}/notes', [OrdersController::class, 'storeNote'])->name('orders.notes.store');
+    Route::post('/orders/{order}/payments', [OrdersController::class, 'storePayment'])->name('orders.payments.store');
+    Route::post('/orders/{order}/invoices', [OrdersController::class, 'createInvoice'])->name('orders.invoices.store');
+    Route::post('/orders/{order}/payments/{transaction}/void', [OrdersController::class, 'voidPayment'])->name('orders.payments.void');
     Route::get('/orders/{order}', [OrdersController::class, 'show'])->name('orders.show');
 
     Route::get('/order-requests', [OrderRequestsController::class, 'index'])->name('order-requests.index');
