@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\Drafts\DraftOrderWorkspaceService;
 use App\Services\Drafts\DraftRetailerDetectionService;
 use App\Services\Drafts\FinaliseDraftOrderService;
+use App\Support\Text\TextNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -276,6 +277,12 @@ class DraftOrdersController extends Controller
         $retailerChanged = false;
         $urlResolveWarning = null;
 
+        $data['description'] = TextNormalizer::cleanOrNull($data['description'] ?? null, 2000);
+        $data['url'] = TextNormalizer::cleanOrNull($data['url'] ?? null, 2048);
+        $data['product_code'] = TextNormalizer::cleanOrNull($data['product_code'] ?? null, 191);
+        $data['sku'] = TextNormalizer::cleanOrNull($data['sku'] ?? null, 191);
+        $data['needs_attention_note'] = TextNormalizer::cleanOrNull($data['needs_attention_note'] ?? null, 255);
+
         $data['item_retailer_delivery_fee'] = $data['item_retailer_delivery_fee'] ?? 0;
         $data['product_code'] = $data['product_code'] ?? null;
         $data['sku'] = $data['sku'] ?? null;
@@ -379,6 +386,10 @@ class DraftOrdersController extends Controller
             'item_retailer_delivery_fee' => ['nullable', 'numeric', 'min:0'],
         ]);
 
+        $data['description'] = TextNormalizer::cleanOrNull($data['description'] ?? null, 2000);
+        $data['url'] = TextNormalizer::cleanOrNull($data['url'] ?? null, 2048);
+        $data['product_code'] = TextNormalizer::cleanOrNull($data['product_code'] ?? null, 191);
+        $data['sku'] = TextNormalizer::cleanOrNull($data['sku'] ?? null, 191);
         $data['item_retailer_delivery_fee'] = $data['item_retailer_delivery_fee'] ?? 0;
 
         if (! empty($data['url'])) {
@@ -502,7 +513,7 @@ class DraftOrdersController extends Controller
 
         return redirect()
             ->route('orders.show', $orderId)
-            ->with('success', $isConsumed ? 'Draft revision finalised. New order version created and the previous order was marked as superseded.' : 'Draft consumed into an order.');
+            ->with('success', $isConsumed ? 'New order version created. Previous order was marked as superseded.' : 'Draft consumed into an order.');
     }
 
     public function addNote(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)

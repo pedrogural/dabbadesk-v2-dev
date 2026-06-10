@@ -4,6 +4,7 @@ namespace App\Services\OrderRequests;
 
 use App\Services\Drafts\DraftOrderWorkspaceService;
 use App\Services\Intake\FeePolicyLookupService;
+use App\Support\Text\TextNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -78,8 +79,8 @@ class ConvertOrderRequestService
                 // Dabba fee as separate financial buckets.
                 $lineSubtotal = round($qty * $unitPrice, 2);
 
-                $description = (string) $item->description;
-                $notes = trim((string) ($item->notes ?? ''));
+                $description = (string) TextNormalizer::clean($item->description ?? '', 2000);
+                $notes = trim((string) TextNormalizer::clean($item->notes ?? '', 5000));
                 if ($notes !== '') {
                     $description .= "\n\n[Customer notes]\n" . $notes;
                 }
@@ -88,10 +89,10 @@ class ConvertOrderRequestService
                     'draft_order_id' => $draftId,
                     'source_order_item_id' => null,
                     'retailer_id' => $retailerId,
-                    'product_code' => $item->product_code,
-                    'description' => $description,
-                    'url' => $item->retailer_url,
-                    'sku' => $item->product_code,
+                    'product_code' => TextNormalizer::cleanOrNull($item->product_code ?? null, 150),
+                    'description' => TextNormalizer::clean($description, 2000),
+                    'url' => TextNormalizer::cleanOrNull($item->retailer_url ?? null, 2048),
+                    'sku' => TextNormalizer::cleanOrNull($item->product_code ?? null, 150),
                     'qty' => $qty,
                     'unit_price' => $unitPrice,
                     'line_subtotal' => $lineSubtotal,
@@ -196,14 +197,14 @@ class ConvertOrderRequestService
     private function normaliseCustomerPayload(array $payload): array
     {
         return [
-            'first_name' => Str::title(trim((string) ($payload['first_name'] ?? ''))),
-            'last_name' => Str::title(trim((string) ($payload['last_name'] ?? ''))),
-            'company_name' => trim((string) ($payload['company_name'] ?? '')) ?: null,
-            'email' => strtolower(trim((string) ($payload['email'] ?? ''))),
+            'first_name' => Str::title((string) TextNormalizer::clean($payload['first_name'] ?? '', 50)),
+            'last_name' => Str::title((string) TextNormalizer::clean($payload['last_name'] ?? '', 50)),
+            'company_name' => TextNormalizer::cleanOrNull($payload['company_name'] ?? null, 150),
+            'email' => strtolower((string) TextNormalizer::clean($payload['email'] ?? '', 255)),
             'phone_digits' => preg_replace('/\D+/', '', (string) ($payload['phone_digits'] ?? '')) ?: '',
             'phone_country_id' => ! empty($payload['phone_country_id']) ? (int) $payload['phone_country_id'] : null,
-            'address_line1' => trim((string) ($payload['address_line1'] ?? '')),
-            'address_postcode' => trim((string) ($payload['address_postcode'] ?? '')) ?: null,
+            'address_line1' => (string) TextNormalizer::clean($payload['address_line1'] ?? '', 191),
+            'address_postcode' => TextNormalizer::cleanOrNull($payload['address_postcode'] ?? null, 32),
             'address_country_id' => ! empty($payload['address_country_id']) ? (int) $payload['address_country_id'] : null,
         ];
     }
@@ -392,7 +393,7 @@ class ConvertOrderRequestService
     {
         $bodyParts = [];
         if (trim((string) $request->notes) !== '') {
-            $bodyParts[] = trim((string) $request->notes);
+            $bodyParts[] = (string) TextNormalizer::clean($request->notes, 5000);
         }
         $bodyParts[] = 'Converted from order request ' . $request->request_ref . '.';
 

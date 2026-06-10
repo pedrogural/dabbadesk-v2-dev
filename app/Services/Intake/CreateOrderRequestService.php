@@ -3,6 +3,7 @@
 namespace App\Services\Intake;
 
 use Illuminate\Http\Request;
+use App\Support\Text\TextNormalizer;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -29,6 +30,8 @@ class CreateOrderRequestService
 
             $requestRef = $this->nextRequestRef();
             $purchaseMode = $this->normalisePurchaseMode((string) ($payload['purchase_mode'] ?? $payload['order_type'] ?? 'standard'));
+
+            $payload = $this->normalisePayloadText($payload);
 
             $nameParts = $this->splitName((string) ($payload['customer_name'] ?? ''));
 
@@ -100,6 +103,43 @@ class CreateOrderRequestService
                 'existing' => false,
             ];
         });
+    }
+
+    private function normalisePayloadText(array $payload): array
+    {
+        foreach ([
+            'customer_name' => 191,
+            'customer_company_name' => 150,
+            'customer_email' => 255,
+            'customer_phone' => 40,
+            'address_line1' => 191,
+            'address_postcode' => 32,
+            'notes' => 5000,
+        ] as $key => $limit) {
+            if (array_key_exists($key, $payload)) {
+                $payload[$key] = TextNormalizer::cleanOrNull(is_scalar($payload[$key]) ? (string) $payload[$key] : null, $limit);
+            }
+        }
+
+        foreach (($payload['items'] ?? []) as $index => $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            foreach ([
+                'retailer_name' => 191,
+                'retailer_url' => 2048,
+                'product_code' => 150,
+                'description' => 2000,
+                'notes' => 5000,
+            ] as $key => $limit) {
+                if (array_key_exists($key, $item)) {
+                    $payload['items'][$index][$key] = TextNormalizer::cleanOrNull(is_scalar($item[$key]) ? (string) $item[$key] : null, $limit);
+                }
+            }
+        }
+
+        return $payload;
     }
 
     private function normalisePurchaseMode(string $value): string
@@ -254,19 +294,19 @@ class CreateOrderRequestService
 
     private function descriptionForItem(array $item): string
     {
-        $description = trim((string) ($item['description'] ?? ''));
+        $description = trim((string) TextNormalizer::clean($item['description'] ?? '', 500));
 
         if ($description !== '') {
             return Str::limit($description, 500, '');
         }
 
-        $code = trim((string) ($item['product_code'] ?? ''));
+        $code = trim((string) TextNormalizer::clean($item['product_code'] ?? '', 500));
 
         if ($code !== '') {
             return Str::limit($code, 500, '');
         }
 
-        $retailer = trim((string) ($item['retailer_name'] ?? ''));
+        $retailer = trim((string) TextNormalizer::clean($item['retailer_name'] ?? '', 500));
 
         return Str::limit('Item from ' . ($retailer !== '' ? $retailer : 'unknown retailer'), 500, '');
     }

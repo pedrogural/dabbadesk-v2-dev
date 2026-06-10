@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\Orders\OrdersReadOnlyService;
+use App\Support\Text\TextNormalizer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -488,7 +489,7 @@ class OrdersController extends Controller
                 DB::table('invoice_version_retailers')->insert([
                     'invoice_version_id' => $invoiceVersionId,
                     'retailer_id' => $retailer->retailer_id,
-                    'retailer_name' => $retailer->retailer_name,
+                    'retailer_name' => TextNormalizer::cleanOrNull($retailer->retailer_name ?? null, 191),
                     'retailer_subtotal' => round((float) ($retailer->retailer_items_subtotal ?? 0), 2),
                     'retailer_delivery_fee_total' => round((float) ($retailer->retailer_delivery_fee_total ?? 0), 2),
                     'item_delivery_fee_total' => 0,
@@ -526,9 +527,9 @@ class OrdersController extends Controller
                     'invoice_version_id' => $invoiceVersionId,
                     'retailer_id' => $item->actual_retailer_id,
                     'sort_order' => (int) ($item->sort_order ?? 0),
-                    'description' => $item->description ?: $item->item_name,
-                    'url' => $item->product_url,
-                    'sku' => $item->product_code,
+                    'description' => TextNormalizer::clean($item->description ?: $item->item_name, 2000),
+                    'url' => TextNormalizer::cleanOrNull($item->product_url ?? null, 2048),
+                    'sku' => TextNormalizer::cleanOrNull($item->product_code ?? null, 191),
                     'qty' => $qty,
                     'unit_price' => $unitPrice,
                     'line_subtotal' => $lineSubtotal,
