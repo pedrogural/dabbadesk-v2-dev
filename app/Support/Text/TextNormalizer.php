@@ -56,7 +56,66 @@ class TextNormalizer
             return false;
         }
 
-        return preg_match('/(â€|â€“|â€”|â€¦|â„¢|Ã.|Â£|Â®|Â©|Â |�)/u', $value) === 1;
+        return preg_match('/(â€|â€“|â€”|â€¦|â„¢|Ã.|Ãƒ|Ã¢|Â£|Â®|Â©|Â |�)/u', $value) === 1;
+    }
+
+    /**
+     * Repair historical text conservatively.
+     *
+     * The save-time cleaner is intentionally lightweight. Historical data can be
+     * double/triple encoded, so this method iterates a few times and then only
+     * accepts the result if no suspicious mojibake markers remain. This prevents
+     * PREVIEW/APPLY from replacing one flavour of gibberish with another.
+     */
+    public static function repairHistorical(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $original = (string) $value;
+        $text = $original;
+
+        for ($pass = 0; $pass < 6; $pass++) {
+            $next = self::clean($text);
+
+            if ($next === null || $next === $text) {
+                break;
+            }
+
+            $text = $next;
+        }
+
+        if ($text === $original || $text === '') {
+            return null;
+        }
+
+        if (self::suspicious($text)) {
+            return null;
+        }
+
+        $text = self::polishRecoveredText($text);
+
+        return $text;
+    }
+
+
+    /**
+     * Final human-text polish after mojibake repair.
+     *
+     * Some historical apostrophes recover as a curly apostrophe followed by an
+     * uppercase S, e.g. Arengo’S or Devil’S. In ordinary names/addresses this
+     * should be a possessive lower-case s: Arengo’s, Devil’s.
+     */
+    public static function polishRecoveredText(string $text): string
+    {
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace("/(?<=\\p{Ll})[’']S\\b/u", '’s', $text) ?? $text;
+
+        return $text;
     }
 
     public static function fixMojibake(string $text): string
@@ -65,7 +124,45 @@ class TextNormalizer
             return '';
         }
 
+        // Longest and most corrupted patterns first.
         $map = [
+            // Common double/triple encoded punctuation seen in older imported data.
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢' => '’',
+            'Ãƒ¢Ã¢†š¬Ã¢†ž¢' => '’',
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ' => '“',
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â' => '”',
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â' => '—',
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“' => '–',
+            'ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦' => '…',
+
+            // Common double-encoded accented characters.
+            'ÃƒÆ’Ã‚Â©' => 'é',
+            'ÃƒÆ’Ã‚©' => 'é',
+            'ÃƒÂ©' => 'é',
+            'Ã©' => 'é',
+            'ÃƒÆ’Ã‚Â¨' => 'è',
+            'ÃƒÂ¨' => 'è',
+            'Ã¨' => 'è',
+            'ÃƒÆ’Ã‚Â¡' => 'á',
+            'ÃƒÂ¡' => 'á',
+            'Ã¡' => 'á',
+            'ÃƒÆ’Ã‚Â­' => 'í',
+            'ÃƒÂ­' => 'í',
+            'Ã­' => 'í',
+            'ÃƒÆ’Ã‚Â³' => 'ó',
+            'ÃƒÂ³' => 'ó',
+            'Ã³' => 'ó',
+            'ÃƒÆ’Ã‚Âº' => 'ú',
+            'ÃƒÂº' => 'ú',
+            'Ãº' => 'ú',
+            'ÃƒÆ’Ã‚Â±' => 'ñ',
+            'ÃƒÂ±' => 'ñ',
+            'Ã±' => 'ñ',
+            'ÃƒÆ’Ã‚Â§' => 'ç',
+            'ÃƒÂ§' => 'ç',
+            'Ã§' => 'ç',
+
+            // Standard single-pass mojibake.
             'â€“' => '–',
             'â€”' => '—',
             'â€˜' => '‘',
@@ -78,7 +175,6 @@ class TextNormalizer
             'â„¢' => '™',
             'â‚¬' => '€',
             'â‚¬â„¢' => '’',
-            'â€' => '†',
             'Ã—' => '×',
             'Ã·' => '÷',
             'Â£' => '£',
@@ -94,13 +190,14 @@ class TextNormalizer
 
         $text = strtr($text, $map);
 
-        // A second pass catches longer patterns after partial replacements.
+        // A second pass catches shorter patterns revealed after long replacements.
         $text = strtr($text, [
             'â€˜' => '‘',
             'â€™' => '’',
             'â€œ' => '“',
             'â€�' => '”',
             'â€' => '”',
+            'Ã—' => '×',
         ]);
 
         return $text;
