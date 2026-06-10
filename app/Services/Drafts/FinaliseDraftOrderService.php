@@ -140,10 +140,10 @@ class FinaliseDraftOrderService
                 'subject_id' => $draftId,
                 'type' => 'system_note',
                 'title' => $previousOrderId
-                    ? 'New order version created'
+                    ? 'Order amended'
                     : ($isCustomerSelfPurchase ? 'Customer Self Purchase order created' : 'Draft consumed'),
                 'body' => $previousOrderId
-                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.' . ($isCustomerSelfPurchase ? ' This new version is marked as Customer Self Purchase: Dabba does not buy the goods; goods values are retained for reference, arrivals and customs documentation.' : '')
+                    ? 'Draft amendment was finalised and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.' . ($isCustomerSelfPurchase ? ' This new version is marked as Customer Self Purchase: Dabba does not buy the goods; goods values are retained for reference, arrivals and customs documentation.' : '')
                     : ($isCustomerSelfPurchase
                         ? 'Customer Self Purchase draft consumed into Order/Request #' . $orderNumber . '. Dabba will not purchase these items. Only service, shipping and handling charges are billable; goods values remain for arrivals and customs documentation.'
                         : 'Draft consumed into Order/Request #' . $orderNumber . '.'),

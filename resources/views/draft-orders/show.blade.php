@@ -872,7 +872,7 @@
                         <a
                             href="{{ route('orders.show', $draft->finalized_order_id) }}"
                             class="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-black text-white hover:bg-emerald-700"
-                        >Open {{ $finalizedOrderLabel }}</a>
+                        >View {{ $finalizedOrderLabel }}</a>
                     @endif
                     @if (! $canFinaliseDraft)
                         <button
@@ -886,7 +886,7 @@
                             type="button"
                             @click="openFinaliseModal()"
                             class="rounded-2xl bg-purple-600 px-4 py-2.5 text-sm font-black text-white shadow-sm hover:bg-purple-700"
-                        >{{ $isConsumedDraft ? 'Create New Version' : 'Finalise to Order' }}</button>
+                        >{{ $isConsumedDraft ? 'Create New Order Version' : 'Finalise to Order' }}</button>
                     @endif
                 </div>
             </div>
