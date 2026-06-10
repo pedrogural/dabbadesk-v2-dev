@@ -10,7 +10,7 @@ class PurchaseActionService
     public function recordPurchase(array $data): int
     {
         $item = $this->findOrderItem((int) ($data['order_item_id'] ?? 0));
-        $qty = $this->validActionQty($item, (int) ($data['qty'] ?? 0));
+        $qty = $this->validPurchaseQty($item, (int) ($data['qty'] ?? 0));
         $unitPrice = $this->optionalMoney($data['purchase_unit_price'] ?? null);
         $lineTotal = $this->optionalMoney($data['purchase_line_total'] ?? null) ?? ($unitPrice !== null ? round($unitPrice * $qty, 2) : null);
 
@@ -50,7 +50,7 @@ class PurchaseActionService
     public function recordProblem(array $data): int
     {
         $item = $this->findOrderItem((int) ($data['order_item_id'] ?? 0));
-        $qty = $this->validActionQty($item, (int) ($data['qty'] ?? 0));
+        $qty = $this->validProblemQty($item, (int) ($data['qty'] ?? 0));
 
         return DB::transaction(function () use ($data, $item, $qty) {
             $purchaseId = DB::table('order_item_purchases')->insertGetId([
@@ -60,7 +60,7 @@ class PurchaseActionService
                 'order_retailer_id' => $item->order_retailer_id,
                 'retailer_id' => $item->retailer_id,
                 'qty' => $qty,
-                'status' => 'problem',
+                'status' => 'failed',
                 'currency' => strtoupper((string) ($data['currency'] ?? 'GBP')) ?: 'GBP',
                 'marketplace_seller' => $this->blankToNull($data['marketplace_seller'] ?? null),
                 'retailer_order_reference' => $this->blankToNull($data['retailer_order_reference'] ?? null),
@@ -146,17 +146,62 @@ class PurchaseActionService
         return $item;
     }
 
-    private function validActionQty(object $item, int $qty): int
+    private function validPurchaseQty(object $item, int $qty): int
     {
         if ($qty < 1) {
             throw ValidationException::withMessages(['qty' => 'Quantity must be at least 1.']);
         }
 
-        if ($qty > (int) $item->quantity) {
-            throw ValidationException::withMessages(['qty' => 'Quantity cannot be greater than the item quantity.']);
+        $totals = $this->itemOperationalTotals($item);
+
+        if ($qty > $totals['purchase_remaining_qty']) {
+            throw ValidationException::withMessages(['qty' => 'Quantity cannot be greater than the remaining quantity to buy for this item.']);
         }
 
         return $qty;
+    }
+
+    private function validProblemQty(object $item, int $qty): int
+    {
+        if ($qty < 1) {
+            throw ValidationException::withMessages(['qty' => 'Quantity must be at least 1.']);
+        }
+
+        $totals = $this->itemOperationalTotals($item);
+        $allowedQty = max($totals['purchase_remaining_qty'], $totals['arrival_remaining_qty']);
+
+        if ($qty > $allowedQty) {
+            throw ValidationException::withMessages(['qty' => 'Quantity cannot be greater than the quantity currently exposed to a purchasing problem.']);
+        }
+
+        return $qty;
+    }
+
+    private function itemOperationalTotals(object $item): array
+    {
+        $rootItemId = $item->root_item_id ?: $item->id;
+
+        $purchasedQty = (int) DB::table('order_item_purchases')
+            ->where('root_item_id', $rootItemId)
+            ->whereIn('status', PurchaseProgressSummary::PURCHASED_STATUSES)
+            ->whereNull('cancelled_at')
+            ->sum('qty');
+
+        $problemQty = (int) DB::table('order_item_purchases')
+            ->where('root_item_id', $rootItemId)
+            ->whereIn('status', PurchaseProgressSummary::PROBLEM_STATUSES)
+            ->whereNull('cancelled_at')
+            ->sum('qty');
+
+        $arrivedQty = (int) DB::table('purchase_arrival_assignments')
+            ->where('root_item_id', $rootItemId)
+            ->whereNull('undone_at')
+            ->sum('qty');
+
+        return [
+            'purchase_remaining_qty' => max(0, (int) $item->quantity - $purchasedQty - $problemQty),
+            'arrival_remaining_qty' => max(0, $purchasedQty - $problemQty - $arrivedQty),
+        ];
     }
 
     private function optionalMoney(mixed $amount): ?float

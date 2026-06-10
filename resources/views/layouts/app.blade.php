@@ -83,7 +83,7 @@
                     ['label' => 'Draft Orders', 'route' => 'draft-orders.index', 'icon' => '🧩'],
                     ['label' => 'Customer Desk', 'route' => 'customers.index', 'icon' => '👥'],
                     ['label' => 'Money Desk', 'route' => 'money-desk.index', 'icon' => '💷'],
-                    ['label' => 'Purchase Desk', 'route' => null, 'icon' => '🛒'],
+                    ['label' => 'Purchasing Desk', 'route' => 'purchasing.index', 'icon' => '🛒'],
                     ['label' => 'Marking', 'route' => null, 'icon' => '🏷️'],
                     ['label' => 'Collection', 'route' => null, 'icon' => '🚚'],
                     ['label' => 'Comms Desk', 'route' => null, 'icon' => '✉️'],

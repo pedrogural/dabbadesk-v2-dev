@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseProgressSummary
 {
-    public const PURCHASED_STATUSES = ['purchased', 'ordered', 'received'];
-    public const PROBLEM_STATUSES = ['problem', 'supplier_problem', 'cancelled', 'refunded', 'unavailable'];
+    public const PURCHASED_STATUSES = ['purchased', 'ordered', 'received', 'confirmed', 'dispatched', 'in_transit', 'arrived'];
+    public const PROBLEM_STATUSES = ['failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'retailer_cancelled', 'refunded', 'retailer_refunded', 'unavailable', 'lost', 'damaged', 'wrong_item'];
     public const READY_STATUSES = ['ready_for_collection', 'for_delivery'];
     public const COMPLETED_STATUSES = ['collected', 'delivered'];
 
@@ -71,7 +71,8 @@ class PurchaseProgressSummary
             'problem_qty' => $problemQty,
             'remaining_purchase_qty' => max(0, $requestedQty - $purchasedQty - $problemQty),
             'arrived_qty' => $arrivedQty,
-            'remaining_arrival_qty' => max(0, $purchasedQty - $arrivedQty),
+            'expected_arrival_qty' => max(0, $purchasedQty - $problemQty),
+            'remaining_arrival_qty' => max(0, $purchasedQty - $problemQty - $arrivedQty),
             'ready_qty' => $readyQty,
             'collected_qty' => $completedQty,
             'completed_qty' => $completedQty,

@@ -24,70 +24,7 @@ class PurchaseWorkbenchQuery
 
     public function itemsForOrder(int $orderId): Collection
     {
-        $purchaseSubquery = DB::table('order_item_purchases')
-            ->select(
-                'root_item_id',
-                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PURCHASED_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty'),
-                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PROBLEM_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as problem_qty'),
-                DB::raw('MAX(retailer_order_reference) as latest_retailer_order_reference'),
-                DB::raw('MAX(expected_uk_hub_at) as latest_expected_uk_hub_at'),
-                DB::raw('MAX(marketplace_seller) as latest_marketplace_seller')
-            )
-            ->groupBy('root_item_id');
-
-        $arrivalSubquery = DB::table('purchase_arrival_assignments')
-            ->select(
-                'root_item_id',
-                DB::raw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as arrived_qty'),
-                DB::raw('MAX(status) as latest_arrival_status'),
-                DB::raw('MAX(matched_at) as latest_matched_at')
-            )
-            ->groupBy('root_item_id');
-
-        return DB::table('order_items')
-            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
-            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
-            ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
-                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
-            })
-            ->leftJoinSub($arrivalSubquery, 'arrival_totals', function ($join) {
-                $join->on('arrival_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
-            })
-            ->select([
-                'order_items.id',
-                DB::raw('COALESCE(order_items.root_item_id, order_items.id) as root_item_id'),
-                'order_items.item_name',
-                'order_items.description',
-                'order_items.product_code',
-                'order_items.product_url',
-                'order_items.marketplace_seller',
-                'order_items.quantity',
-                'order_items.unit_price',
-                'order_items.line_total',
-                'order_items.item_retailer_delivery_fee',
-                'order_items.retailer_delivery_allocated',
-                'order_items.dabba_fee_allocated',
-                'order_items.status',
-                'order_items.requires_inspection',
-                'order_items.inspection_note',
-                'order_items.retailer_order_reference',
-                'order_items.tracking_reference',
-                'order_items.ordered_at',
-                'order_items.arrived_at',
-                'order_retailers.retailer_id',
-                'order_retailers.retailer_name as order_retailer_name',
-                'order_retailers.retailer_base_url as order_retailer_base_url',
-                'retailers.name as master_retailer_name',
-                'retailers.base_url as master_retailer_base_url',
-                DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
-                DB::raw('COALESCE(purchase_totals.problem_qty, 0) as problem_qty'),
-                DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
-                'purchase_totals.latest_retailer_order_reference',
-                'purchase_totals.latest_expected_uk_hub_at',
-                'purchase_totals.latest_marketplace_seller',
-                'arrival_totals.latest_arrival_status',
-                'arrival_totals.latest_matched_at',
-            ])
+        return $this->baseItemQuery()
             ->where('order_items.order_id', $orderId)
             ->orderBy('order_items.sort_order')
             ->orderBy('order_items.id')
@@ -165,65 +102,164 @@ class PurchaseWorkbenchQuery
             ->get();
     }
 
-    public function pendingItemsForPurchasingDesk(array $filters = []): Collection
+    public function deskSummary(array $filters = []): array
     {
-        $query = $this->basePurchasingDeskItemsQuery($filters)
-            ->where('orders.purchase_mode', '<>', 'customer_self_purchase')
-            ->where(function ($statusQuery) {
-                $statusQuery->whereIn('orders.status', ['paid', 'invoiced', 'created'])
-                    ->orWhereNotNull('orders.paid_at');
-            });
+        $items = $this->deskItems($filters + ['status' => 'all', 'limit' => 10000]);
 
-        return $query
-            ->orderBy('retailers.name')
-            ->orderBy('orders.order_number')
-            ->orderBy('order_items.sort_order')
-            ->limit((int) ($filters['limit'] ?? 250))
-            ->get()
-            ->map(fn ($item) => $this->decorateItem($item));
+        return [
+            'to_buy_qty' => (int) $items->sum('purchase_remaining_qty'),
+            'to_buy_orders' => $items->filter(fn ($item) => $item->purchase_remaining_qty > 0)->pluck('order_id')->unique()->count(),
+            'problem_qty' => (int) $items->sum('problem_qty'),
+            'problem_orders' => $items->filter(fn ($item) => $item->problem_qty > 0)->pluck('order_id')->unique()->count(),
+            'awaiting_arrival_qty' => (int) $items->sum('arrival_remaining_qty'),
+            'awaiting_arrival_orders' => $items->filter(fn ($item) => $item->arrival_remaining_qty > 0)->pluck('order_id')->unique()->count(),
+        ];
     }
 
-    private function basePurchasingDeskItemsQuery(array $filters)
+    public function pendingItemsForPurchasingDesk(array $filters = []): Collection
     {
-        $purchaseSubquery = DB::table('order_item_purchases')
-            ->select(
-                'root_item_id',
-                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PURCHASED_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty'),
-                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PROBLEM_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as problem_qty')
-            )
-            ->groupBy('root_item_id');
+        return $this->deskItems($filters + ['status' => 'to_buy']);
+    }
 
-        $query = DB::table('order_items')
-            ->join('orders', 'orders.id', '=', 'order_items.order_id')
-            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
-            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
-            ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
-                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+    public function orderGroupsForPurchasingDesk(array $filters = []): Collection
+    {
+        $items = $this->deskItems($filters);
+
+        return $items
+            ->groupBy('order_id')
+            ->map(function (Collection $orderItems) {
+                $first = $orderItems->first();
+                $retailerGroups = $orderItems
+                    ->groupBy(fn ($item) => $item->retailer_group_key)
+                    ->map(function (Collection $retailerItems) {
+                        $firstRetailer = $retailerItems->first();
+
+                        return (object) [
+                            'key' => $firstRetailer->retailer_group_key,
+                            'name' => $firstRetailer->retailer_display_name,
+                            'host' => $firstRetailer->retailer_host,
+                            'items' => $retailerItems->values(),
+                            'pending_qty' => (int) $retailerItems->sum('purchase_remaining_qty'),
+                            'problem_qty' => (int) $retailerItems->sum('problem_qty'),
+                            'awaiting_arrival_qty' => (int) $retailerItems->sum('arrival_remaining_qty'),
+                        ];
+                    })
+                    ->sortBy('name')
+                    ->values();
+
+                return (object) [
+                    'order_id' => (int) $first->order_id,
+                    'order_number' => $first->order_number,
+                    'customer_name' => $first->bill_to_company ?: $first->bill_to_name,
+                    'purchase_mode' => $first->purchase_mode,
+                    'item_count' => $orderItems->count(),
+                    'requested_qty' => (int) $orderItems->sum('quantity'),
+                    'pending_qty' => (int) $orderItems->sum('purchase_remaining_qty'),
+                    'purchased_qty' => (int) $orderItems->sum('purchased_qty'),
+                    'problem_qty' => (int) $orderItems->sum('problem_qty'),
+                    'arrived_qty' => (int) $orderItems->sum('arrived_qty'),
+                    'awaiting_arrival_qty' => (int) $orderItems->sum('arrival_remaining_qty'),
+                    'retailer_count' => $retailerGroups->count(),
+                    'retailer_groups' => $retailerGroups,
+                ];
             })
+            ->sortBy('order_number', SORT_NATURAL)
+            ->values();
+    }
+
+    public function recentPurchaseEvents(array $filters = []): Collection
+    {
+        $query = DB::table('order_item_purchases')
+            ->join('orders', 'orders.id', '=', 'order_item_purchases.order_id')
+            ->join('order_items', 'order_items.id', '=', 'order_item_purchases.order_item_id')
+            ->leftJoin('retailers', 'retailers.id', '=', 'order_item_purchases.retailer_id')
             ->select([
+                'order_item_purchases.id',
+                'order_item_purchases.order_id',
+                'orders.order_number',
+                'orders.bill_to_name',
+                'orders.bill_to_company',
+                'order_items.item_name',
+                'retailers.name as retailer_name',
+                'order_item_purchases.qty',
+                'order_item_purchases.status',
+                'order_item_purchases.problem_code',
+                'order_item_purchases.retailer_order_reference',
+                'order_item_purchases.created_at',
+            ])
+            ->whereNull('order_item_purchases.cancelled_at')
+            ->orderByDesc('order_item_purchases.created_at')
+            ->limit(30);
+
+        $q = trim((string) ($filters['q'] ?? ''));
+        if ($q !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $q) . '%';
+            $query->where(function ($search) use ($like) {
+                $search->where('orders.order_number', 'like', $like)
+                    ->orWhere('orders.bill_to_name', 'like', $like)
+                    ->orWhere('orders.bill_to_company', 'like', $like)
+                    ->orWhere('order_items.item_name', 'like', $like)
+                    ->orWhere('retailers.name', 'like', $like)
+                    ->orWhere('order_item_purchases.retailer_order_reference', 'like', $like);
+            });
+        }
+
+        return $query->get();
+    }
+
+    private function deskItems(array $filters = []): Collection
+    {
+        $status = $filters['status'] ?? 'to_buy';
+
+        $query = $this->baseItemQuery()
+            ->addSelect([
                 'orders.id as order_id',
                 'orders.order_number',
                 'orders.purchase_mode',
                 'orders.bill_to_name',
                 'orders.bill_to_company',
-                'order_items.*',
-                'order_retailers.retailer_id',
-                'order_retailers.retailer_name as order_retailer_name',
-                'order_retailers.retailer_base_url as order_retailer_base_url',
-                'retailers.name as master_retailer_name',
-                'retailers.base_url as master_retailer_base_url',
-                DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
-                DB::raw('COALESCE(purchase_totals.problem_qty, 0) as problem_qty'),
-                DB::raw('0 as arrived_qty'),
-                DB::raw('NULL as latest_retailer_order_reference'),
-                DB::raw('NULL as latest_expected_uk_hub_at'),
-                DB::raw('NULL as latest_marketplace_seller'),
-                DB::raw('NULL as latest_arrival_status'),
-                DB::raw('NULL as latest_matched_at')
             ])
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereNull('orders.cancelled_at')
             ->whereNull('orders.completed_at')
-            ->havingRaw('(order_items.quantity - COALESCE(purchase_totals.purchased_qty, 0) - COALESCE(purchase_totals.problem_qty, 0)) > 0');
+            ->where(function ($purchaseModeQuery) {
+                $purchaseModeQuery
+                    ->whereNull('orders.purchase_mode')
+                    ->orWhere('orders.purchase_mode', '')
+                    ->orWhere('orders.purchase_mode', '<>', 'customer_self_purchase');
+            })
+            ->where(function ($statusQuery) {
+                $statusQuery
+                    ->whereNotNull('orders.paid_at')
+                    ->orWhereIn('orders.status', [
+                        'paid',
+                        'waiting_purchase',
+                        'ready_to_buy',
+                        'purchasing',
+                        'partially_purchased',
+                        'purchased',
+                        'awaiting_arrival',
+                    ]);
+            })
+            ->where(function ($historyQuery) {
+                $historyQuery
+                    ->whereNull('orders.cancel_reason')
+                    ->orWhere('orders.cancel_reason', '<>', 'superseded');
+            })
+            ->where('orders.status', '<>', 'superseded')
+            ->whereNotExists(function ($newerQuery) {
+                $newerQuery
+                    ->select(DB::raw(1))
+                    ->from('orders as newer_orders')
+                    ->whereColumn('newer_orders.order_number', 'orders.order_number')
+                    ->whereColumn('newer_orders.id', '>', 'orders.id')
+                    ->where('newer_orders.status', '<>', 'superseded')
+                    ->where(function ($newerActive) {
+                        $newerActive
+                            ->whereNull('newer_orders.cancel_reason')
+                            ->orWhere('newer_orders.cancel_reason', '<>', 'superseded');
+                    });
+            });
 
         $q = trim((string) ($filters['q'] ?? ''));
         if ($q !== '') {
@@ -239,7 +275,89 @@ class PurchaseWorkbenchQuery
             });
         }
 
-        return $query;
+        $items = $query
+            ->orderBy('orders.order_number')
+            ->orderBy('retailers.name')
+            ->orderBy('order_items.sort_order')
+            ->limit((int) ($filters['limit'] ?? 500))
+            ->get()
+            ->map(fn ($item) => $this->decorateItem($item));
+
+        return match ($status) {
+            'problems' => $items->filter(fn ($item) => $item->problem_qty > 0)->values(),
+            'awaiting_arrival' => $items->filter(fn ($item) => $item->arrival_remaining_qty > 0)->values(),
+            'all' => $items,
+            default => $items->filter(fn ($item) => $item->purchase_remaining_qty > 0)->values(),
+        };
+    }
+
+    private function baseItemQuery()
+    {
+        $purchaseSubquery = DB::table('order_item_purchases')
+            ->select(
+                'root_item_id',
+                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PURCHASED_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty'),
+                DB::raw('SUM(CASE WHEN status IN (\'' . implode("','", PurchaseProgressSummary::PROBLEM_STATUSES) . '\') AND cancelled_at IS NULL THEN qty ELSE 0 END) as problem_qty'),
+                DB::raw('MAX(retailer_order_reference) as latest_retailer_order_reference'),
+                DB::raw('MAX(expected_uk_hub_at) as latest_expected_uk_hub_at'),
+                DB::raw('MAX(marketplace_seller) as latest_marketplace_seller')
+            )
+            ->groupBy('root_item_id');
+
+        $arrivalSubquery = DB::table('purchase_arrival_assignments')
+            ->select(
+                'root_item_id',
+                DB::raw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as arrived_qty'),
+                DB::raw('MAX(status) as latest_arrival_status'),
+                DB::raw('MAX(matched_at) as latest_matched_at')
+            )
+            ->groupBy('root_item_id');
+
+        return DB::table('order_items')
+            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
+            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
+            ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
+                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->leftJoinSub($arrivalSubquery, 'arrival_totals', function ($join) {
+                $join->on('arrival_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->select([
+                'order_items.id',
+                'order_items.order_id as item_order_id',
+                DB::raw('COALESCE(order_items.root_item_id, order_items.id) as root_item_id'),
+                'order_items.item_name',
+                'order_items.description',
+                'order_items.product_code',
+                'order_items.product_url',
+                'order_items.marketplace_seller',
+                'order_items.quantity',
+                'order_items.unit_price',
+                'order_items.line_total',
+                'order_items.item_retailer_delivery_fee',
+                'order_items.retailer_delivery_allocated',
+                'order_items.dabba_fee_allocated',
+                'order_items.status',
+                'order_items.requires_inspection',
+                'order_items.inspection_note',
+                'order_items.retailer_order_reference',
+                'order_items.tracking_reference',
+                'order_items.ordered_at',
+                'order_items.arrived_at',
+                'order_retailers.retailer_id',
+                'order_retailers.retailer_name as order_retailer_name',
+                'order_retailers.retailer_base_url as order_retailer_base_url',
+                'retailers.name as master_retailer_name',
+                'retailers.base_url as master_retailer_base_url',
+                DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
+                DB::raw('COALESCE(purchase_totals.problem_qty, 0) as problem_qty'),
+                DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
+                'purchase_totals.latest_retailer_order_reference',
+                'purchase_totals.latest_expected_uk_hub_at',
+                'purchase_totals.latest_marketplace_seller',
+                'arrival_totals.latest_arrival_status',
+                'arrival_totals.latest_matched_at',
+            ]);
     }
 
     private function decorateItem(object $item): object
@@ -255,7 +373,8 @@ class PurchaseWorkbenchQuery
         $item->problem_qty = min((int) $item->quantity, (int) ($item->problem_qty ?? 0));
         $item->arrived_qty = min((int) $item->quantity, (int) ($item->arrived_qty ?? 0));
         $item->purchase_remaining_qty = max(0, (int) $item->quantity - (int) $item->purchased_qty - (int) $item->problem_qty);
-        $item->arrival_remaining_qty = max(0, (int) $item->quantity - (int) $item->arrived_qty);
+        $item->expected_arrival_qty = max(0, (int) $item->purchased_qty - (int) $item->problem_qty);
+        $item->arrival_remaining_qty = max(0, (int) $item->purchased_qty - (int) $item->problem_qty - (int) $item->arrived_qty);
 
         return $item;
     }
