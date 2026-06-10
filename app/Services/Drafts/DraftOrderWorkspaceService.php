@@ -242,7 +242,7 @@ class DraftOrderWorkspaceService
                 'subject_id' => $draft->id,
                 'type' => 'order_version',
                 'is_pinned' => 0,
-                'title' => $isRevision ? 'New order version created' : 'Draft converted to order',
+                'title' => $isRevision ? 'Order amendment created' : 'Draft converted to order',
                 'body' => collect([
                     'Order ' . $orderNumber,
                     'Status: ' . str_replace('_', ' ', $status),

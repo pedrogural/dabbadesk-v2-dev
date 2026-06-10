@@ -20,6 +20,8 @@
         if ($rawCustomerPhone !== '' && ! str_starts_with($rawCustomerPhone, '+') && $phoneCountryCode !== '') {
             $customerPhone = '+' . ltrim($phoneCountryCode, '+') . ' ' . $customerPhoneDigits;
         }
+        $whatsappDigits = preg_replace('/\D+/', '', $customerPhone);
+        $whatsappUrl = $whatsappDigits !== '' ? 'https://wa.me/' . $whatsappDigits : null;
         $addressLines = collect([
             trim((string) ($order->bill_to_address_line1 ?? '')),
             trim((string) ($order->bill_to_postcode ?? '')),
@@ -73,7 +75,7 @@
             'Outstanding £' . number_format($balanceDue, 2),
         ])->filter(fn ($line) => trim((string) $line) !== '')->implode("\n");
     @endphp
-    <div class="space-y-5" data-order-copy-scope x-data="{ tab: 'overview' }">
+    <div class="space-y-5" data-order-copy-scope x-data="{ tab: 'overview', amendOrderOpen: false }">
         @if (session('success'))
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800">{{ session('success') }}</div>
         @endif
@@ -101,6 +103,14 @@
                 </div>
 
                 <div class="flex flex-wrap gap-2">
+                    @if (! empty($order->draft_order_id))
+                        <button
+                            type="button"
+                            @click="amendOrderOpen = true"
+                            title="Create a draft revision of this order for editing."
+                            class="rounded-2xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-purple-700"
+                        >Amend Order</button>
+                    @endif
                     <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">Record payment</button>
                     <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-semibold text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'New invoice version' : 'Create invoice' }}</button>
                 </div>
@@ -116,6 +126,30 @@
                 </div>
             </div>
         </section>
+
+        @if (! empty($order->draft_order_id))
+            <div
+                x-show="amendOrderOpen"
+                x-cloak
+                x-transition.opacity
+                class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6"
+                role="dialog"
+                aria-modal="true"
+            >
+                <div @click.outside="amendOrderOpen = false" class="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
+                    <p class="text-xs font-black uppercase tracking-[0.2em] text-purple-700">Amend Order</p>
+                    <h2 class="mt-2 text-2xl font-black text-slate-950">Create a draft revision?</h2>
+                    <div class="mt-4 space-y-2 text-sm font-semibold leading-6 text-slate-600">
+                        <p>This will open the related draft in Draft Workbench so the order can be amended safely.</p>
+                        <p>The existing order will remain unchanged until the draft is finalised into a new order version.</p>
+                    </div>
+                    <div class="mt-6 flex flex-wrap justify-end gap-2">
+                        <button type="button" @click="amendOrderOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</button>
+                        <a href="{{ route('draft-orders.show', $order->draft_order_id) }}" class="rounded-2xl bg-purple-600 px-4 py-2 text-sm font-bold text-white shadow-sm hover:bg-purple-700">Open Draft Workbench</a>
+                    </div>
+                </div>
+            </div>
+        @endif
 
         <div x-show="tab === 'overview'" x-cloak class="space-y-5">
         @if ($walletAttentionTotal > 0.004)
@@ -133,8 +167,8 @@
             </div>
         @endif
 
-            <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col items-start gap-5 xl:flex-row">
+                <section class="w-full max-w-[760px] flex-none rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Customer</p>
@@ -143,7 +177,7 @@
                                 <p class="mt-1 text-sm text-slate-600">{{ $customerCompany }}</p>
                             @endif
                         </div>
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             @if (! empty($order->customer_id))
                                 <a href="{{ route('customers.edit', $order->customer_id) }}" class="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-100 hover:text-indigo-700">Customer ↗</a>
                             @endif
@@ -153,39 +187,55 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 grid gap-3 md:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
-                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Email / phone</p>
-                            <p class="mt-1 text-sm text-slate-700">{{ $customerEmail ?: 'No email' }}</p>
-                            <p class="mt-1 text-sm text-slate-700">{{ $customerPhone ?: 'No phone' }}</p>
-                            <div class="mt-3 flex gap-2">
-                                @if ($customerEmail)
-                                    <button type="button" data-copy-value="{{ $customerEmail }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy email</button>
-                                @endif
+                    <div class="mt-4 overflow-hidden rounded-2xl bg-slate-50 ring-1 ring-slate-100">
+                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-200 px-4 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Email</p>
+                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ $customerEmail ?: 'No email' }}</p>
+                            @if ($customerEmail)
+                                <button type="button" data-copy-value="{{ $customerEmail }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                            @endif
+                        </div>
+
+                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-200 px-4 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Phone</p>
+                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ $customerPhone ?: 'No phone' }}</p>
+                            <div class="flex flex-wrap justify-end gap-2">
                                 @if ($customerPhone)
-                                    <button type="button" data-copy-value="{{ $customerPhone }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy phone</button>
+                                    <button type="button" data-copy-value="{{ $customerPhone }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                                @endif
+                                @if ($whatsappUrl)
+                                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer" class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">WhatsApp ↗</a>
                                 @endif
                             </div>
                         </div>
-                        <div class="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
-                            <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Address</p>
+
+                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-start gap-3 border-b border-slate-200 px-4 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Address</p>
                             @if ($addressLines->isNotEmpty())
-                                <div class="mt-1 space-y-0.5 text-sm text-slate-700">
+                                <div class="min-w-0 space-y-0.5 text-sm font-semibold text-slate-800">
                                     @foreach ($addressLines as $line)
                                         <p>{{ $line }}</p>
                                     @endforeach
                                 </div>
                             @else
-                                <p class="mt-1 text-sm text-slate-400">No billing address captured.</p>
+                                <p class="text-sm font-semibold text-slate-400">No billing address captured.</p>
                             @endif
                             @if ($copyFullAddress)
-                                <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn mt-3 rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy address</button>
+                                <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
+                            @endif
+                        </div>
+
+                        <div class="grid grid-cols-[82px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+                            <p class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Customer ID</p>
+                            <p class="min-w-0 truncate text-sm font-semibold text-slate-800">{{ ! empty($order->customer_id) ? '#' . $order->customer_id : 'Not linked' }}</p>
+                            @if (! empty($order->customer_id))
+                                <button type="button" data-copy-value="{{ $order->customer_id }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
                             @endif
                         </div>
                     </div>
                 </section>
 
-                <section class="rounded-3xl {{ $balanceDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50' }} border p-5 shadow-sm">
+                <section class="w-full max-w-[360px] flex-none rounded-3xl {{ $balanceDue > 0 ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50' }} border p-5 shadow-sm">
                     <p class="text-xs font-semibold uppercase tracking-[0.18em] {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">Balance</p>
                     <p class="mt-2 text-4xl font-semibold {{ $balanceDue > 0 ? 'text-rose-700' : 'text-emerald-700' }}">£{{ number_format($balanceDue, 2) }}</p>
                     <p class="mt-2 text-sm text-slate-600">Total £{{ number_format($orderTotal, 2) }} · Paid £{{ number_format($settledTotal, 2) }}</p>

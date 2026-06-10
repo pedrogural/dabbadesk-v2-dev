@@ -502,7 +502,7 @@ class DraftOrdersController extends Controller
 
         return redirect()
             ->route('orders.show', $orderId)
-            ->with('success', $isConsumed ? 'New order version created. Previous order was marked as superseded.' : 'Draft consumed into an order.');
+            ->with('success', $isConsumed ? 'Draft revision finalised. New order version created and the previous order was marked as superseded.' : 'Draft consumed into an order.');
     }
 
     public function addNote(int $draftOrder, Request $request, DraftOrderWorkspaceService $drafts)
