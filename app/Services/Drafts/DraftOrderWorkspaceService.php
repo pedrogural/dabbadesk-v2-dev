@@ -3,6 +3,7 @@
 namespace App\Services\Drafts;
 
 use App\Support\Search\SmartSearch;
+use App\Support\Text\TextNormalizer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -242,7 +243,7 @@ class DraftOrderWorkspaceService
                 'subject_id' => $draft->id,
                 'type' => 'order_version',
                 'is_pinned' => 0,
-                'title' => $isRevision ? 'Order amendment created' : 'Draft converted to order',
+                'title' => $isRevision ? 'New order version created' : 'Draft converted to order',
                 'body' => collect([
                     'Order ' . $orderNumber,
                     'Status: ' . str_replace('_', ' ', $status),
@@ -673,15 +674,15 @@ class DraftOrderWorkspaceService
         $lineTotal = round($subtotal + $delivery, 2);
         $sort = (int) DB::table('draft_order_items')->where('draft_order_id', $draftId)->max('sort_order') + 10;
 
-        $description = trim((string) ($data['description'] ?? 'New item')) ?: 'New item';
+        $description = TextNormalizer::clean($data['description'] ?? 'New item', 2000) ?: 'New item';
 
         $id = DB::table('draft_order_items')->insertGetId([
             'draft_order_id' => $draftId,
             'retailer_id' => (int) $data['retailer_id'],
             'description' => $description,
-            'url' => trim((string) ($data['url'] ?? '')) ?: null,
-            'product_code' => trim((string) ($data['product_code'] ?? '')) ?: null,
-            'sku' => trim((string) ($data['sku'] ?? '')) ?: null,
+            'url' => TextNormalizer::cleanOrNull($data['url'] ?? null, 2048),
+            'product_code' => TextNormalizer::cleanOrNull($data['product_code'] ?? null, 191),
+            'sku' => TextNormalizer::cleanOrNull($data['sku'] ?? null, 191),
             'qty' => $qty,
             'unit_price' => $unit,
             'line_subtotal' => $subtotal,

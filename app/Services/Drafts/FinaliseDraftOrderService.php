@@ -2,6 +2,7 @@
 
 namespace App\Services\Drafts;
 
+use App\Support\Text\TextNormalizer;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -92,12 +93,12 @@ class FinaliseDraftOrderService
                 'retailer_delivery_fee_total' => (float) ($draft->retailer_delivery_total ?? 0),
                 'dabba_fee_amount' => (float) ($draft->dabba_fee_total ?? 0),
                 'grand_total' => (float) ($draft->grand_total ?? 0),
-                'bill_to_name' => $billing['name'],
-                'bill_to_company' => $billing['company'],
-                'bill_to_email' => $billing['email'],
-                'bill_to_phone' => $billing['phone'],
-                'bill_to_address_line1' => $billing['address_line1'],
-                'bill_to_postcode' => $billing['postcode'],
+                'bill_to_name' => TextNormalizer::cleanOrNull($billing['name'] ?? null, 191),
+                'bill_to_company' => TextNormalizer::cleanOrNull($billing['company'] ?? null, 191),
+                'bill_to_email' => TextNormalizer::cleanOrNull($billing['email'] ?? null, 255),
+                'bill_to_phone' => TextNormalizer::cleanOrNull($billing['phone'] ?? null, 40),
+                'bill_to_address_line1' => TextNormalizer::cleanOrNull($billing['address_line1'] ?? null, 191),
+                'bill_to_postcode' => TextNormalizer::cleanOrNull($billing['postcode'] ?? null, 32),
                 'bill_to_country_id' => $billing['country_id'],
                 'locked_at' => now(),
                 'created_by_user_id' => $userId,
@@ -140,10 +141,10 @@ class FinaliseDraftOrderService
                 'subject_id' => $draftId,
                 'type' => 'system_note',
                 'title' => $previousOrderId
-                    ? 'Order amended'
+                    ? 'New order version created'
                     : ($isCustomerSelfPurchase ? 'Customer Self Purchase order created' : 'Draft consumed'),
                 'body' => $previousOrderId
-                    ? 'Draft amendment was finalised and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.' . ($isCustomerSelfPurchase ? ' This new version is marked as Customer Self Purchase: Dabba does not buy the goods; goods values are retained for reference, arrivals and customs documentation.' : '')
+                    ? 'Draft was edited after prior consumption and used to create a new order version for Request #' . $orderNumber . '. Previous order ID ' . $previousOrderId . ' was marked as superseded. Any settled balance was moved through wallet credit and applied to the new revision where possible.' . ($isCustomerSelfPurchase ? ' This new version is marked as Customer Self Purchase: Dabba does not buy the goods; goods values are retained for reference, arrivals and customs documentation.' : '')
                     : ($isCustomerSelfPurchase
                         ? 'Customer Self Purchase draft consumed into Order/Request #' . $orderNumber . '. Dabba will not purchase these items. Only service, shipping and handling charges are billable; goods values remain for arrivals and customs documentation.'
                         : 'Draft consumed into Order/Request #' . $orderNumber . '.'),
@@ -768,8 +769,9 @@ class FinaliseDraftOrderService
                 $retailerDeliveryAllocated = $retailerDeliveryAllocations[$index] ?? 0.0;
                 $dabbaFeeAllocated = $dabbaFeeAllocations[$index] ?? 0.0;
                 $lineTotal = round($lineSubtotal + $sellerDelivery + $retailerDeliveryAllocated + $dabbaFeeAllocated, 2);
-                $description = trim((string) ($item->description ?? ''));
-                $itemName = $this->itemNameFromDescription($description, (string) ($item->product_code ?? ''));
+                $description = (string) TextNormalizer::clean($item->description ?? '', 2000);
+                $productCode = (string) TextNormalizer::clean($item->product_code ?? $item->sku ?? '', 191);
+                $itemName = $this->itemNameFromDescription($description, $productCode);
 
                 $previousItem = $this->matchPreviousOrderItem($item, $previousItems, $usedPreviousItemIds);
                 $sourceOrderItemId = $previousItem ? (int) $previousItem->id : null;
@@ -782,8 +784,8 @@ class FinaliseDraftOrderService
                     'root_item_id' => $rootItemId,
                     'item_name' => $itemName,
                     'description' => $description ?: $itemName,
-                    'product_code' => trim((string) ($item->product_code ?? $item->sku ?? '')) ?: null,
-                    'product_url' => trim((string) ($item->url ?? '')) ?: null,
+                    'product_code' => $productCode !== '' ? $productCode : null,
+                    'product_url' => TextNormalizer::cleanOrNull($item->url ?? null, 2048),
                     'marketplace_seller' => null,
                     'quantity' => $qty,
                     'unit_price' => $unit,

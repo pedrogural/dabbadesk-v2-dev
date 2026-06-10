@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\OrderRequests\ConvertOrderRequestService;
 use App\Support\Search\SmartSearch;
+use App\Support\Text\TextNormalizer;
 use App\Services\Intake\OrderRequestAttachmentService;
 use App\Services\Intake\RetailerLookupService;
 use Illuminate\Http\JsonResponse;
@@ -135,6 +136,8 @@ class OrderRequestsController extends Controller
             'attachments.*' => ['file', 'max:10240', 'mimes:jpg,jpeg,png,webp,pdf,txt,doc,docx'],
         ]);
 
+        $validated = $this->normaliseValidatedText($validated);
+
         if ($validated['customer_mode'] === 'create') {
             $defaultCountryId = $this->defaultCountryId('GI');
 
@@ -154,6 +157,8 @@ class OrderRequestsController extends Controller
         if ($validated['customer_mode'] === 'existing' && empty($validated['customer_id'])) {
             return back()->withInput()->withErrors(['customer_id' => 'Choose an existing customer before creating the draft.']);
         }
+
+        $validated = $this->normaliseValidatedText($validated);
 
         if ($validated['customer_mode'] === 'create') {
             $hasName = trim((string) ($validated['first_name'] ?? '')) !== ''
@@ -497,14 +502,14 @@ class OrderRequestsController extends Controller
 
         abort_unless($itemRow, 404);
 
-        $retailerUrl = trim((string) ($validated['retailer_url'] ?? ''));
-        $retailerNameInput = trim((string) ($validated['retailer_name'] ?? ''));
-        $productCode = trim((string) ($validated['product_code'] ?? ''));
-        $description = trim((string) ($validated['description'] ?? ''));
+        $retailerUrl = (string) TextNormalizer::clean($validated['retailer_url'] ?? '', 2048);
+        $retailerNameInput = (string) TextNormalizer::clean($validated['retailer_name'] ?? '', 191);
+        $productCode = (string) TextNormalizer::clean($validated['product_code'] ?? '', 150);
+        $description = (string) TextNormalizer::clean($validated['description'] ?? '', 2000);
         $quantity = max(1, (int) $validated['quantity']);
         $unitPrice = round((float) $validated['unit_price'], 2);
         $lineTotal = round($unitPrice * $quantity, 2);
-        $notes = trim((string) ($validated['notes'] ?? ''));
+        $notes = (string) TextNormalizer::clean($validated['notes'] ?? '', 5000);
 
         $detected = $retailerLookup->detect($retailerUrl, $productCode, $retailerNameInput);
         $retailerId = ! empty($detected['retailer_id']) ? (int) $detected['retailer_id'] : null;
@@ -1056,6 +1061,26 @@ class OrderRequestsController extends Controller
         $value = preg_replace('/[^a-z0-9@.\-\s]/', '', $value) ?: $value;
 
         return trim($value);
+    }
+
+    private function normaliseValidatedText(array $validated): array
+    {
+        foreach ([
+            'notes' => 5000,
+            'first_name' => 50,
+            'last_name' => 50,
+            'company_name' => 150,
+            'email' => 255,
+            'address_line1' => 191,
+            'address_postcode' => 32,
+            'phone_digits' => 40,
+        ] as $key => $limit) {
+            if (array_key_exists($key, $validated)) {
+                $validated[$key] = TextNormalizer::cleanOrNull($validated[$key] ?? null, $limit);
+            }
+        }
+
+        return $validated;
     }
 
     private function defaultCountryId(string $iso2): ?int
