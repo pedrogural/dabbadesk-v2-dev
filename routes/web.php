@@ -35,6 +35,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/orders/{order}/payments', [OrdersController::class, 'storePayment'])->name('orders.payments.store');
     Route::post('/orders/{order}/invoices', [OrdersController::class, 'createInvoice'])->name('orders.invoices.store');
     Route::post('/orders/{order}/payments/{transaction}/void', [OrdersController::class, 'voidPayment'])->name('orders.payments.void');
+    Route::post('/orders/{order}/ledger-payments/{ledger}/void', [OrdersController::class, 'voidLedgerPayment'])->name('orders.ledger-payments.void');
+    Route::post('/orders/{order}/refunds', [OrdersController::class, 'issueRefund'])->name('orders.refunds.store');
+    Route::post('/orders/{order}/credits', [OrdersController::class, 'issueCredit'])->name('orders.credits.store');
     Route::get('/orders/{order}', [OrdersController::class, 'show'])->name('orders.show');
 
     Route::get('/order-requests', [OrderRequestsController::class, 'index'])->name('order-requests.index');
