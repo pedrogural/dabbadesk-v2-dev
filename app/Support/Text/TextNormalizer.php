@@ -94,6 +94,27 @@ class TextNormalizer
             return null;
         }
 
+        $text = self::polishRecoveredText($text);
+
+        return $text;
+    }
+
+
+    /**
+     * Final human-text polish after mojibake repair.
+     *
+     * Some historical apostrophes recover as a curly apostrophe followed by an
+     * uppercase S, e.g. Arengo’S or Devil’S. In ordinary names/addresses this
+     * should be a possessive lower-case s: Arengo’s, Devil’s.
+     */
+    public static function polishRecoveredText(string $text): string
+    {
+        if ($text === '') {
+            return '';
+        }
+
+        $text = preg_replace("/(?<=\\p{Ll})[’']S\\b/u", '’s', $text) ?? $text;
+
         return $text;
     }
 
