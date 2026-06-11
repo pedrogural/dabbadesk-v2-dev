@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Orders\OrdersReadOnlyService;
 use App\Support\Text\TextNormalizer;
+use App\Support\Purchasing\PurchaseWorkbenchQuery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,7 @@ class OrdersController extends Controller
         $filters = [
             'q' => trim((string) $request->query('q', '')),
             'status' => trim((string) $request->query('status', '')),
+            'workflow' => trim((string) $request->query('workflow', 'action_required')),
             'mine' => $request->boolean('mine'),
             'show_history' => $request->boolean('show_history'),
             'user_id' => Auth::id(),
@@ -24,11 +26,12 @@ class OrdersController extends Controller
         return view('orders.index', [
             'filters' => $filters,
             'statusOptions' => $orders->statusOptions(),
+            'workflowTabs' => $orders->workflowTabs($filters),
             'orders' => $orders->search($filters),
         ]);
     }
 
-    public function show(int $order, OrdersReadOnlyService $orders)
+    public function show(int $order, OrdersReadOnlyService $orders, PurchaseWorkbenchQuery $purchasing)
     {
         $orderProfile = $orders->find($order);
 
@@ -46,6 +49,7 @@ class OrdersController extends Controller
             'requestAttachments' => $orders->requestAttachments($orderProfile),
             'paymentTimeline' => $orders->paymentTimeline($order),
             'invoiceWorkspace' => $orders->invoiceWorkspace($order),
+            'purchaseWorkspace' => $purchasing->forOrder($order),
         ]);
     }
 
@@ -419,6 +423,327 @@ class OrdersController extends Controller
             ->with('success', 'Payment reversed.');
     }
 
+    public function voidLedgerPayment(Request $request, int $order, int $ledger)
+    {
+        $orderRow = DB::table('orders')
+            ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
+            ->select([
+                'orders.id',
+                'orders.order_number',
+                'orders.grand_total',
+                'orders.status',
+                'draft_orders.customer_id',
+            ])
+            ->where('orders.id', $order)
+            ->first();
+
+        abort_if(! $orderRow, 404);
+
+        $validated = $request->validate([
+            'reversal_reason' => ['required', 'string', 'max:80'],
+            'reversal_note' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $reversalReason = trim((string) $validated['reversal_reason']);
+        $reversalNote = trim((string) ($validated['reversal_note'] ?? ''));
+
+        $ledgerRow = DB::table('customer_ledger_entries')
+            ->where('id', $ledger)
+            ->where('customer_id', $orderRow->customer_id)
+            ->where('source_type', 'order')
+            ->where('source_id', $order)
+            ->where('type', 'payment_received')
+            ->where('status', 'recorded')
+            ->first();
+
+        abort_if(! $ledgerRow, 404);
+
+        $alreadyVoided = DB::table('customer_ledger_entries')
+            ->where('customer_id', $orderRow->customer_id)
+            ->where('type', 'payment_void')
+            ->where('reference', 'LE#' . $ledger)
+            ->where('status', 'recorded')
+            ->exists();
+
+        if ($alreadyVoided) {
+            return redirect()
+                ->route('orders.show', $order)
+                ->withErrors(['payment' => 'This payment has already been reversed.']);
+        }
+
+        $receivedAmount = round((float) $ledgerRow->amount, 2);
+
+        try {
+            DB::transaction(function () use ($orderRow, $order, $ledger, $ledgerRow, $receivedAmount, $reversalReason, $reversalNote) {
+                $userId = Auth::id();
+                $voidedAt = now();
+
+                $credits = DB::table('customer_credits')
+                    ->where('customer_id', $orderRow->customer_id)
+                    ->where('order_id', $order)
+                    ->where('source_type', 'payment_overpayment')
+                    ->where('source_id', $ledger)
+                    ->get();
+
+                foreach ($credits as $credit) {
+                    $amount = round((float) $credit->amount, 2);
+                    $remaining = round((float) $credit->remaining_amount, 2);
+
+                    if (abs($amount - $remaining) > 0.004) {
+                        throw new \RuntimeException('This payment created wallet credit that has already been used, so it cannot be undone automatically.');
+                    }
+                }
+
+                foreach ($credits as $credit) {
+                    DB::table('customer_credits')->where('id', $credit->id)->update([
+                        'remaining_amount' => 0,
+                        'status' => 'voided',
+                        'notes' => trim((string) $credit->notes . ' | Voided with ledger payment reversal for Order #' . $orderRow->order_number . ' | Reason: ' . $reversalReason),
+                        'updated_at' => $voidedAt,
+                    ]);
+
+                    DB::table('customer_ledger_entries')->insert([
+                        'customer_id' => $orderRow->customer_id,
+                        'type' => 'overpayment_wallet_void',
+                        'amount' => -1 * round((float) $credit->amount, 2),
+                        'currency' => $credit->currency ?: 'GBP',
+                        'payment_type_id' => $ledgerRow->payment_type_id,
+                        'reference' => 'CC#' . $credit->id,
+                        'note' => 'Wallet credit voided because payment was reversed for Order #' . $orderRow->order_number . '. Reason: ' . $reversalReason . ($reversalNote !== '' ? ' | ' . $reversalNote : ''),
+                        'source_type' => 'customer_credit',
+                        'source_id' => $credit->id,
+                        'source_invoice_version_id' => null,
+                        'status' => 'recorded',
+                        'created_by_user_id' => $userId,
+                        'occurred_at' => $voidedAt,
+                        'created_at' => $voidedAt,
+                        'updated_at' => $voidedAt,
+                    ]);
+                }
+
+                DB::table('customer_ledger_entries')->insert([
+                    'customer_id' => $orderRow->customer_id,
+                    'type' => 'payment_void',
+                    'amount' => -1 * $receivedAmount,
+                    'currency' => $ledgerRow->currency ?: 'GBP',
+                    'payment_type_id' => $ledgerRow->payment_type_id,
+                    'reference' => 'LE#' . $ledger,
+                    'note' => 'Ledger payment reversed for Order #' . $orderRow->order_number . '. Reason: ' . $reversalReason . ($reversalNote !== '' ? ' | ' . $reversalNote : '') . '. Original ledger #' . $ledger . '.',
+                    'source_type' => 'order',
+                    'source_id' => $order,
+                    'source_invoice_version_id' => null,
+                    'status' => 'recorded',
+                    'created_by_user_id' => $userId,
+                    'occurred_at' => $voidedAt,
+                    'created_at' => $voidedAt,
+                    'updated_at' => $voidedAt,
+                ]);
+
+                DB::table('activity_logs')->insert([
+                    'subject_type' => 'order',
+                    'subject_id' => $order,
+                    'type' => 'payment_note',
+                    'is_pinned' => 0,
+                    'title' => 'Overpayment reversed',
+                    'body' => 'Ledger payment #' . $ledger . ' was reversed. Reason: ' . $reversalReason . '. £' . number_format($receivedAmount, 2) . ' removed from customer wallet/ledger.' . ($reversalNote !== '' ? ' Note: ' . $reversalNote : ''),
+                    'occurred_at' => $voidedAt,
+                    'created_by_user_id' => $userId,
+                    'updated_by_user_id' => $userId,
+                    'created_at' => $voidedAt,
+                    'updated_at' => $voidedAt,
+                ]);
+            });
+        } catch (\RuntimeException $exception) {
+            return redirect()
+                ->route('orders.show', $order)
+                ->withErrors(['payment' => $exception->getMessage()]);
+        }
+
+        return redirect()
+            ->route('orders.show', $order)
+            ->with('success', 'Payment reversed.');
+    }
+
+
+
+    public function issueRefund(Request $request, int $order)
+    {
+        $orderRow = DB::table('orders')
+            ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
+            ->select(['orders.id', 'orders.order_number', 'orders.grand_total', 'draft_orders.customer_id'])
+            ->where('orders.id', $order)
+            ->first();
+
+        abort_if(! $orderRow, 404);
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
+            'refund_method' => ['required', 'string', 'max:100'],
+            'reference' => ['nullable', 'string', 'max:100'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        $amount = round((float) $validated['amount'], 2);
+        $methodName = trim((string) $validated['refund_method']);
+        $reference = trim((string) ($validated['reference'] ?? ''));
+        $reason = trim((string) $validated['reason']);
+        $paymentTypeId = $this->ensurePaymentType($methodName);
+        [$method, $channel, $provider] = $this->paymentMetadata($methodName);
+        $now = now();
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($order, $orderRow, $amount, $paymentTypeId, $method, $channel, $provider, $reference, $reason, $now, $userId) {
+            DB::table('order_transactions')->insert([
+                'order_id' => $order,
+                'invoice_version_id' => null,
+                'payment_type_id' => $paymentTypeId,
+                'type' => 'refund',
+                'amount' => -1 * $amount,
+                'currency' => 'GBP',
+                'status' => 'recorded',
+                'received_at' => $now,
+                'method' => $method,
+                'channel' => $channel,
+                'provider' => $provider,
+                'reference' => $reference !== '' ? $reference : null,
+                'note' => 'Refund issued. Reason: ' . $reason,
+                'created_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('customer_ledger_entries')->insert([
+                'customer_id' => $orderRow->customer_id,
+                'type' => 'refund_paid_out',
+                'amount' => -1 * $amount,
+                'currency' => 'GBP',
+                'payment_type_id' => $paymentTypeId,
+                'reference' => $reference !== '' ? $reference : null,
+                'note' => 'Refund paid out for Order #' . $orderRow->order_number . '. Reason: ' . $reason,
+                'source_type' => 'order',
+                'source_id' => $order,
+                'source_invoice_version_id' => null,
+                'status' => 'recorded',
+                'created_by_user_id' => $userId,
+                'occurred_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $this->refreshOrderPaymentStatus($order, $userId);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => $order,
+                'type' => 'payment_note',
+                'is_pinned' => 0,
+                'title' => 'Refund issued',
+                'body' => 'Refund of £' . number_format($amount, 2) . ' issued. Reason: ' . $reason . ($reference !== '' ? '. Reference: ' . $reference : ''),
+                'occurred_at' => $now,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return redirect()->route('orders.show', $order)->with('success', 'Refund issued.');
+    }
+
+    public function issueCredit(Request $request, int $order)
+    {
+        $orderRow = DB::table('orders')
+            ->join('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
+            ->select(['orders.id', 'orders.order_number', 'orders.grand_total', 'draft_orders.customer_id'])
+            ->where('orders.id', $order)
+            ->first();
+
+        abort_if(! $orderRow, 404);
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
+            'reason' => ['required', 'string', 'max:255'],
+        ]);
+
+        $amount = round((float) $validated['amount'], 2);
+        $reason = trim((string) $validated['reason']);
+        $paymentTypeId = $this->ensurePaymentType('Customer Wallet');
+        $now = now();
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($order, $orderRow, $amount, $reason, $paymentTypeId, $now, $userId) {
+            $creditId = (int) DB::table('customer_credits')->insertGetId([
+                'customer_id' => $orderRow->customer_id,
+                'order_id' => $order,
+                'source_type' => 'manual_order_credit',
+                'source_id' => null,
+                'source_invoice_version_id' => null,
+                'amount' => $amount,
+                'remaining_amount' => $amount,
+                'status' => 'open',
+                'notes' => 'Manual credit from Order #' . $orderRow->order_number . '. Reason: ' . $reason,
+                'currency' => 'GBP',
+                'created_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('order_transactions')->insert([
+                'order_id' => $order,
+                'invoice_version_id' => null,
+                'payment_type_id' => $paymentTypeId,
+                'type' => 'refund',
+                'amount' => -1 * $amount,
+                'currency' => 'GBP',
+                'status' => 'recorded',
+                'received_at' => $now,
+                'method' => 'wallet',
+                'channel' => 'customer_wallet',
+                'provider' => 'Customer wallet',
+                'reference' => 'CC#' . $creditId,
+                'note' => 'Credit issued to customer wallet. Reason: ' . $reason,
+                'created_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            DB::table('customer_ledger_entries')->insert([
+                'customer_id' => $orderRow->customer_id,
+                'type' => 'refund_to_wallet',
+                'amount' => -1 * $amount,
+                'currency' => 'GBP',
+                'payment_type_id' => $paymentTypeId,
+                'reference' => 'CC#' . $creditId,
+                'note' => 'Credit issued to wallet from Order #' . $orderRow->order_number . '. Reason: ' . $reason,
+                'source_type' => 'customer_credit',
+                'source_id' => $creditId,
+                'source_invoice_version_id' => null,
+                'status' => 'recorded',
+                'created_by_user_id' => $userId,
+                'occurred_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $this->refreshOrderPaymentStatus($order, $userId);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => $order,
+                'type' => 'payment_note',
+                'is_pinned' => 0,
+                'title' => 'Credit issued',
+                'body' => 'Customer wallet credit of £' . number_format($amount, 2) . ' issued. Reason: ' . $reason,
+                'occurred_at' => $now,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        });
+
+        return redirect()->route('orders.show', $order)->with('success', 'Customer credit issued.');
+    }
 
     public function createInvoice(Request $request, int $order)
     {

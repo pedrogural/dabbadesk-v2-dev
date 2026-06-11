@@ -42,13 +42,15 @@ Artisan::command('text:repair-mojibake {--apply : Write repaired text back to th
         return self::FAILURE;
     }
 
-    $patterns = ['â', 'Ã', 'Â', '�'];
+    $patterns = ['â', 'Ã', 'Ãƒ', 'Ã¢', 'Â', '�'];
     $totalRowsChanged = 0;
     $totalFieldsChanged = 0;
+    $totalSkippedUnsafe = 0;
 
     $this->newLine();
     $this->info($apply ? 'Mojibake repair: APPLY mode' : 'Mojibake repair: PREVIEW mode');
     $this->line($apply ? 'Changes will be written to the database.' : 'No database changes will be written. Re-run with --apply to repair.');
+    $this->line('Unsafe repairs are skipped if the cleaned result still contains mojibake markers.');
     $this->newLine();
 
     foreach ($targets as $table => $candidateColumns) {
@@ -83,10 +85,13 @@ Artisan::command('text:repair-mojibake {--apply : Write repaired text back to th
         $rows = $query->get();
         $tableRowsChanged = 0;
         $tableFieldsChanged = 0;
+        $tableSkippedUnsafe = 0;
         $previewRows = [];
+        $skippedRows = [];
 
         foreach ($rows as $row) {
             $updates = [];
+            $rowHasChange = false;
 
             foreach ($columns as $column) {
                 $original = $row->{$column};
@@ -95,15 +100,27 @@ Artisan::command('text:repair-mojibake {--apply : Write repaired text back to th
                     continue;
                 }
 
-                $cleaned = TextNormalizer::clean($original);
+                $cleaned = TextNormalizer::repairHistorical($original);
 
-                if ($cleaned === $original) {
+                if ($cleaned === null || $cleaned === $original) {
+                    $tableSkippedUnsafe++;
+                    $totalSkippedUnsafe++;
+
+                    if (count($skippedRows) < 5) {
+                        $skippedRows[] = [
+                            'id' => $row->id,
+                            'column' => $column,
+                            'value' => Str::limit(str_replace("\n", ' ', $original), 90),
+                        ];
+                    }
+
                     continue;
                 }
 
                 $updates[$column] = $cleaned;
                 $tableFieldsChanged++;
                 $totalFieldsChanged++;
+                $rowHasChange = true;
 
                 if (count($previewRows) < 8) {
                     $previewRows[] = [
@@ -129,11 +146,18 @@ Artisan::command('text:repair-mojibake {--apply : Write repaired text back to th
             $this->line("<fg=yellow>{$table}</>: {$tableRowsChanged} row(s), {$tableFieldsChanged} field(s)".($apply ? ' repaired' : ' would be repaired'));
             $this->table(['ID', 'Column', 'Before', 'After'], $previewRows);
         }
+
+        if ($tableSkippedUnsafe > 0) {
+            $this->line("<fg=gray>{$table}</>: {$tableSkippedUnsafe} unsafe candidate field(s) skipped");
+            if (! empty($skippedRows)) {
+                $this->table(['ID', 'Column', 'Value'], $skippedRows);
+            }
+        }
     }
 
     $this->newLine();
 
-    if ($totalRowsChanged === 0) {
+    if ($totalRowsChanged === 0 && $totalSkippedUnsafe === 0) {
         $this->info('No mojibake candidates found.');
 
         return self::SUCCESS;
@@ -141,8 +165,13 @@ Artisan::command('text:repair-mojibake {--apply : Write repaired text back to th
 
     $this->info(($apply ? 'Repaired' : 'Previewed')." {$totalRowsChanged} row(s) and {$totalFieldsChanged} field(s).");
 
+    if ($totalSkippedUnsafe > 0) {
+        $this->warn("Skipped {$totalSkippedUnsafe} unsafe candidate field(s). These should be reviewed manually or handled with a more specific mapping.");
+    }
+
     if (! $apply) {
-        $this->comment('Run again with --apply to write these repairs. Example: php artisan text:repair-mojibake --apply');
+        $this->comment('Run again with --apply only if the previewed AFTER text is genuinely correct.');
+        $this->comment('Example: php artisan text:repair-mojibake --apply');
     }
 
     return self::SUCCESS;

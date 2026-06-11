@@ -2,6 +2,8 @@
 
 namespace App\Services\Orders;
 
+use App\Support\Purchasing\PurchaseProgressSummary;
+use App\Support\Purchasing\PurchaseWorkbenchQuery;
 use App\Support\Search\SmartSearch;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
@@ -10,6 +12,12 @@ use Illuminate\Support\Str;
 
 class OrdersReadOnlyService
 {
+    public function __construct(
+        private readonly PurchaseWorkbenchQuery $purchaseWorkbenchQuery,
+        private readonly PurchaseProgressSummary $purchaseProgressSummary,
+    ) {
+    }
+
     public function statusOptions(): Collection
     {
         $legacyStatuses = DB::table('orders')
@@ -34,6 +42,7 @@ class OrdersReadOnlyService
     {
         $queryText = trim((string) ($filters['q'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
+        $workflow = trim((string) ($filters['workflow'] ?? ''));
         $mineOnly = ! empty($filters['mine']);
         $showHistory = ! empty($filters['show_history']);
         $userId = (int) ($filters['user_id'] ?? 0);
@@ -142,6 +151,13 @@ class OrdersReadOnlyService
                             });
                     });
             })
+            ->when(! in_array($status, ['cancelled', 'canceled'], true), function ($query) {
+                $query
+                    ->where(function ($notCancelled) {
+                        $notCancelled->whereNull('orders.cancelled_at')
+                            ->whereNotIn('orders.status', ['cancelled', 'canceled']);
+                    });
+            })
             ->when($status !== '', function ($query) use ($status) {
                 match ($status) {
                     'paid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) <= 0.004'),
@@ -155,6 +171,9 @@ class OrdersReadOnlyService
                     'customer_self_purchase' => $query->where('orders.purchase_mode', 'customer_self_purchase'),
                     default => $query->where('orders.status', $status),
                 };
+            })
+            ->when($status === '' && $workflow !== '', function ($query) use ($workflow) {
+                $this->applyWorkflowFilter($query, $workflow);
             })
             ->when($mineOnly && $userId > 0, function ($query) use ($userId) {
                 $query->where('orders.created_by_user_id', $userId);
@@ -231,6 +250,95 @@ class OrdersReadOnlyService
             ->paginate(20)
             ->withQueryString();
     }
+
+    public function workflowTabs(array $filters): Collection
+    {
+        $activeWorkflow = trim((string) ($filters['workflow'] ?? ''));
+
+        return collect([
+            [
+                'key' => 'action_required',
+                'label' => 'Action Required',
+                'hint' => 'Unpaid or needs attention',
+                'count' => null,
+                'active' => $activeWorkflow === 'action_required',
+            ],
+            [
+                'key' => 'ready_to_buy',
+                'label' => 'Ready To Buy',
+                'hint' => 'Paid, not purchased',
+                'count' => null,
+                'active' => $activeWorkflow === 'ready_to_buy',
+            ],
+            [
+                'key' => 'purchasing',
+                'label' => 'Purchasing',
+                'hint' => 'Part purchased',
+                'count' => null,
+                'active' => $activeWorkflow === 'purchasing',
+            ],
+            [
+                'key' => 'incoming',
+                'label' => 'Incoming',
+                'hint' => 'Purchased, awaiting arrival',
+                'count' => null,
+                'active' => $activeWorkflow === 'incoming',
+            ],
+            [
+                'key' => 'complete',
+                'label' => 'Complete',
+                'hint' => 'Arrived or completed',
+                'count' => null,
+                'active' => $activeWorkflow === 'complete',
+            ],
+        ]);
+    }
+
+    private function applyWorkflowFilter($query, string $workflow): void
+    {
+        match ($workflow) {
+            'ready_to_buy' => $query
+                ->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) <= 0.004')
+                ->where(function ($readyQuery) {
+                    $readyQuery
+                        ->whereRaw('COALESCE(item_totals.total_qty, 0) = 0')
+                        ->orWhereRaw('COALESCE(purchase_totals.purchased_qty, 0) = 0');
+                })
+                ->whereNotIn('orders.status', ['completed', 'cancelled', 'canceled']),
+            'purchasing' => $query
+                ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                ->whereRaw('COALESCE(purchase_totals.purchased_qty, 0) > 0')
+                ->whereRaw('COALESCE(purchase_totals.purchased_qty, 0) < COALESCE(item_totals.total_qty, 0)')
+                ->whereNotIn('orders.status', ['completed', 'cancelled', 'canceled']),
+            'incoming' => $query
+                ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                ->whereRaw('COALESCE(purchase_totals.purchased_qty, 0) >= COALESCE(item_totals.total_qty, 0)')
+                ->whereRaw('COALESCE(arrival_totals.arrived_qty, 0) < COALESCE(item_totals.total_qty, 0)')
+                ->whereNotIn('orders.status', ['completed', 'cancelled', 'canceled']),
+            'complete' => $query
+                ->where(function ($completeQuery) {
+                    $completeQuery
+                        ->whereIn('orders.status', ['completed', 'complete'])
+                        ->orWhere(function ($arrivedQuery) {
+                            $arrivedQuery
+                                ->whereRaw('COALESCE(item_totals.total_qty, 0) > 0')
+                                ->whereRaw('COALESCE(arrival_totals.arrived_qty, 0) >= COALESCE(item_totals.total_qty, 0)');
+                        });
+                }),
+            default => $query
+                ->where(function ($actionQuery) {
+                    $actionQuery
+                        ->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) > 0.004')
+                        ->orWhereIn('orders.status', ['unpaid', 'draft', 'pending', 'on_hold', 'review_required'])
+                        ->orWhere(function ($cancelQuery) {
+                            $cancelQuery
+                                ->whereIn('orders.status', ['cancelled', 'canceled'])
+                                ->whereNull('orders.completed_at');
+                        });
+                }),
+        };
+    }
+
 
     public function find(int $orderId): ?object
     {
@@ -429,7 +537,7 @@ class OrdersReadOnlyService
 
     public function paymentTimeline(int $orderId): Collection
     {
-        return DB::table('order_transactions')
+        $transactionRows = DB::table('order_transactions')
             ->leftJoin('payment_types', 'payment_types.id', '=', 'order_transactions.payment_type_id')
             ->select([
                 'order_transactions.id',
@@ -445,12 +553,54 @@ class OrdersReadOnlyService
                 'order_transactions.note',
                 'order_transactions.created_at',
                 'payment_types.name as payment_type_name',
+                DB::raw("'order_transaction' as source_table"),
                 DB::raw("EXISTS (SELECT 1 FROM order_transactions voids WHERE voids.order_id = order_transactions.order_id AND voids.type = 'payment_void' AND voids.reference = CONCAT('OT#', order_transactions.id) AND voids.status = 'recorded') as has_void"),
             ])
             ->where('order_transactions.order_id', $orderId)
-            ->orderByDesc('order_transactions.created_at')
-            ->limit(30)
             ->get();
+
+        $ledgerIdsAlreadyShown = $transactionRows
+            ->filter(fn ($row) => ($row->type ?? '') === 'payment')
+            ->map(function ($row) {
+                if (preg_match('/Ledger #(\d+)/', (string) ($row->note ?? ''), $matches)) {
+                    return (int) $matches[1];
+                }
+
+                return null;
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        $ledgerRows = DB::table('customer_ledger_entries')
+            ->leftJoin('payment_types', 'payment_types.id', '=', 'customer_ledger_entries.payment_type_id')
+            ->select([
+                'customer_ledger_entries.id',
+                DB::raw("'ledger_payment' as type"),
+                'customer_ledger_entries.amount',
+                'customer_ledger_entries.currency',
+                'customer_ledger_entries.status',
+                'customer_ledger_entries.occurred_at as received_at',
+                DB::raw("NULL as method"),
+                DB::raw("NULL as channel"),
+                DB::raw("NULL as provider"),
+                'customer_ledger_entries.reference',
+                'customer_ledger_entries.note',
+                'customer_ledger_entries.created_at',
+                'payment_types.name as payment_type_name',
+                DB::raw("'customer_ledger_entry' as source_table"),
+                DB::raw("EXISTS (SELECT 1 FROM customer_ledger_entries voids WHERE voids.customer_id = customer_ledger_entries.customer_id AND voids.type = 'payment_void' AND voids.reference = CONCAT('LE#', customer_ledger_entries.id) AND voids.status = 'recorded') as has_void"),
+            ])
+            ->where('customer_ledger_entries.source_type', 'order')
+            ->where('customer_ledger_entries.source_id', $orderId)
+            ->where('customer_ledger_entries.type', 'payment_received')
+            ->when(! empty($ledgerIdsAlreadyShown), fn ($query) => $query->whereNotIn('customer_ledger_entries.id', $ledgerIdsAlreadyShown))
+            ->get();
+
+        return $transactionRows
+            ->merge($ledgerRows)
+            ->sortByDesc(fn ($row) => (string) ($row->created_at ?? $row->received_at ?? ''))
+            ->values();
     }
 
 
@@ -488,210 +638,22 @@ class OrdersReadOnlyService
 
     public function progressSummary(int $orderId): array
     {
-        $itemQty = (int) DB::table('order_items')
-            ->where('order_id', $orderId)
-            ->sum('quantity');
-
-        $rootItemIds = $this->rootItemIdsForOrder($orderId);
-
-        if ($rootItemIds->isEmpty()) {
-            return [
-                'item_qty' => $itemQty,
-                'purchased_qty' => 0,
-                'remaining_purchase_qty' => $itemQty,
-                'arrived_qty' => 0,
-                'ready_qty' => 0,
-                'collected_qty' => 0,
-            ];
-        }
-
-        $purchasedQty = (int) DB::table('order_item_purchases')
-            ->whereIn('root_item_id', $rootItemIds->all())
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->sum('qty');
-
-        $arrivedQty = (int) DB::table('purchase_arrival_assignments')
-            ->whereIn('root_item_id', $rootItemIds->all())
-            ->whereNull('undone_at')
-            ->sum('qty');
-
-        $readyQty = (int) DB::table('purchase_arrival_assignments')
-            ->whereIn('root_item_id', $rootItemIds->all())
-            ->whereNull('undone_at')
-            ->whereIn('status', ['ready_for_collection', 'for_delivery'])
-            ->sum('qty');
-
-        $collectedQty = (int) DB::table('purchase_arrival_assignments')
-            ->whereIn('root_item_id', $rootItemIds->all())
-            ->whereNull('undone_at')
-            ->whereIn('status', ['collected', 'delivered'])
-            ->sum('qty');
-
-        return [
-            'item_qty' => $itemQty,
-            'purchased_qty' => min($itemQty, $purchasedQty),
-            'remaining_purchase_qty' => max(0, $itemQty - $purchasedQty),
-            'arrived_qty' => min($itemQty, $arrivedQty),
-            'ready_qty' => min($itemQty, $readyQty),
-            'collected_qty' => min($itemQty, $collectedQty),
-        ];
+        return $this->purchaseProgressSummary->forOrder($orderId);
     }
 
     public function itemsGroupedByRetailer(int $orderId): Collection
     {
-        return $this->items($orderId)
-            ->groupBy(function ($item) {
-                return $item->retailer_group_key;
-            })
-            ->map(function (Collection $items) {
-                $first = $items->first();
-
-                return (object) [
-                    'key' => $first->retailer_group_key,
-                    'name' => $first->retailer_display_name,
-                    'host' => $first->retailer_host,
-                    'item_count' => $items->count(),
-                    'total_qty' => (int) $items->sum('quantity'),
-                    'purchased_qty' => (int) $items->sum('purchased_qty'),
-                    'remaining_qty' => max(0, (int) $items->sum('quantity') - (int) $items->sum('purchased_qty')),
-                    'arrived_qty' => (int) $items->sum('arrived_qty'),
-                    'line_total' => (float) $items->sum('line_total'),
-                    'items' => $items->values(),
-                ];
-            })
-            ->sortBy('name')
-            ->values();
+        return $this->purchaseWorkbenchQuery->retailerGroupsForOrder($orderId);
     }
 
     public function items(int $orderId): Collection
     {
-        $purchaseSubquery = DB::table('order_item_purchases')
-            ->select(
-                'root_item_id',
-                DB::raw('SUM(qty) as purchased_qty'),
-                DB::raw('MAX(retailer_order_reference) as latest_retailer_order_reference'),
-                DB::raw('MAX(expected_uk_hub_at) as latest_expected_uk_hub_at'),
-                DB::raw('MAX(marketplace_seller) as latest_marketplace_seller')
-            )
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->groupBy('root_item_id');
-
-        $arrivalSubquery = DB::table('purchase_arrival_assignments')
-            ->select(
-                'root_item_id',
-                DB::raw('SUM(qty) as arrived_qty'),
-                DB::raw('MAX(status) as latest_arrival_status'),
-                DB::raw('MAX(matched_at) as latest_matched_at')
-            )
-            ->whereNull('undone_at')
-            ->groupBy('root_item_id');
-
-        return DB::table('order_items')
-            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
-            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
-            ->leftJoinSub($purchaseSubquery, 'purchase_totals', function ($join) {
-                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
-            })
-            ->leftJoinSub($arrivalSubquery, 'arrival_totals', function ($join) {
-                $join->on('arrival_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
-            })
-            ->select([
-                'order_items.id',
-                'order_items.item_name',
-                'order_items.description',
-                'order_items.product_code',
-                'order_items.product_url',
-                'order_items.marketplace_seller',
-                'order_items.quantity',
-                'order_items.unit_price',
-                'order_items.line_total',
-                'order_items.item_retailer_delivery_fee',
-                'order_items.retailer_delivery_allocated',
-                'order_items.dabba_fee_allocated',
-                'order_items.status',
-                'order_items.requires_inspection',
-                'order_items.inspection_note',
-                'order_items.retailer_order_reference',
-                'order_items.tracking_reference',
-                'order_items.ordered_at',
-                'order_items.arrived_at',
-                'order_retailers.retailer_id',
-                'order_retailers.retailer_name as order_retailer_name',
-                'order_retailers.retailer_base_url as order_retailer_base_url',
-                'retailers.name as master_retailer_name',
-                'retailers.base_url as master_retailer_base_url',
-                DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
-                DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
-                'purchase_totals.latest_retailer_order_reference',
-                'purchase_totals.latest_expected_uk_hub_at',
-                'purchase_totals.latest_marketplace_seller',
-                'arrival_totals.latest_arrival_status',
-                'arrival_totals.latest_matched_at',
-            ])
-            ->where('order_items.order_id', $orderId)
-            ->orderBy('order_items.sort_order')
-            ->orderBy('order_items.id')
-            ->get()
-            ->map(function ($item) {
-                $host = $this->hostFromUrl((string) ($item->master_retailer_base_url ?: $item->order_retailer_base_url ?: $item->product_url));
-                $retailerName = trim((string) ($item->master_retailer_name ?: $item->order_retailer_name));
-                $seller = trim((string) ($item->latest_marketplace_seller ?: $item->marketplace_seller));
-
-                $item->retailer_host = $host ?: $this->hostFromUrl((string) $item->product_url);
-                $item->retailer_display_name = $retailerName ?: ($seller ?: ($item->retailer_host ?: 'Unknown retailer'));
-                $item->retailer_group_key = $item->retailer_id ? 'retailer-' . (int) $item->retailer_id : Str::slug($item->retailer_display_name ?: 'unknown-retailer');
-                $item->purchased_qty = min((int) $item->quantity, (int) $item->purchased_qty);
-                $item->arrived_qty = min((int) $item->quantity, (int) $item->arrived_qty);
-                $item->purchase_remaining_qty = max(0, (int) $item->quantity - (int) $item->purchased_qty);
-                $item->arrival_remaining_qty = max(0, (int) $item->quantity - (int) $item->arrived_qty);
-
-                return $item;
-            });
+        return $this->purchaseWorkbenchQuery->itemsForOrder($orderId);
     }
 
     public function purchases(int $orderId): Collection
     {
-        $rootItemIds = $this->rootItemIdsForOrder($orderId);
-
-        if ($rootItemIds->isEmpty()) {
-            return collect();
-        }
-
-        return DB::table('order_item_purchases')
-            ->join('order_items', 'order_items.id', '=', 'order_item_purchases.order_item_id')
-            ->select([
-                'order_item_purchases.id',
-                'order_item_purchases.order_item_id',
-                'order_items.item_name',
-                'order_item_purchases.qty',
-                'order_item_purchases.status',
-                'order_item_purchases.purchase_unit_price',
-                'order_item_purchases.purchase_line_total',
-                'order_item_purchases.currency',
-                'order_item_purchases.marketplace_seller',
-                'order_item_purchases.retailer_order_reference',
-                'order_item_purchases.note',
-                'order_item_purchases.problem_code',
-                'order_item_purchases.problem_notes',
-                'order_item_purchases.resolution_action',
-                'order_item_purchases.resolution_status',
-                'order_item_purchases.ordered_at',
-                'order_item_purchases.expected_dispatch_at',
-                'order_item_purchases.expected_uk_hub_at',
-                'order_item_purchases.expected_gibraltar_at',
-                'order_item_purchases.received_at',
-                'order_item_purchases.cancelled_at',
-                'order_item_purchases.requires_marking_attention',
-                'order_item_purchases.internal_notes',
-                'order_item_purchases.created_at',
-            ])
-            ->whereIn('order_item_purchases.root_item_id', $rootItemIds->all())
-            ->whereNull('order_item_purchases.cancelled_at')
-            ->orderByDesc('order_item_purchases.created_at')
-            ->limit(80)
-            ->get();
+        return $this->purchaseWorkbenchQuery->purchasesForOrder($orderId);
     }
 
     public function arrivals(int $orderId): Collection
@@ -778,13 +740,7 @@ class OrdersReadOnlyService
     }
     private function rootItemIdsForOrder(int $orderId): Collection
     {
-        return DB::table('order_items')
-            ->where('order_id', $orderId)
-            ->selectRaw('COALESCE(root_item_id, id) as root_item_id')
-            ->pluck('root_item_id')
-            ->filter()
-            ->unique()
-            ->values();
+        return $this->purchaseProgressSummary->rootItemIdsForOrder($orderId);
     }
 
     private function hostFromUrl(string $url): string

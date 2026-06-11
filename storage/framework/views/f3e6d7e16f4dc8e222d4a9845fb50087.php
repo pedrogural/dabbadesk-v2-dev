@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html
-    lang="{{ str_replace('_', '-', app()->getLocale()) }}"
+    lang="<?php echo e(str_replace('_', '-', app()->getLocale())); ?>"
     x-data="{
         sidebarOpen: false,
         orderRequestCount: 0,
 
         async refreshOrderRequestCount() {
             try {
-                const response = await fetch('{{ route('order-requests.counter') }}', {
+                const response = await fetch('<?php echo e(route('order-requests.counter')); ?>', {
                     headers: {
                         'Accept': 'application/json'
                     }
@@ -33,7 +33,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DabbaDesk</title>
 
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <?php echo app('Illuminate\Foundation\Vite')(['resources/css/app.css', 'resources/js/app.js']); ?>
 </head>
 
 <body class="bg-slate-100 text-slate-800 antialiased">
@@ -75,7 +75,7 @@
 
         <nav class="min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-visible px-2.5 py-3 pr-3 scroll-smooth [scrollbar-width:thin] [scrollbar-color:#475569_transparent]">
 
-            @php
+            <?php
                 $navItems = [
                     ['label' => 'Dashboard', 'route' => 'dashboard', 'icon' => '🏠'],
                     ['label' => 'Orders', 'route' => 'orders.index', 'icon' => '📦'],
@@ -90,53 +90,53 @@
                     ['label' => 'Admin Fees', 'route' => 'admin.fees.index', 'icon' => '⚙️', 'admin' => true],
                     ['label' => 'Audit Desk', 'route' => null, 'icon' => '🧾'],
                 ];
-            @endphp
+            ?>
 
-            @foreach ($navItems as $item)
-                @if (!empty($item['admin']) && Auth::user()->role !== 'admin')
-                    @continue
-                @endif
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $navItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($item['admin']) && Auth::user()->role !== 'admin'): ?>
+                    <?php continue; ?>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-                @php
+                <?php
                     $isActive = $item['route'] && request()->routeIs($item['route'], str_replace('.index', '.*', $item['route']));
                     $href = $item['route'] ? route($item['route']) : '#';
-                @endphp
+                ?>
 
                 <a
-                    href="{{ $href }}"
+                    href="<?php echo e($href); ?>"
                     class="group flex min-w-0 items-center gap-2.5 overflow-visible rounded-xl px-3 py-2 pr-3.5 text-[13px] font-semibold leading-tight transition
-                    {{
-                        $isActive
+                    <?php echo e($isActive
                             ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/30'
-                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                    }}"
+                            : 'text-slate-300 hover:bg-slate-800 hover:text-white'); ?>"
                 >
                     <span class="w-6 shrink-0 text-center text-base leading-none">
-                        {{ $item['icon'] }}
+                        <?php echo e($item['icon']); ?>
+
                     </span>
 
                     <span class="min-w-0 flex-1 truncate">
-                        {{ $item['label'] }}
+                        <?php echo e($item['label']); ?>
+
                     </span>
 
-                    @if (!empty($item['counter']))
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($item['counter'])): ?>
                         <template x-if="orderRequestCount > 0">
                             <span
                                 x-text="orderRequestCount"
                                 class="ml-1 inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-black leading-none text-white ring-2 ring-indigo-600/20"
                             ></span>
                         </template>
-                    @endif
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-                    @unless($item['route'])
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($item['route'])): ?>
                         <span class="ml-1 inline-flex shrink-0 items-center rounded-full bg-slate-800/80 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-400 group-hover:bg-slate-700/80 group-hover:text-slate-300">
                             soon
                         </span>
-                    @endunless
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
                 </a>
 
-            @endforeach
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
 
         </nav>
 
@@ -144,7 +144,8 @@
 
             <div class="mb-2 rounded-xl bg-slate-900 px-3 py-2">
                 <p class="truncate text-xs font-black text-white">
-                    {{ Auth::user()->name }}
+                    <?php echo e(Auth::user()->name); ?>
+
                 </p>
 
                 <p class="text-[10px] font-semibold text-slate-400">
@@ -152,8 +153,8 @@
                 </p>
             </div>
 
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
+            <form method="POST" action="<?php echo e(route('logout')); ?>">
+                <?php echo csrf_field(); ?>
 
                 <button
                     type="submit"
@@ -185,7 +186,8 @@
 
                 <div class="min-w-0">
                     <h2 class="truncate text-lg font-black text-slate-900 sm:text-xl">
-                        {{ $header ?? 'Dashboard' }}
+                        <?php echo e($header ?? 'Dashboard'); ?>
+
                     </h2>
 
                     <p class="hidden text-xs font-semibold text-slate-500 sm:block">
@@ -199,7 +201,8 @@
 
                 <div class="hidden text-right sm:block">
                     <p class="text-sm font-semibold text-slate-700">
-                        {{ Auth::user()->name }}
+                        <?php echo e(Auth::user()->name); ?>
+
                     </p>
 
                     <p class="text-xs text-slate-400">
@@ -208,7 +211,8 @@
                 </div>
 
                 <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
-                    {{ strtoupper(substr(Auth::user()->name, 0, 1)) }}
+                    <?php echo e(strtoupper(substr(Auth::user()->name, 0, 1))); ?>
+
                 </div>
 
             </div>
@@ -217,7 +221,8 @@
 
         <!-- Page content -->
         <main class="p-3 sm:p-5 lg:p-6">
-            {{ $slot }}
+            <?php echo e($slot); ?>
+
         </main>
 
     </div>
@@ -225,4 +230,4 @@
 </div>
 
 </body>
-</html>
+</html><?php /**PATH /var/www/dabba-live/dabbadesk-v2/resources/views/layouts/app.blade.php ENDPATH**/ ?>

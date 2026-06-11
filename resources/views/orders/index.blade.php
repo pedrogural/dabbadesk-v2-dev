@@ -42,9 +42,9 @@
                     <div>
                         <label for="status" class="sr-only">Status</label>
                         <select id="status" name="status" class="h-[46px] w-full rounded-2xl border-slate-300 px-4 text-sm font-bold text-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" data-live-search-submit>
-                            <option value="">All statuses</option>
+                            <option value="">All active statuses</option>
                             @foreach ($statusOptions as $status)
-                                <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ match($status) { 'paid' => 'Paid', 'unpaid' => 'Unpaid', 'purchased' => 'Purchased', 'arrived' => 'Arrived', default => str_replace('_', ' ', ucfirst($status)) } }}</option>
+                                <option value="{{ $status }}" @selected($filters['status'] === $status)>{{ match($status) { 'paid' => 'Paid', 'unpaid' => 'Unpaid', 'purchased' => 'Purchased', 'arrived' => 'Arrived', 'partially_purchased' => 'Partially purchased', 'customer_informed' => 'Customer informed', 'cancelled' => 'Cancelled', 'canceled' => 'Cancelled', default => str_replace('_', ' ', ucfirst($status)) } }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -64,7 +64,7 @@
                     </div>
                 </div>
 
-                <p class="text-xs font-semibold text-slate-400">Search updates automatically after a short pause. Paid/unpaid filters are finance-derived; purchased/arrived filters use operational progress.</p>
+                <p class="text-xs font-semibold text-slate-400">Search updates automatically after a short pause. Default view shows unpaid orders. “All active statuses” excludes cancelled orders; use the Cancelled filter to view cancelled orders.</p>
             </form>
         </div>
 
