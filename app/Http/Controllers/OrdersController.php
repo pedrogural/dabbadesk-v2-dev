@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\Orders\OrdersReadOnlyService;
 use App\Support\Text\TextNormalizer;
+use App\Support\Purchasing\PurchaseWorkbenchQuery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -30,7 +31,7 @@ class OrdersController extends Controller
         ]);
     }
 
-    public function show(int $order, OrdersReadOnlyService $orders)
+    public function show(int $order, OrdersReadOnlyService $orders, PurchaseWorkbenchQuery $purchasing)
     {
         $orderProfile = $orders->find($order);
 
@@ -48,6 +49,7 @@ class OrdersController extends Controller
             'requestAttachments' => $orders->requestAttachments($orderProfile),
             'paymentTimeline' => $orders->paymentTimeline($order),
             'invoiceWorkspace' => $orders->invoiceWorkspace($order),
+            'purchaseWorkspace' => $purchasing->forOrder($order),
         ]);
     }
 

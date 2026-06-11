@@ -42,7 +42,7 @@ class OrdersReadOnlyService
     {
         $queryText = trim((string) ($filters['q'] ?? ''));
         $status = trim((string) ($filters['status'] ?? ''));
-        $workflow = trim((string) ($filters['workflow'] ?? 'action_required'));
+        $workflow = trim((string) ($filters['workflow'] ?? ''));
         $mineOnly = ! empty($filters['mine']);
         $showHistory = ! empty($filters['show_history']);
         $userId = (int) ($filters['user_id'] ?? 0);
@@ -151,6 +151,13 @@ class OrdersReadOnlyService
                             });
                     });
             })
+            ->when(! in_array($status, ['cancelled', 'canceled'], true), function ($query) {
+                $query
+                    ->where(function ($notCancelled) {
+                        $notCancelled->whereNull('orders.cancelled_at')
+                            ->whereNotIn('orders.status', ['cancelled', 'canceled']);
+                    });
+            })
             ->when($status !== '', function ($query) use ($status) {
                 match ($status) {
                     'paid' => $query->whereRaw('GREATEST(orders.grand_total - COALESCE(settlement_totals.settled_total, 0), 0) <= 0.004'),
@@ -246,7 +253,7 @@ class OrdersReadOnlyService
 
     public function workflowTabs(array $filters): Collection
     {
-        $activeWorkflow = trim((string) ($filters['workflow'] ?? 'action_required')) ?: 'action_required';
+        $activeWorkflow = trim((string) ($filters['workflow'] ?? ''));
 
         return collect([
             [

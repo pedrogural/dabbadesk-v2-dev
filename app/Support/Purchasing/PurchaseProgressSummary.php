@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\DB;
 
 class PurchaseProgressSummary
 {
-    public const PURCHASED_STATUSES = ['purchased', 'ordered', 'received', 'confirmed', 'dispatched', 'in_transit', 'arrived'];
-    public const PROBLEM_STATUSES = ['failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'retailer_cancelled', 'refunded', 'retailer_refunded', 'unavailable', 'lost', 'damaged', 'wrong_item'];
+    public const PURCHASED_STATUSES = ['purchased', 'ordered', 'received'];
+    public const PROBLEM_STATUSES = ['failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable', 'unfulfilled'];
     public const READY_STATUSES = ['ready_for_collection', 'for_delivery'];
     public const COMPLETED_STATUSES = ['collected', 'delivered'];
 
@@ -99,6 +99,7 @@ class PurchaseProgressSummary
             'problem_qty' => 0,
             'remaining_purchase_qty' => $requestedQty,
             'arrived_qty' => 0,
+            'expected_arrival_qty' => 0,
             'remaining_arrival_qty' => 0,
             'ready_qty' => 0,
             'collected_qty' => 0,

@@ -1,91 +1,126 @@
+        @php
+            $purchaseWorkspace = $purchaseWorkspace ?? [];
+            $purchaseSummary = $purchaseWorkspace['summary'] ?? ($progress ?? []);
+            $purchaseRetailerGroups = collect($purchaseWorkspace['retailer_groups'] ?? $retailerGroups ?? []);
+            $purchaseEvents = collect($purchaseWorkspace['purchases'] ?? $purchases ?? []);
+            $purchaseTab = request('purchase_tab', 'retailers');
+            if (! in_array($purchaseTab, ['retailers', 'events', 'problems'], true)) {
+                $purchaseTab = 'retailers';
+            }
+            $purchaseProblems = $purchaseEvents->filter(fn ($event) => in_array((string) ($event->status ?? ''), ['failed', 'problem', 'supplier_cancelled', 'cancelled', 'unfulfilled', 'unavailable', 'lost', 'damaged', 'wrong_item'], true))->values();
+            $statusBadge = function ($item) {
+                if (($item->purchase_remaining_qty ?? 0) > 0 && ($item->problem_qty ?? 0) > 0) return ['Sourcing issue', 'bg-amber-50 text-amber-700 border-amber-100'];
+                if (($item->purchase_remaining_qty ?? 0) > 0) return ['Ready to buy', 'bg-emerald-50 text-emerald-700 border-emerald-100'];
+                if (($item->arrival_remaining_qty ?? 0) > 0) return ['Awaiting arrival', 'bg-sky-50 text-sky-700 border-sky-100'];
+                if (($item->problem_qty ?? 0) > 0) return ['Problem', 'bg-rose-50 text-rose-700 border-rose-100'];
+                return ['Complete', 'bg-slate-50 text-slate-600 border-slate-100'];
+            };
+        @endphp
+
         <div x-show="tab === 'purchase_status'" x-cloak class="space-y-5">
             <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Purchase status</p>
-                        <h2 class="mt-1 text-lg font-black text-slate-950">Retailer references and buying progress</h2>
-                        <p class="mt-1 text-sm text-slate-500">This is a status view only. The dedicated purchasing module can handle the actual buying workflow later.</p>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-indigo-500">Purchase workspace</p>
+                        <h2 class="mt-1 text-lg font-black text-slate-950">Order-first purchasing for #{{ $order->order_number }}</h2>
+                        <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Purchases are recorded inside this customer order. Even if another customer has items from the same retailer, they are never merged into one basket.</p>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                        <span class="rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $purchases->count() }} purchase record{{ $purchases->count() === 1 ? '' : 's' }}</span>
-                        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{{ (int) ($progress['purchased_qty'] ?? 0) }}/{{ (int) ($progress['item_qty'] ?? 0) }} purchased</span>
-                    </div>
+                    <a href="{{ route('purchasing.index', ['q' => $order->order_number, 'payment' => 'all']) }}" class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Open in Purchasing Desk ↗</a>
                 </div>
 
-                <div class="mt-5 grid gap-3 md:grid-cols-3">
+                <div class="mt-5 grid gap-3 md:grid-cols-4">
                     <div class="rounded-3xl bg-slate-50 p-4 ring-1 ring-slate-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Overall status</p>
-                        <p class="mt-1 text-xl font-black text-slate-950">{{ $purchaseStatusLabel }}</p>
-                        <p class="mt-1 text-xs font-semibold text-slate-500">Simple staff-readable purchase position.</p>
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Order qty</p>
+                        <p class="mt-1 text-2xl font-black text-slate-950">{{ (int) ($purchaseSummary['item_qty'] ?? 0) }}</p>
                     </div>
                     <div class="rounded-3xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-emerald-700">Purchased quantity</p>
-                        <p class="mt-1 text-xl font-black text-emerald-700">{{ (int) ($progress['purchased_qty'] ?? 0) }}</p>
-                        <p class="mt-1 text-xs font-semibold text-emerald-700">Items already marked ordered/purchased.</p>
+                        <p class="text-[10px] font-black uppercase tracking-wide text-emerald-700">Purchased</p>
+                        <p class="mt-1 text-2xl font-black text-emerald-700">{{ (int) ($purchaseSummary['purchased_qty'] ?? 0) }}</p>
                     </div>
-                    <div class="rounded-3xl {{ (int) ($progress['remaining_purchase_qty'] ?? 0) > 0 ? 'bg-amber-50 ring-amber-100' : 'bg-slate-50 ring-slate-100' }} p-4 ring-1">
-                        <p class="text-[10px] font-black uppercase tracking-wide {{ (int) ($progress['remaining_purchase_qty'] ?? 0) > 0 ? 'text-amber-700' : 'text-slate-400' }}">Still to purchase</p>
-                        <p class="mt-1 text-xl font-black {{ (int) ($progress['remaining_purchase_qty'] ?? 0) > 0 ? 'text-amber-700' : 'text-slate-500' }}">{{ (int) ($progress['remaining_purchase_qty'] ?? 0) }}</p>
-                        <p class="mt-1 text-xs font-semibold {{ (int) ($progress['remaining_purchase_qty'] ?? 0) > 0 ? 'text-amber-700' : 'text-slate-500' }}">No buying tools here yet — status only.</p>
+                    <div class="rounded-3xl bg-sky-50 p-4 ring-1 ring-sky-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-sky-700">Arrived</p>
+                        <p class="mt-1 text-2xl font-black text-sky-700">{{ (int) ($purchaseSummary['arrived_qty'] ?? 0) }}</p>
                     </div>
+                    <div class="rounded-3xl {{ (int) ($purchaseSummary['remaining_purchase_qty'] ?? 0) > 0 ? 'bg-amber-50 ring-amber-100' : 'bg-slate-50 ring-slate-100' }} p-4 ring-1">
+                        <p class="text-[10px] font-black uppercase tracking-wide {{ (int) ($purchaseSummary['remaining_purchase_qty'] ?? 0) > 0 ? 'text-amber-700' : 'text-slate-400' }}">Still to buy</p>
+                        <p class="mt-1 text-2xl font-black {{ (int) ($purchaseSummary['remaining_purchase_qty'] ?? 0) > 0 ? 'text-amber-700' : 'text-slate-500' }}">{{ (int) ($purchaseSummary['remaining_purchase_qty'] ?? 0) }}</p>
+                    </div>
+                </div>
+
+                @if ($isCustomerSelfPurchase)
+                    <div class="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-800">
+                        Customer self-purchase order: Dabba does not buy the goods, but arrival/warehouse workflows still apply later.
+                    </div>
+                @endif
+
+                <div class="mt-5 flex flex-wrap gap-2 rounded-2xl bg-slate-100 p-1">
+                    <a href="{{ route('orders.show', [$order->id, 'purchase_tab' => 'retailers']) }}" class="rounded-xl px-4 py-2 text-sm font-black {{ $purchaseTab === 'retailers' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800' }}">Retailers</a>
+                    <a href="{{ route('orders.show', [$order->id, 'purchase_tab' => 'events']) }}" class="rounded-xl px-4 py-2 text-sm font-black {{ $purchaseTab === 'events' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800' }}">Purchases</a>
+                    <a href="{{ route('orders.show', [$order->id, 'purchase_tab' => 'problems']) }}" class="rounded-xl px-4 py-2 text-sm font-black {{ $purchaseTab === 'problems' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800' }}">Problems</a>
                 </div>
             </section>
 
-            <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Retailer purchase records</p>
-                        <h2 class="mt-1 text-lg font-black text-slate-950">References, dates and notes</h2>
+            @if ($purchaseTab === 'events')
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="mb-4">
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Purchase events</p>
+                        <h2 class="mt-1 text-lg font-black text-slate-950">Retailer refs, costs and dates</h2>
                     </div>
-                </div>
+                    @include('shared.purchasing._purchase_event_table', ['purchaseEvents' => $purchaseEvents])
+                </section>
+            @elseif ($purchaseTab === 'problems')
+                <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div class="mb-4">
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Purchasing problems</p>
+                        <h2 class="mt-1 text-lg font-black text-slate-950">Operational exceptions</h2>
+                        <p class="mt-1 text-sm font-semibold text-slate-500">These do not change finance automatically. Resolution happens through amendment, refund, wallet credit, repurchase or customer decision.</p>
+                    </div>
+                    @include('shared.purchasing._purchase_event_table', ['purchaseEvents' => $purchaseProblems])
+                </section>
+            @else
+                <section class="space-y-4">
+                    @forelse ($purchaseRetailerGroups as $retailer)
+                        <article class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                            <header class="flex flex-col gap-3 border-b border-slate-100 bg-slate-50/70 p-5 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <p class="text-lg font-black text-slate-950">{{ $retailer->name ?? 'Unknown retailer' }}</p>
+                                    <p class="mt-1 text-xs font-semibold text-slate-500">{{ $retailer->host ?? '' }}</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2 text-xs font-black">
+                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-emerald-100">{{ (int) ($retailer->remaining_qty ?? 0) }} to buy</span>
+                                    <span class="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700 ring-1 ring-sky-100">{{ (int) ($retailer->arrived_qty ?? 0) }} arrived</span>
+                                    @if ((int) ($retailer->problem_qty ?? 0) > 0)
+                                        <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700 ring-1 ring-rose-100">{{ (int) ($retailer->problem_qty ?? 0) }} problem</span>
+                                    @endif
+                                </div>
+                            </header>
 
-                <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-                    <div class="hidden grid-cols-[minmax(0,1.4fr)_110px_minmax(0,1fr)_130px_120px_minmax(0,1fr)] gap-3 bg-slate-50 px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-400 lg:grid">
-                        <div>Item</div>
-                        <div>Status</div>
-                        <div>Retailer ref</div>
-                        <div>Purchased</div>
-                        <div>Cost</div>
-                        <div>Notes</div>
-                    </div>
-                    <div class="divide-y divide-slate-100">
-                        @forelse ($purchases as $purchase)
-                            <div class="grid gap-3 px-4 py-4 text-sm lg:grid-cols-[minmax(0,1.4fr)_110px_minmax(0,1fr)_130px_120px_minmax(0,1fr)] lg:items-center">
-                                <div>
-                                    <p class="font-black text-slate-950">{{ $purchase->item_name }}</p>
-                                    <p class="mt-1 text-xs font-semibold text-slate-500">Qty {{ $purchase->qty }} @if($purchase->marketplace_seller) · {{ $purchase->marketplace_seller }} @endif</p>
-                                </div>
-                                <div>
-                                    <span class="rounded-full {{ in_array((string) $purchase->status, ['purchased', 'ordered', 'received'], true) ? 'bg-emerald-50 text-emerald-700 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-amber-100' }} px-3 py-1 text-xs font-black ring-1">
-                                        {{ Str::of((string) ($purchase->status ?: 'pending'))->replace('_', ' ')->title() }}
-                                    </span>
-                                </div>
-                                <div>
-                                    <p class="font-semibold text-slate-900">{{ $purchase->retailer_order_reference ?: 'No reference yet' }}</p>
-                                    @if ($purchase->retailer_order_reference)
-                                        <button type="button" data-copy-value="{{ $purchase->retailer_order_reference }}" class="mt-1 text-xs font-black text-indigo-600 hover:text-indigo-700">Copy ref</button>
-                                    @endif
-                                </div>
-                                <div>
-                                    <p class="font-semibold text-slate-900">{{ $purchase->ordered_at ? \Carbon\Carbon::parse($purchase->ordered_at)->format('d M Y') : 'Not recorded' }}</p>
-                                    @if ($purchase->expected_uk_hub_at)
-                                        <p class="mt-1 text-xs text-slate-500">Hub: {{ \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M') }}</p>
-                                    @endif
-                                </div>
-                                <div>
-                                    <p class="font-black text-slate-950">£{{ number_format((float) ($purchase->purchase_line_total ?? 0), 2) }}</p>
-                                    @if ($purchase->purchase_unit_price)
-                                        <p class="mt-1 text-xs text-slate-500">Unit £{{ number_format((float) $purchase->purchase_unit_price, 2) }}</p>
-                                    @endif
-                                </div>
-                                <div>
-                                    <p class="line-clamp-2 text-xs font-semibold text-slate-500">{{ $purchase->problem_notes ?: ($purchase->internal_notes ?: ($purchase->note ?: '—')) }}</p>
-                                </div>
+                            <div class="divide-y divide-slate-100">
+                                @foreach (collect($retailer->items ?? []) as $item)
+                                    @php [$label, $badgeClass] = $statusBadge($item); @endphp
+                                    <details class="group">
+                                        <summary class="grid cursor-pointer gap-3 px-5 py-4 hover:bg-slate-50 lg:grid-cols-[minmax(0,1.6fr)_90px_90px_90px_130px] lg:items-center">
+                                            <div class="min-w-0">
+                                                <p class="font-black text-slate-950">{{ \Illuminate\Support\Str::limit($item->item_name, 130) }}</p>
+                                                <p class="mt-1 text-xs font-semibold text-slate-500">Item #{{ $item->id }} · Root #{{ $item->root_item_id }}</p>
+                                            </div>
+                                            <div class="text-sm font-black text-slate-700">Qty {{ $item->quantity }}</div>
+                                            <div class="text-sm font-black text-emerald-700">Buy {{ $item->purchase_remaining_qty }}</div>
+                                            <div class="text-sm font-black text-sky-700">Arr {{ $item->arrived_qty }}</div>
+                                            <div><span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-black {{ $badgeClass }}">{{ $label }}</span></div>
+                                        </summary>
+                                        <div class="border-t border-slate-100 bg-slate-50/60 p-5">
+                                            @include('shared.purchasing._item_action_forms', ['item' => $item])
+                                        </div>
+                                    </details>
+                                @endforeach
                             </div>
-                        @empty
-                            <div class="px-4 py-8 text-center text-sm font-semibold text-slate-500">No purchase records yet. Item-level purchase status is still visible in the Items tab.</div>
-                        @endforelse
-                    </div>
-                </div>
-            </section>
+                        </article>
+                    @empty
+                        <div class="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+                            <p class="font-black text-slate-900">No purchasing items found for this order.</p>
+                        </div>
+                    @endforelse
+                </section>
+            @endif
         </div>

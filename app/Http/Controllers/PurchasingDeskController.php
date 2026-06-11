@@ -22,12 +22,17 @@ class PurchasingDeskController extends Controller
     {
         $filters = [
             'q' => trim((string) $request->query('q', '')),
-            'status' => trim((string) $request->query('status', 'to_buy')),
+            'tab' => trim((string) $request->query('tab', $request->query('status', 'to_buy'))),
+            'payment' => trim((string) $request->query('payment', 'paid')),
             'limit' => 500,
         ];
 
-        if (! in_array($filters['status'], ['to_buy', 'problems', 'awaiting_arrival'], true)) {
-            $filters['status'] = 'to_buy';
+        if (! in_array($filters['tab'], ['to_buy', 'problems', 'awaiting_arrival', 'all'], true)) {
+            $filters['tab'] = 'to_buy';
+        }
+
+        if (! in_array($filters['payment'], ['paid', 'part_paid', 'unpaid', 'all'], true)) {
+            $filters['payment'] = 'paid';
         }
 
         return view('purchasing.index', [
@@ -48,9 +53,12 @@ class PurchasingDeskController extends Controller
             'retailer_order_reference' => ['nullable', 'string', 'max:255'],
             'marketplace_seller' => ['nullable', 'string', 'max:255'],
             'ordered_at' => ['nullable', 'date'],
+            'expected_dispatch_at' => ['nullable', 'date'],
             'expected_uk_hub_at' => ['nullable', 'date'],
             'expected_gibraltar_at' => ['nullable', 'date'],
+            'requires_marking_attention' => ['nullable', 'boolean'],
             'note' => ['nullable', 'string', 'max:2000'],
+            'internal_notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $validated['user_id'] = $request->user()?->id;
@@ -58,7 +66,7 @@ class PurchasingDeskController extends Controller
 
         $this->actions->recordPurchase($validated);
 
-        return back()->with('status', 'Purchase recorded.');
+        return back()->with('status', 'Purchase recorded.')->with('success', 'Purchase recorded.');
     }
 
     public function storeProblem(Request $request): RedirectResponse
@@ -78,7 +86,7 @@ class PurchasingDeskController extends Controller
             'retailer_order_reference' => ['nullable', 'string', 'max:255'],
             'marketplace_seller' => ['nullable', 'string', 'max:255'],
             'problem_notes' => ['nullable', 'string', 'max:2000'],
-            'resolution_action' => ['nullable', Rule::in(['customer_decision_required', 'repurchase', 'remove_or_credit', 'replacement', 'wait_for_retailer', 'other'])],
+            'resolution_action' => ['nullable', Rule::in(['customer_decision_required', 'repurchase', 'refund_required', 'remove_or_credit', 'replacement', 'replaced_via_amendment', 'wait_for_retailer', 'other'])],
         ]);
 
         $validated['user_id'] = $request->user()?->id;
@@ -87,7 +95,7 @@ class PurchasingDeskController extends Controller
 
         $this->actions->recordProblem($validated);
 
-        return back()->with('status', 'Purchasing problem recorded. Finance was not changed.');
+        return back()->with('status', 'Purchasing problem recorded. Finance was not changed.')->with('success', 'Purchasing problem recorded. Finance was not changed.');
     }
 
     public function undoEvent(Request $request, int $purchase): RedirectResponse
@@ -98,6 +106,6 @@ class PurchasingDeskController extends Controller
 
         $this->actions->undoPurchase($purchase, $request->user()?->id, $validated['reason'] ?? null);
 
-        return back()->with('status', 'Purchasing event undone.');
+        return back()->with('status', 'Purchasing event undone.')->with('success', 'Purchasing event undone.');
     }
 }
