@@ -10,7 +10,7 @@
 <?php $component->withAttributes([]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-     <?php $__env->slot('header', null, []); ?> Purchase Queue <?php $__env->endSlot(); ?>
+     <?php $__env->slot('header', null, []); ?> Purchasing Desk <?php $__env->endSlot(); ?>
 
     <?php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
@@ -22,34 +22,33 @@
     ?>
 
     <div class="mx-auto max-w-6xl space-y-5">
-        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-            <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 text-white sm:px-7">
-                <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.24em] text-indigo-200">Order → Retailer → Reference</p>
-                        <h1 class="mt-2 text-3xl font-black tracking-tight">Purchase Queue</h1>
-                        <p class="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-300">
-                            Only orders with payment are shown by default. Use All Orders when a purchaser deliberately needs to buy before payment is recorded.
-                        </p>
+        <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                    <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Desk</h1>
+                    <p class="mt-1 text-sm font-semibold text-slate-500">Orders awaiting purchase activity.</p>
+                    <p class="mt-2 max-w-2xl text-xs font-semibold leading-5 text-slate-400">
+                        Paid and part-paid orders are shown by default. Use All Orders only when a purchaser deliberately needs to buy before payment is recorded.
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">To Purchase</p>
+                        <p class="mt-1 text-2xl font-black text-slate-950"><?php echo e($summary['to_buy'] ?? 0); ?></p>
                     </div>
-                    <div class="grid grid-cols-3 gap-2 sm:min-w-[420px]">
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">To buy</p>
-                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['to_buy'] ?? 0); ?></p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Awaiting</p>
-                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['awaiting_arrival'] ?? 0); ?></p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Problems</p>
-                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['problems'] ?? 0); ?></p>
-                        </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Awaiting Arrival</p>
+                        <p class="mt-1 text-2xl font-black text-slate-950"><?php echo e($summary['awaiting_arrival'] ?? 0); ?></p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Problems</p>
+                        <p class="mt-1 text-2xl font-black text-slate-950"><?php echo e($summary['problems'] ?? 0); ?></p>
                     </div>
                 </div>
             </div>
 
-            <form method="GET" action="<?php echo e(route('purchasing.index')); ?>" class="border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
+            <form method="GET" action="<?php echo e(route('purchasing.index')); ?>" class="mt-5 border-t border-slate-100 pt-4">
                 <input type="hidden" name="tab" value="to_buy">
                 <input type="hidden" name="payment" value="<?php echo e($filters['payment']); ?>">
                 <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -71,12 +70,12 @@
                 <?php
                     $badge = $paymentBadge[$queueOrder['payment_status']] ?? $paymentBadge['unpaid'];
                     $retailerNames = collect($queueOrder['items'])->pluck('retailer_name')->filter()->unique()->values();
-                    $retailerTotal = max(1, (int) $queueOrder['retailer_count']);
-                    $purchasedRetailers = collect($queueOrder['items'])
-                        ->groupBy(fn ($item) => (string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer'))
-                        ->filter(fn ($rows) => (int) $rows->sum('remaining_to_buy_qty') === 0 && (int) $rows->sum('purchased_qty') > 0)
-                        ->count();
-                    $statusText = $purchasedRetailers === 0 ? 'Not Started' : $purchasedRetailers . ' / ' . $retailerTotal . ' Retailers Purchased';
+                    $remainingQty = (int) ($queueOrder['remaining_to_buy_qty'] ?? 0);
+                    $awaitingQty = (int) ($queueOrder['awaiting_arrival_qty'] ?? 0);
+                    $problemQty = (int) ($queueOrder['problem_qty'] ?? 0);
+                    $waitingItems = collect($queueOrder['items'])->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0);
+                    $waitingValue = $waitingItems->sum(fn ($item) => ((float) $item->unit_price) * ((int) $item->remaining_to_buy_qty));
+                    $statusText = $problemQty > 0 ? 'Problem Needs Review' : ($remainingQty > 0 ? 'Awaiting Purchase' : ($awaitingQty > 0 ? 'Awaiting Arrival' : 'Complete'));
                 ?>
 
                 <article class="group rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md sm:p-5">
@@ -96,14 +95,19 @@
                             </div>
 
                             <p class="mt-1 truncate text-sm font-bold text-slate-700"><?php echo e($queueOrder['customer']); ?></p>
-                            <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+
+                            <div class="mt-4 grid gap-3 text-sm sm:grid-cols-4">
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                     <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Retailers</p>
                                     <p class="mt-1 font-black text-slate-900"><?php echo e($queueOrder['retailer_count']); ?></p>
                                 </div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</p>
-                                    <p class="mt-1 font-black text-slate-900"><?php echo e($queueOrder['item_count']); ?></p>
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Awaiting Purchase</p>
+                                    <p class="mt-1 font-black text-slate-900"><?php echo e($waitingItems->count()); ?> item<?php echo e($waitingItems->count() === 1 ? '' : 's'); ?> / <?php echo e($remainingQty); ?> qty</p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Customer Value</p>
+                                    <p class="mt-1 font-black text-slate-900"><?php echo e($money($waitingValue)); ?></p>
                                 </div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                     <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Progress</p>
@@ -123,7 +127,7 @@
                         </div>
 
                         <div class="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
-                            <a href="<?php echo e(route('purchasing.orders.show', $queueOrder['order_id'])); ?>" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">Open Order</a>
+                            <a href="<?php echo e(route('purchasing.orders.show', $queueOrder['order_id'])); ?>" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">Purchase Items</a>
                         </div>
                     </div>
                 </article>

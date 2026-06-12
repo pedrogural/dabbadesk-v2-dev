@@ -38,11 +38,11 @@ class PurchasingController extends Controller
         $validated = $request->validate([
             'order_item_id' => ['required', 'integer', 'exists:order_items,id'],
             'qty' => ['required', 'integer', 'min:1', 'max:999'],
-            'purchase_unit_price' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
-            'retailer_order_reference' => ['nullable', 'string', 'max:255'],
+            'purchase_unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'retailer_order_reference' => ['required', 'string', 'max:255'],
             'marketplace_seller' => ['nullable', 'string', 'max:255'],
             'ordered_at' => ['nullable', 'date'],
-            'expected_uk_hub_at' => ['nullable', 'date'],
+            'expected_uk_hub_at' => ['required', 'date'],
             'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -76,10 +76,8 @@ class PurchasingController extends Controller
             ]);
         }
 
-        $unitPrice = array_key_exists('purchase_unit_price', $validated) && $validated['purchase_unit_price'] !== null && $validated['purchase_unit_price'] !== ''
-            ? round((float) $validated['purchase_unit_price'], 2)
-            : null;
-        $lineTotal = $unitPrice !== null ? round($unitPrice * $qty, 2) : null;
+        $unitPrice = round((float) $validated['purchase_unit_price'], 2);
+        $lineTotal = round($unitPrice * $qty, 2);
         $orderedAt = ! empty($validated['ordered_at']) ? Carbon::parse($validated['ordered_at']) : now();
         $expectedHubAt = ! empty($validated['expected_uk_hub_at']) ? Carbon::parse($validated['expected_uk_hub_at']) : null;
         $userId = Auth::id();
@@ -151,10 +149,10 @@ class PurchasingController extends Controller
             'qty.*' => ['nullable', 'integer', 'min:0', 'max:999'],
             'purchase_unit_price' => ['nullable', 'array'],
             'purchase_unit_price.*' => ['nullable', 'numeric', 'min:0', 'max:999999.99'],
-            'retailer_order_reference' => ['nullable', 'string', 'max:255'],
+            'retailer_order_reference' => ['required', 'string', 'max:255'],
             'marketplace_seller' => ['nullable', 'string', 'max:255'],
             'ordered_at' => ['nullable', 'date'],
-            'expected_uk_hub_at' => ['nullable', 'date'],
+            'expected_uk_hub_at' => ['required', 'date'],
             'note' => ['nullable', 'string', 'max:2000'],
         ]);
 
@@ -215,7 +213,13 @@ class PurchasingController extends Controller
             }
 
             $rawUnitPrice = $unitInput->get((string) $itemId, $unitInput->get($itemId));
-            $unitPrice = ($rawUnitPrice !== null && $rawUnitPrice !== '') ? round((float) $rawUnitPrice, 2) : null;
+            if ($rawUnitPrice === null || $rawUnitPrice === '') {
+                throw ValidationException::withMessages([
+                    'purchase_unit_price.' . $itemId => 'Purchase price is required for each selected item.',
+                ]);
+            }
+
+            $unitPrice = round((float) $rawUnitPrice, 2);
 
             $lines[] = [
                 'item' => $item,

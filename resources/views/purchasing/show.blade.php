@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="header">Order Purchasing Workspace</x-slot>
+    <x-slot name="header">Purchasing Workspace</x-slot>
 
     @php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
@@ -36,56 +36,51 @@
             </div>
         @endif
 
-        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-            <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 text-white sm:px-7">
-                <a href="{{ route('purchasing.index') }}" class="text-xs font-black uppercase tracking-[0.22em] text-indigo-200 hover:text-white">← Back to Purchase Queue</a>
-
-                <div class="mt-4 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-                    <div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h1 class="text-3xl font-black tracking-tight">Purchase Items for Order #{{ $orderNumber }}</h1>
-                            <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $paymentClass }}">{{ $paymentLabel }}</span>
-                            @if (($order->purchase_mode ?? '') === 'customer_self_purchase')
-                                <span class="rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 ring-1 ring-sky-200">Customer self-purchase</span>
-                            @endif
-                        </div>
-                        <p class="mt-2 text-sm font-semibold text-slate-300">Order-specific purchasing screen · {{ $customer }}</p>
-                        @if ($order->bill_to_email)
-                            <p class="mt-1 text-xs font-bold text-slate-400">{{ $order->bill_to_email }}</p>
+        <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <a href="{{ route('purchasing.index') }}" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Workspace</h1>
+                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $paymentClass }}">{{ $paymentLabel }}</span>
+                        @if (($order->purchase_mode ?? '') === 'customer_self_purchase')
+                            <span class="rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 ring-1 ring-sky-200">Customer self-purchase</span>
                         @endif
                     </div>
+                    <p class="mt-1 text-sm font-bold text-slate-700">Purchase items for Order #{{ $orderNumber }} · {{ $customer }}</p>
+                    @if ($order->bill_to_email)
+                        <p class="mt-1 text-xs font-semibold text-slate-400">{{ $order->bill_to_email }}</p>
+                    @endif
+                </div>
 
-                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:min-w-[720px]">
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Order total</p>
-                            <p class="mt-1 text-lg font-black">{{ $money($order->grand_total ?? 0) }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Requested</p>
-                            <p class="mt-1 text-lg font-black">{{ $requestedQty }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Purchased</p>
-                            <p class="mt-1 text-lg font-black">{{ $purchasedQty }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">To buy</p>
-                            <p class="mt-1 text-lg font-black">{{ $remainingQty }}</p>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Awaiting</p>
-                            <p class="mt-1 text-lg font-black">{{ $awaitingQty }}</p>
-                        </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-5 xl:min-w-[720px]">
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Order total</p>
+                        <p class="mt-1 text-lg font-black text-slate-950">{{ $money($order->grand_total ?? 0) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Requested</p>
+                        <p class="mt-1 text-lg font-black text-slate-950">{{ $requestedQty }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Purchased</p>
+                        <p class="mt-1 text-lg font-black text-slate-950">{{ $purchasedQty }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Awaiting Purchase</p>
+                        <p class="mt-1 text-lg font-black text-slate-950">{{ $remainingQty }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                        <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Awaiting Arrival</p>
+                        <p class="mt-1 text-lg font-black text-slate-950">{{ $awaitingQty }}</p>
                     </div>
                 </div>
             </div>
 
-            <div class="border-t border-white/10 bg-slate-50 px-5 py-4 sm:px-7">
-                <div class="flex flex-wrap items-center gap-2 text-xs font-black">
-                    <span class="rounded-full bg-white px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailer cards: {{ $retailers->count() }}</span>
-                    <span class="rounded-full bg-white px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Problem qty: {{ $problemQty }}</span>
-                    <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-white px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">View full order ↗</a>
-                </div>
+            <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs font-black">
+                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailer cards: {{ $retailers->count() }}</span>
+                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Problem qty: {{ $problemQty }}</span>
+                <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
             </div>
         </section>
 
@@ -101,7 +96,7 @@
                     $waitingValue = $remainingItems->sum(fn ($item) => ((float) $item->unit_price) * ((int) $item->remaining_to_buy_qty));
                     $isComplete = $waitingQty === 0 && $purchasedQtyForRetailer > 0;
                     $cardRing = $problemQtyForRetailer > 0 ? 'border-rose-200' : ($waitingQty > 0 ? 'border-indigo-200' : 'border-emerald-200');
-                    $statusLabel = $problemQtyForRetailer > 0 ? 'Needs attention' : ($waitingQty > 0 ? 'Ready to buy' : 'Purchased');
+                    $statusLabel = $problemQtyForRetailer > 0 ? 'Needs attention' : ($waitingQty > 0 ? 'Awaiting Purchase' : 'Purchased');
                     $statusClass = $problemQtyForRetailer > 0 ? 'bg-rose-50 text-rose-700 ring-rose-200' : ($waitingQty > 0 ? 'bg-indigo-50 text-indigo-700 ring-indigo-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200');
                 @endphp
 
@@ -265,7 +260,7 @@
                                 </div>
 
                                 <div class="mt-4 flex justify-end">
-                                    <button class="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Save selected purchase</button>
+                                    <button class="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Record Purchase</button>
                                 </div>
                             </div>
                         @else
