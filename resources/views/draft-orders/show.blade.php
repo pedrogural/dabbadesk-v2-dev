@@ -905,26 +905,6 @@
             </div>
         </section>
 
-        <section class="rounded-2xl border {{ $canFinaliseDraft ? 'border-emerald-200 bg-emerald-50' : 'border-amber-300 bg-amber-50' }} px-4 py-3 shadow-sm">
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div class="min-w-0">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <p class="text-xs font-black uppercase tracking-[0.18em] {{ $canFinaliseDraft ? 'text-emerald-700' : 'text-amber-700' }}">Draft readiness</p>
-                        <span class="rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide {{ $canFinaliseDraft ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white' }}">{{ $canFinaliseDraft ? 'Clean' : 'Action required' }}</span>
-                    </div>
-                    <p class="mt-1 text-sm font-black text-slate-950">{{ $canFinaliseDraft ? 'Ready to create final order' : 'Commercial preparation still needs attention' }}</p>
-                    <p class="mt-1 text-xs font-bold {{ $canFinaliseDraft ? 'text-emerald-900' : 'text-amber-900' }}">
-                        {{ $draftItemCount }} items · {{ $draftRetailersResolvedCount }}/{{ $draftItemCount }} retailers · {{ $draftMissingReferenceCount }} missing link/code · {{ $draftReviewedCount }} reviewed · {{ $draftNeedsAttentionCount }} needs attention · {{ $draftUnreviewedCount }} unreviewed
-                    </p>
-                </div>
-                @if ($draftNeedsAttentionCount > 0)
-                    <div class="rounded-xl border border-rose-200 bg-white/80 px-3 py-2 text-xs font-black text-rose-700">
-                        ⚠ {{ $draftNeedsAttentionCount }} item{{ $draftNeedsAttentionCount === 1 ? '' : 's' }} need attention before finalising
-                    </div>
-                @endif
-            </div>
-        </section>
-
         <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_290px]">
             <main class="space-y-4">
                 <section

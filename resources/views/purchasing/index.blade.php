@@ -2,138 +2,171 @@
     <x-slot name="header">Purchasing Desk</x-slot>
 
     @php
-        $activeTab = $filters['tab'] ?? 'to_buy';
-        $activePayment = $filters['payment'] ?? 'paid';
-        $tabs = [
-            'to_buy' => ['label' => 'To Buy', 'qty' => $summary['to_buy_qty'] ?? 0, 'orders' => $summary['to_buy_orders'] ?? 0, 'hint' => 'Paid order-first buying queue'],
-            'awaiting_arrival' => ['label' => 'Awaiting Arrival', 'qty' => $summary['awaiting_arrival_qty'] ?? 0, 'orders' => $summary['awaiting_arrival_orders'] ?? 0, 'hint' => 'Bought, not fully arrived'],
-            'problems' => ['label' => 'Problems', 'qty' => $summary['problem_qty'] ?? 0, 'orders' => $summary['problem_orders'] ?? 0, 'hint' => 'Needs human decision'],
-            'all' => ['label' => 'All Active', 'qty' => ($summary['to_buy_qty'] ?? 0) + ($summary['awaiting_arrival_qty'] ?? 0) + ($summary['problem_qty'] ?? 0), 'orders' => $summary['visible_order_count'] ?? 0, 'hint' => 'Operational overview'],
+        $activeStatus = $filters['status'] ?? 'to_buy';
+        $statusTabs = [
+            'to_buy' => ['label' => 'To Buy', 'qty' => $summary['to_buy_qty'] ?? 0, 'orders' => $summary['to_buy_orders'] ?? 0],
+            'problems' => ['label' => 'Problems', 'qty' => $summary['problem_qty'] ?? 0, 'orders' => $summary['problem_orders'] ?? 0],
+            'awaiting_arrival' => ['label' => 'Awaiting Arrival', 'qty' => $summary['awaiting_arrival_qty'] ?? 0, 'orders' => $summary['awaiting_arrival_orders'] ?? 0],
         ];
-        $paymentLabels = [
-            'paid' => 'Paid only',
-            'part_paid' => 'Part-paid only',
-            'unpaid' => 'Unpaid only',
-            'all' => 'All payment states',
-        ];
-        $paymentBadgeClasses = [
-            'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-100',
-            'part_paid' => 'bg-amber-50 text-amber-700 ring-amber-100',
-            'unpaid' => 'bg-rose-50 text-rose-700 ring-rose-100',
+        $problemLabels = [
+            'supplier_cancelled' => 'Supplier cancelled',
+            'lost' => 'Lost',
+            'damaged' => 'Damaged',
+            'wrong_item' => 'Wrong item',
+            'retailer_refunded' => 'Retailer refunded',
+            'unavailable' => 'Unavailable',
+            'other' => 'Other',
         ];
     @endphp
 
-    <div class="space-y-6">
-        @if (session('status') || session('success'))
-            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-800 shadow-sm">
-                {{ session('status') ?: session('success') }}
-            </div>
-        @endif
-
-        @if ($errors->any())
-            <div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800 shadow-sm">
-                {{ $errors->first() }}
-            </div>
-        @endif
-
-        <section class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <div class="space-y-5">
+        <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <p class="text-xs font-black uppercase tracking-[0.24em] text-indigo-500">DabbaDesk</p>
-                    <h1 class="mt-1 text-2xl font-black text-slate-950">Purchasing Desk</h1>
-                    <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Order-first purchasing. This page is the queue; open an order workspace to record purchases or resolve problems.</p>
+                    <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Desk</h1>
+                    <p class="mt-1 text-sm font-semibold text-slate-500">Order-first purchasing. Each customer order is bought as its own basket, even when the retailer is the same.</p>
                 </div>
-                <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600 ring-1 ring-slate-100">
-                    {{ $summary['visible_order_count'] ?? 0 }} visible order{{ ($summary['visible_order_count'] ?? 0) == 1 ? '' : 's' }}
+
+                <div class="rounded-2xl bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-800 ring-1 ring-indigo-100">
+                    {{ number_format($orderGroups->count()) }} order{{ $orderGroups->count() === 1 ? '' : 's' }} shown
                 </div>
             </div>
 
-            <form method="GET" action="{{ route('purchasing.index') }}" class="mt-5 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_140px]">
-                <input type="hidden" name="tab" value="{{ $activeTab }}">
-                <label class="block">
-                    <span class="text-xs font-black uppercase tracking-wide text-slate-400">Search</span>
-                    <input name="q" value="{{ $filters['q'] ?? '' }}" placeholder="Order number, customer, item, retailer, reference…" class="mt-1 h-11 w-full rounded-2xl border-slate-300 bg-white px-4 text-sm font-semibold shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </label>
-                <label class="block">
-                    <span class="text-xs font-black uppercase tracking-wide text-slate-400">Payment filter</span>
-                    <select name="payment" class="mt-1 h-11 w-full rounded-2xl border-slate-300 bg-white px-4 text-sm font-bold shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                        @foreach ($paymentLabels as $value => $label)
-                            <option value="{{ $value }}" @selected($activePayment === $value)>{{ $label }}</option>
-                        @endforeach
-                    </select>
-                </label>
-                <div class="flex items-end">
-                    <button class="h-11 w-full rounded-2xl bg-slate-950 px-4 text-sm font-black text-white shadow-sm hover:bg-slate-800">Apply</button>
+            @if (session('status'))
+                <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">
+                    {{ session('status') }}
                 </div>
-            </form>
+            @endif
 
-            <div class="mt-5 grid gap-3 md:grid-cols-4">
-                @foreach ($tabs as $key => $tab)
-                    <a href="{{ route('purchasing.index', array_filter(['tab' => $key, 'payment' => $activePayment, 'q' => $filters['q'] ?? null], fn ($v) => $v !== null && $v !== '')) }}" class="rounded-3xl border p-4 transition {{ $activeTab === $key ? 'border-indigo-200 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50' }}">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <p class="text-sm font-black {{ $activeTab === $key ? 'text-indigo-700' : 'text-slate-800' }}">{{ $tab['label'] }}</p>
-                                <p class="mt-1 text-xs font-semibold text-slate-500">{{ $tab['hint'] }}</p>
-                            </div>
-                            <span class="rounded-full {{ $activeTab === $key ? 'bg-white text-indigo-700 ring-indigo-100' : 'bg-slate-100 text-slate-600 ring-slate-200' }} px-2.5 py-1 text-xs font-black ring-1">{{ $tab['orders'] }} orders</span>
-                        </div>
-                        <p class="mt-4 text-2xl font-black {{ $activeTab === $key ? 'text-indigo-700' : 'text-slate-950' }}">{{ $tab['qty'] }}</p>
-                        <p class="text-xs font-bold text-slate-400">quantity</p>
+            @if ($errors->any())
+                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
+                    {{ $errors->first() }}
+                </div>
+            @endif
+
+            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+                @foreach ($statusTabs as $key => $tab)
+                    @php
+                        $isActive = $activeStatus === $key;
+                        $url = route('purchasing.index', array_filter(['status' => $key, 'q' => $filters['q'] ?? null], fn ($v) => $v !== null && $v !== ''));
+                    @endphp
+                    <a href="{{ $url }}" class="rounded-3xl border p-4 shadow-sm transition {{ $isActive ? 'border-indigo-200 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:bg-slate-50' }}">
+                        <span class="block text-sm font-black {{ $isActive ? 'text-indigo-800' : 'text-slate-600' }}">{{ $tab['label'] }}</span>
+                        <span class="mt-2 block text-3xl font-black tracking-tight text-slate-950">{{ number_format($tab['qty']) }}</span>
+                        <span class="mt-1 block text-xs font-bold text-slate-400">{{ number_format($tab['orders']) }} order{{ $tab['orders'] == 1 ? '' : 's' }}</span>
                     </a>
                 @endforeach
             </div>
         </section>
 
-        <section class="grid gap-4 xl:grid-cols-2">
-            @forelse ($orderGroups as $group)
-                @php
-                    $progressTotal = max(1, (int) $group->requested_qty);
-                    $progressDone = min($progressTotal, (int) $group->purchased_qty + (int) $group->problem_qty);
-                    $progressPercent = (int) round(($progressDone / $progressTotal) * 100);
-                    $paymentClass = $paymentBadgeClasses[$group->payment_status] ?? 'bg-slate-50 text-slate-700 ring-slate-100';
-                @endphp
-                <article class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                        <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <a href="{{ route('purchasing.orders.show', $group->order_id) }}" class="text-xl font-black text-indigo-700 hover:text-indigo-800">Order #{{ $group->order_number }} ↗</a>
-                                <span class="rounded-full px-2.5 py-1 text-xs font-black ring-1 {{ $paymentClass }}">{{ ucfirst(str_replace('_', ' ', $group->payment_status)) }}</span>
-                            </div>
-                            <p class="mt-1 text-sm font-semibold text-slate-600">{{ $group->customer_name ?: 'Unknown customer' }}</p>
-                            <p class="mt-2 text-xs font-bold text-slate-400">{{ $group->retailer_count }} retailer{{ $group->retailer_count === 1 ? '' : 's' }} · {{ $group->item_count }} item line{{ $group->item_count === 1 ? '' : 's' }} · {{ $group->requested_qty }} qty</p>
-                        </div>
-                        <a href="{{ route('purchasing.orders.show', $group->order_id) }}" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800">Open workspace</a>
-                    </div>
-
-                    <div class="mt-5 grid grid-cols-4 gap-2 text-center">
-                        <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase text-emerald-700">To buy</p><p class="text-lg font-black text-emerald-700">{{ $group->pending_qty }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase text-slate-400">Bought</p><p class="text-lg font-black text-slate-900">{{ $group->purchased_qty }}</p></div>
-                        <div class="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100"><p class="text-[10px] font-black uppercase text-sky-700">Awaiting</p><p class="text-lg font-black text-sky-700">{{ $group->awaiting_arrival_qty }}</p></div>
-                        <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase text-rose-700">Problems</p><p class="text-lg font-black text-rose-700">{{ $group->problem_qty }}</p></div>
-                    </div>
-
-                    <div class="mt-4">
-                        <div class="flex items-center justify-between text-xs font-black text-slate-400">
-                            <span>Purchase progress</span>
-                            <span>{{ $progressPercent }}%</span>
-                        </div>
-                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div class="h-full rounded-full bg-indigo-500" style="width: {{ $progressPercent }}%"></div>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 flex flex-wrap gap-2">
-                        @foreach ($group->retailer_groups as $retailer)
-                            <span class="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-100">{{ $retailer->name }} · {{ $retailer->pending_qty }} buy · {{ $retailer->awaiting_arrival_qty }} wait</span>
-                        @endforeach
-                    </div>
-                </article>
-            @empty
-                <div class="xl:col-span-2 rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
-                    <p class="text-lg font-black text-slate-900">Nothing in this tab.</p>
-                    <p class="mt-1 text-sm font-semibold text-slate-500">Try a different payment filter or clear the search.</p>
+        <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+            <form method="GET" action="{{ route('purchasing.index') }}" class="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px_auto] lg:items-center">
+                <input type="hidden" name="status" value="{{ $activeStatus }}">
+                <div>
+                    <label for="q" class="sr-only">Search purchasing</label>
+                    <input id="q" name="q" value="{{ $filters['q'] ?? '' }}" type="text" placeholder="Search order number, customer, item, product code or retailer..." class="h-12 w-full rounded-2xl border-slate-300 px-4 text-sm font-semibold shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                 </div>
-            @endforelse
+                <select name="status" class="h-12 rounded-2xl border-slate-300 px-4 text-sm font-black text-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    @foreach ($statusTabs as $key => $tab)
+                        <option value="{{ $key }}" @selected($activeStatus === $key)>{{ $tab['label'] }}</option>
+                    @endforeach
+                </select>
+                <div class="flex gap-2">
+                    <button type="submit" class="h-12 rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">Search</button>
+                    <a href="{{ route('purchasing.index', ['status' => $activeStatus]) }}" class="inline-flex h-12 items-center rounded-2xl border border-slate-200 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-50">Clear</a>
+                </div>
+            </form>
         </section>
+
+        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
+                <div class="grid grid-cols-[110px_minmax(180px,1fr)_150px_150px_120px] gap-4 text-left text-xs font-black uppercase tracking-wide text-slate-400">
+                    <div>Order</div>
+                    <div>Customer</div>
+                    <div>Action</div>
+                    <div>Payment</div>
+                    <div class="text-right">Open</div>
+                </div>
+            </div>
+
+            <div class="divide-y divide-slate-100">
+                @forelse ($orderGroups as $orderGroup)
+                    @php
+                        $actionLabel = 'Review';
+                        $actionClass = 'bg-slate-100 text-slate-700 ring-slate-200';
+
+                        if ((int) $orderGroup->problem_qty > 0) {
+                            $actionLabel = 'Resolve problem';
+                            $actionClass = 'bg-rose-50 text-rose-700 ring-rose-100';
+                        } elseif ((int) $orderGroup->pending_qty > 0) {
+                            $actionLabel = 'Buy items';
+                            $actionClass = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+                        } elseif ((int) $orderGroup->awaiting_arrival_qty > 0) {
+                            $actionLabel = 'Await arrival';
+                            $actionClass = 'bg-amber-50 text-amber-700 ring-amber-100';
+                        }
+
+                        $paymentLabel = ucfirst(str_replace('_', ' ', (string) ($orderGroup->payment_status ?? 'unknown')));
+                    @endphp
+
+                    <div class="grid grid-cols-[110px_minmax(180px,1fr)_150px_150px_120px] items-center gap-4 px-5 py-4 transition hover:bg-slate-50/80">
+                        <div>
+                            <p class="text-base font-black text-slate-950">{{ $orderGroup->order_number ?: '#' . $orderGroup->order_id }}</p>
+                        </div>
+
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-black text-slate-800">{{ $orderGroup->customer_name ?: 'Customer not named' }}</p>
+                        </div>
+
+                        <div>
+                            <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $actionClass }}">{{ $actionLabel }}</span>
+                        </div>
+
+                        <div>
+                            <span class="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $paymentLabel }}</span>
+                        </div>
+
+                        <div class="text-right">
+                            <a href="{{ route('orders.show', $orderGroup->order_id) }}" class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800">Open ↗</a>
+                        </div>
+                    </div>
+                @empty
+                    <div class="px-5 py-12 text-center">
+                        <p class="text-lg font-black text-slate-900">Nothing in this purchasing queue.</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-500">Try a different tab or clear the search.</p>
+                    </div>
+                @endforelse
+            </div>
+        </section>
+
+        @if ($recentEvents->isNotEmpty())
+            <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 class="text-lg font-black text-slate-950">Recent purchasing events</h2>
+                <div class="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+                    <table class="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-400">
+                            <tr>
+                                <th class="px-4 py-3">Order</th>
+                                <th class="px-4 py-3">Item</th>
+                                <th class="px-4 py-3">Status</th>
+                                <th class="px-4 py-3">Qty</th>
+                                <th class="px-4 py-3">Ref</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            @foreach ($recentEvents as $event)
+                                <tr>
+                                    <td class="px-4 py-3 font-black text-slate-800">{{ $event->order_number }}</td>
+                                    <td class="px-4 py-3 font-semibold text-slate-600">{{ Str::limit($event->item_name, 70) }}</td>
+                                    <td class="px-4 py-3 font-black {{ in_array($event->status, ['failed', 'problem']) ? 'text-rose-700' : 'text-emerald-700' }}">{{ str_replace('_', ' ', ucfirst($event->problem_code ?: $event->status)) }}</td>
+                                    <td class="px-4 py-3 font-black text-slate-700">{{ $event->qty }}</td>
+                                    <td class="px-4 py-3 font-semibold text-slate-500">{{ $event->retailer_order_reference ?: '—' }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        @endif
     </div>
 </x-app-layout>
