@@ -7,8 +7,8 @@ use App\Http\Controllers\DraftOrdersController;
 use App\Http\Controllers\MoneyDeskController;
 use App\Http\Controllers\OrderRequestsController;
 use App\Http\Controllers\OrdersController;
+use App\Http\Controllers\PurchasingController;
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\PurchasingDeskController;
 use App\Http\Controllers\PublicIntakeSupportController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +20,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
+    Route::get('/purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
+    Route::get('/purchasing/orders/{order}', [PurchasingController::class, 'show'])->name('purchasing.show');
 
     Route::get('/customers', [CustomersController::class, 'index'])->name('customers.index');
     Route::get('/customers/live-search', [CustomersController::class, 'liveSearch'])->name('customers.live-search');
@@ -67,13 +69,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/draft-orders/{draftOrder}/items/{item}', [DraftOrdersController::class, 'deleteItem'])->name('draft-orders.items.destroy');
     Route::post('/draft-orders/{draftOrder}/finalise', [DraftOrdersController::class, 'finalise'])->name('draft-orders.finalise');
     Route::post('/draft-orders/{draftOrder}/notes', [DraftOrdersController::class, 'addNote'])->name('draft-orders.notes.store');
-
-
-    Route::get('/purchasing', [PurchasingDeskController::class, 'index'])->name('purchasing.index');
-    Route::get('/purchasing/orders/{order}', [PurchasingDeskController::class, 'showOrder'])->name('purchasing.orders.show');
-    Route::post('/purchasing/purchases', [PurchasingDeskController::class, 'storePurchase'])->name('purchasing.purchases.store');
-    Route::post('/purchasing/problems', [PurchasingDeskController::class, 'storeProblem'])->name('purchasing.problems.store');
-    Route::post('/purchasing/events/{purchase}/undo', [PurchasingDeskController::class, 'undoEvent'])->name('purchasing.events.undo');
 
     Route::get('/money-desk', [MoneyDeskController::class, 'index'])->name('money-desk.index');
     Route::get('/money-desk/customer-search', [MoneyDeskController::class, 'customerSearch'])->name('money-desk.customer-search');

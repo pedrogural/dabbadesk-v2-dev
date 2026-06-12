@@ -152,35 +152,6 @@
             </div>
         </section>
 
-        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($recentEvents->isNotEmpty()): ?>
-            <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 class="text-lg font-black text-slate-950">Recent purchasing events</h2>
-                <div class="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-                    <table class="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-400">
-                            <tr>
-                                <th class="px-4 py-3">Order</th>
-                                <th class="px-4 py-3">Item</th>
-                                <th class="px-4 py-3">Status</th>
-                                <th class="px-4 py-3">Qty</th>
-                                <th class="px-4 py-3">Ref</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $recentEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $event): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                                <tr>
-                                    <td class="px-4 py-3 font-black text-slate-800"><?php echo e($event->order_number); ?></td>
-                                    <td class="px-4 py-3 font-semibold text-slate-600"><?php echo e(Str::limit($event->item_name, 70)); ?></td>
-                                    <td class="px-4 py-3 font-black <?php echo e(in_array($event->status, ['failed', 'problem']) ? 'text-rose-700' : 'text-emerald-700'); ?>"><?php echo e(str_replace('_', ' ', ucfirst($event->problem_code ?: $event->status))); ?></td>
-                                    <td class="px-4 py-3 font-black text-slate-700"><?php echo e($event->qty); ?></td>
-                                    <td class="px-4 py-3 font-semibold text-slate-500"><?php echo e($event->retailer_order_reference ?: '—'); ?></td>
-                                </tr>
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
     </div>
  <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>

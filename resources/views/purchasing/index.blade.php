@@ -1,172 +1,142 @@
 <x-app-layout>
-    <x-slot name="header">Purchasing Desk</x-slot>
+    <x-slot name="header">
+        Purchasing Desk
+    </x-slot>
 
     @php
-        $activeStatus = $filters['status'] ?? 'to_buy';
-        $statusTabs = [
-            'to_buy' => ['label' => 'To Buy', 'qty' => $summary['to_buy_qty'] ?? 0, 'orders' => $summary['to_buy_orders'] ?? 0],
-            'problems' => ['label' => 'Problems', 'qty' => $summary['problem_qty'] ?? 0, 'orders' => $summary['problem_orders'] ?? 0],
-            'awaiting_arrival' => ['label' => 'Awaiting Arrival', 'qty' => $summary['awaiting_arrival_qty'] ?? 0, 'orders' => $summary['awaiting_arrival_orders'] ?? 0],
+        $badgeClasses = [
+            'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+            'part_paid' => 'bg-amber-50 text-amber-700 ring-amber-200',
+            'unpaid' => 'bg-slate-50 text-slate-600 ring-slate-200',
         ];
-        $problemLabels = [
-            'supplier_cancelled' => 'Supplier cancelled',
-            'lost' => 'Lost',
-            'damaged' => 'Damaged',
-            'wrong_item' => 'Wrong item',
-            'retailer_refunded' => 'Retailer refunded',
-            'unavailable' => 'Unavailable',
-            'other' => 'Other',
+        $actionClasses = [
+            'Buy Items' => 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+            'Await Arrival' => 'bg-sky-50 text-sky-700 ring-sky-200',
+            'Resolve Problem' => 'bg-rose-50 text-rose-700 ring-rose-200',
+            'Completed' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
         ];
     @endphp
 
-    <div class="space-y-5">
-        <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                    <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Desk</h1>
-                    <p class="mt-1 text-sm font-semibold text-slate-500">Order-first purchasing. Each customer order is bought as its own basket, even when the retailer is the same.</p>
-                </div>
-
-                <div class="rounded-2xl bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-800 ring-1 ring-indigo-100">
-                    {{ number_format($orderGroups->count()) }} order{{ $orderGroups->count() === 1 ? '' : 's' }} shown
-                </div>
-            </div>
-
-            @if (session('status'))
-                <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800">
-                    {{ session('status') }}
-                </div>
-            @endif
-
-            @if ($errors->any())
-                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-800">
-                    {{ $errors->first() }}
-                </div>
-            @endif
-
-            <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-                @foreach ($statusTabs as $key => $tab)
-                    @php
-                        $isActive = $activeStatus === $key;
-                        $url = route('purchasing.index', array_filter(['status' => $key, 'q' => $filters['q'] ?? null], fn ($v) => $v !== null && $v !== ''));
-                    @endphp
-                    <a href="{{ $url }}" class="rounded-3xl border p-4 shadow-sm transition {{ $isActive ? 'border-indigo-200 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:bg-slate-50' }}">
-                        <span class="block text-sm font-black {{ $isActive ? 'text-indigo-800' : 'text-slate-600' }}">{{ $tab['label'] }}</span>
-                        <span class="mt-2 block text-3xl font-black tracking-tight text-slate-950">{{ number_format($tab['qty']) }}</span>
-                        <span class="mt-1 block text-xs font-bold text-slate-400">{{ number_format($tab['orders']) }} order{{ $tab['orders'] == 1 ? '' : 's' }}</span>
-                    </a>
-                @endforeach
-            </div>
-        </section>
-
-        <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <form method="GET" action="{{ route('purchasing.index') }}" class="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_220px_auto] lg:items-center">
-                <input type="hidden" name="status" value="{{ $activeStatus }}">
-                <div>
-                    <label for="q" class="sr-only">Search purchasing</label>
-                    <input id="q" name="q" value="{{ $filters['q'] ?? '' }}" type="text" placeholder="Search order number, customer, item, product code or retailer..." class="h-12 w-full rounded-2xl border-slate-300 px-4 text-sm font-semibold shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                </div>
-                <select name="status" class="h-12 rounded-2xl border-slate-300 px-4 text-sm font-black text-slate-700 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
-                    @foreach ($statusTabs as $key => $tab)
-                        <option value="{{ $key }}" @selected($activeStatus === $key)>{{ $tab['label'] }}</option>
-                    @endforeach
-                </select>
-                <div class="flex gap-2">
-                    <button type="submit" class="h-12 rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">Search</button>
-                    <a href="{{ route('purchasing.index', ['status' => $activeStatus]) }}" class="inline-flex h-12 items-center rounded-2xl border border-slate-200 px-5 text-sm font-black text-slate-600 transition hover:bg-slate-50">Clear</a>
-                </div>
-            </form>
-        </section>
-
-        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-            <div class="border-b border-slate-100 bg-slate-50/70 px-5 py-4">
-                <div class="grid grid-cols-[110px_minmax(180px,1fr)_150px_150px_120px] gap-4 text-left text-xs font-black uppercase tracking-wide text-slate-400">
-                    <div>Order</div>
-                    <div>Customer</div>
-                    <div>Action</div>
-                    <div>Payment</div>
-                    <div class="text-right">Open</div>
-                </div>
-            </div>
-
-            <div class="divide-y divide-slate-100">
-                @forelse ($orderGroups as $orderGroup)
-                    @php
-                        $actionLabel = 'Review';
-                        $actionClass = 'bg-slate-100 text-slate-700 ring-slate-200';
-
-                        if ((int) $orderGroup->problem_qty > 0) {
-                            $actionLabel = 'Resolve problem';
-                            $actionClass = 'bg-rose-50 text-rose-700 ring-rose-100';
-                        } elseif ((int) $orderGroup->pending_qty > 0) {
-                            $actionLabel = 'Buy items';
-                            $actionClass = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
-                        } elseif ((int) $orderGroup->awaiting_arrival_qty > 0) {
-                            $actionLabel = 'Await arrival';
-                            $actionClass = 'bg-amber-50 text-amber-700 ring-amber-100';
-                        }
-
-                        $paymentLabel = ucfirst(str_replace('_', ' ', (string) ($orderGroup->payment_status ?? 'unknown')));
-                    @endphp
-
-                    <div class="grid grid-cols-[110px_minmax(180px,1fr)_150px_150px_120px] items-center gap-4 px-5 py-4 transition hover:bg-slate-50/80">
-                        <div>
-                            <p class="text-base font-black text-slate-950">{{ $orderGroup->order_number ?: '#' . $orderGroup->order_id }}</p>
-                        </div>
-
-                        <div class="min-w-0">
-                            <p class="truncate text-sm font-black text-slate-800">{{ $orderGroup->customer_name ?: 'Customer not named' }}</p>
-                        </div>
-
-                        <div>
-                            <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $actionClass }}">{{ $actionLabel }}</span>
-                        </div>
-
-                        <div>
-                            <span class="inline-flex rounded-full bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700 ring-1 ring-indigo-100">{{ $paymentLabel }}</span>
-                        </div>
-
-                        <div class="text-right">
-                            <a href="{{ route('orders.show', $orderGroup->order_id) }}" class="inline-flex items-center rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800">Open ↗</a>
-                        </div>
+    <div class="space-y-6">
+        <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div class="border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white px-5 py-5 sm:px-6">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p class="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">Order-first purchasing</p>
+                        <h2 class="mt-2 text-2xl font-black tracking-tight text-slate-950">Purchasing queue</h2>
+                        <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                            A calm queue of customer orders needing purchasing attention. Details live inside the workspace.
+                        </p>
                     </div>
-                @empty
-                    <div class="px-5 py-12 text-center">
-                        <p class="text-lg font-black text-slate-900">Nothing in this purchasing queue.</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-500">Try a different tab or clear the search.</p>
-                    </div>
-                @endforelse
-            </div>
-        </section>
 
-        @if ($recentEvents->isNotEmpty())
-            <section class="rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 class="text-lg font-black text-slate-950">Recent purchasing events</h2>
-                <div class="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-                    <table class="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead class="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-400">
-                            <tr>
-                                <th class="px-4 py-3">Order</th>
-                                <th class="px-4 py-3">Item</th>
-                                <th class="px-4 py-3">Status</th>
-                                <th class="px-4 py-3">Qty</th>
-                                <th class="px-4 py-3">Ref</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100 bg-white">
-                            @foreach ($recentEvents as $event)
-                                <tr>
-                                    <td class="px-4 py-3 font-black text-slate-800">{{ $event->order_number }}</td>
-                                    <td class="px-4 py-3 font-semibold text-slate-600">{{ Str::limit($event->item_name, 70) }}</td>
-                                    <td class="px-4 py-3 font-black {{ in_array($event->status, ['failed', 'problem']) ? 'text-rose-700' : 'text-emerald-700' }}">{{ str_replace('_', ' ', ucfirst($event->problem_code ?: $event->status)) }}</td>
-                                    <td class="px-4 py-3 font-black text-slate-700">{{ $event->qty }}</td>
-                                    <td class="px-4 py-3 font-semibold text-slate-500">{{ $event->retailer_order_reference ?: '—' }}</td>
-                                </tr>
+                    <form method="GET" action="{{ route('purchasing.index') }}" class="flex w-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:w-auto lg:min-w-[520px] lg:flex-row lg:items-center">
+                        <input type="hidden" name="tab" value="{{ $filters['tab'] }}">
+                        <label class="sr-only" for="purchasing-q">Search purchasing queue</label>
+                        <input
+                            id="purchasing-q"
+                            name="q"
+                            value="{{ $filters['q'] }}"
+                            placeholder="Search order, customer, item or retailer"
+                            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200"
+                        >
+                        <select name="payment" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200">
+                            @foreach ($paymentOptions as $value => $label)
+                                <option value="{{ $value }}" @selected($filters['payment'] === $value)>{{ $label }}</option>
                             @endforeach
-                        </tbody>
-                    </table>
+                        </select>
+                        <button class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">
+                            Search
+                        </button>
+                    </form>
                 </div>
-            </section>
-        @endif
+            </div>
+
+            <div class="border-b border-slate-100 px-5 py-4 sm:px-6">
+                <div class="flex flex-wrap gap-2">
+                    @foreach ($tabs as $key => $tab)
+                        @php
+                            $isActive = $filters['tab'] === $key;
+                            $url = route('purchasing.index', array_filter([
+                                'tab' => $key,
+                                'payment' => $filters['payment'],
+                                'q' => $filters['q'],
+                            ], fn ($value) => $value !== null && $value !== ''));
+                        @endphp
+                        <a
+                            href="{{ $url }}"
+                            class="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-black ring-1 transition {{ $isActive ? 'bg-indigo-600 text-white ring-indigo-600 shadow-sm shadow-indigo-100' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900' }}"
+                        >
+                            <span>{{ $tab['label'] }}</span>
+                            <span class="rounded-full px-2 py-0.5 text-[11px] {{ $isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500' }}">{{ $tab['count'] }}</span>
+                        </a>
+                    @endforeach
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-100 text-sm">
+                    <thead class="bg-slate-50 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+                        <tr>
+                            <th class="px-5 py-3 sm:px-6">Order</th>
+                            <th class="px-5 py-3">Customer</th>
+                            <th class="px-5 py-3">Action</th>
+                            <th class="px-5 py-3">Payment</th>
+                            <th class="px-5 py-3 text-right">Qty</th>
+                            <th class="px-5 py-3 text-right">Open</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        @forelse ($orders as $queueOrder)
+                            <tr class="transition hover:bg-indigo-50/30">
+                                <td class="whitespace-nowrap px-5 py-4 sm:px-6">
+                                    <div class="font-black text-slate-950">#{{ $queueOrder['order_number'] }}</div>
+                                    <div class="mt-1 text-xs font-semibold text-slate-400">{{ $queueOrder['order_status'] ?: 'active' }}</div>
+                                </td>
+                                <td class="px-5 py-4">
+                                    <div class="max-w-[320px] truncate font-bold text-slate-800">{{ $queueOrder['customer'] }}</div>
+                                    <div class="mt-1 max-w-[320px] truncate text-xs font-semibold text-slate-400">{{ $queueOrder['email'] }}</div>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4">
+                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 {{ $actionClasses[$queueOrder['action']] ?? 'bg-slate-50 text-slate-600 ring-slate-200' }}">
+                                        {{ $queueOrder['action'] }}
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4">
+                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 {{ $badgeClasses[$queueOrder['payment_status']] ?? 'bg-slate-50 text-slate-600 ring-slate-200' }}">
+                                        {{ str_replace('_', '-', ucfirst($queueOrder['payment_status'])) }}
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-right">
+                                    <div class="font-black text-slate-900">
+                                        @if ($filters['tab'] === 'awaiting_arrival')
+                                            {{ $queueOrder['awaiting_arrival_qty'] }} awaiting
+                                        @elseif ($filters['tab'] === 'problems')
+                                            {{ $queueOrder['problem_qty'] }} problem
+                                        @elseif ($filters['tab'] === 'completed')
+                                            {{ $queueOrder['purchased_qty'] }} bought
+                                        @else
+                                            {{ $queueOrder['remaining_to_buy_qty'] }} to buy
+                                        @endif
+                                    </div>
+                                    <div class="mt-1 text-xs font-semibold text-slate-400">{{ $queueOrder['retailer_count'] }} retailer{{ $queueOrder['retailer_count'] === 1 ? '' : 's' }}</div>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-4 text-right">
+                                    <a href="{{ route('purchasing.show', $queueOrder['order_id']) }}" class="inline-flex items-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-indigo-700">
+                                        Open Workspace
+                                    </a>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="6" class="px-5 py-14 text-center sm:px-6">
+                                    <div class="text-lg font-black text-slate-800">Nothing here</div>
+                                    <p class="mt-2 text-sm font-medium text-slate-500">This queue has no matching orders right now.</p>
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
 </x-app-layout>
