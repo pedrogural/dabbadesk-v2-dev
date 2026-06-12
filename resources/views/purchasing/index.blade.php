@@ -16,13 +16,11 @@
             'unpaid' => 'Unpaid only',
             'all' => 'All payment states',
         ];
-        $statusBadge = function ($item) {
-            if (($item->purchase_remaining_qty ?? 0) > 0 && ($item->problem_qty ?? 0) > 0) return ['Sourcing issue', 'bg-amber-50 text-amber-700 border-amber-100'];
-            if (($item->purchase_remaining_qty ?? 0) > 0) return ['Ready to buy', 'bg-emerald-50 text-emerald-700 border-emerald-100'];
-            if (($item->arrival_remaining_qty ?? 0) > 0) return ['Awaiting arrival', 'bg-sky-50 text-sky-700 border-sky-100'];
-            if (($item->problem_qty ?? 0) > 0) return ['Problem', 'bg-rose-50 text-rose-700 border-rose-100'];
-            return ['Complete', 'bg-slate-50 text-slate-600 border-slate-100'];
-        };
+        $paymentBadgeClasses = [
+            'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+            'part_paid' => 'bg-amber-50 text-amber-700 ring-amber-100',
+            'unpaid' => 'bg-rose-50 text-rose-700 ring-rose-100',
+        ];
     @endphp
 
     <div class="space-y-6">
@@ -43,7 +41,7 @@
                 <div>
                     <p class="text-xs font-black uppercase tracking-[0.24em] text-indigo-500">DabbaDesk</p>
                     <h1 class="mt-1 text-2xl font-black text-slate-950">Purchasing Desk</h1>
-                    <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Order-first purchasing. Items are grouped by customer order first, then retailer. We never merge different customer orders into one retailer basket.</p>
+                    <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Order-first purchasing. This page is the queue; open an order workspace to record purchases or resolve problems.</p>
                 </div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600 ring-1 ring-slate-100">
                     {{ $summary['visible_order_count'] ?? 0 }} visible order{{ ($summary['visible_order_count'] ?? 0) == 1 ? '' : 's' }}
@@ -86,87 +84,56 @@
             </div>
         </section>
 
-        <section class="space-y-4">
+        <section class="grid gap-4 xl:grid-cols-2">
             @forelse ($orderGroups as $group)
-                <article class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
-                    <header class="border-b border-slate-100 bg-slate-50/70 p-5">
-                        <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                            <div class="min-w-0">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <a href="{{ route('orders.show', $group->order_id) }}" class="text-xl font-black text-indigo-700 hover:text-indigo-800">Order #{{ $group->order_number }} ↗</a>
-                                    <span class="rounded-full bg-white px-2.5 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-200">{{ ucfirst(str_replace('_', ' ', $group->payment_status)) }}</span>
-                                    <span class="rounded-full bg-white px-2.5 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-200">{{ $group->retailer_count }} retailer{{ $group->retailer_count === 1 ? '' : 's' }}</span>
-                                </div>
-                                <p class="mt-1 text-sm font-semibold text-slate-600">{{ $group->customer_name ?: 'Unknown customer' }}</p>
+                @php
+                    $progressTotal = max(1, (int) $group->requested_qty);
+                    $progressDone = min($progressTotal, (int) $group->purchased_qty + (int) $group->problem_qty);
+                    $progressPercent = (int) round(($progressDone / $progressTotal) * 100);
+                    $paymentClass = $paymentBadgeClasses[$group->payment_status] ?? 'bg-slate-50 text-slate-700 ring-slate-100';
+                @endphp
+                <article class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+                    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <a href="{{ route('purchasing.orders.show', $group->order_id) }}" class="text-xl font-black text-indigo-700 hover:text-indigo-800">Order #{{ $group->order_number }} ↗</a>
+                                <span class="rounded-full px-2.5 py-1 text-xs font-black ring-1 {{ $paymentClass }}">{{ ucfirst(str_replace('_', ' ', $group->payment_status)) }}</span>
                             </div>
-                            <div class="grid grid-cols-4 gap-2 text-center sm:min-w-[34rem]">
-                                <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100"><p class="text-xs font-black text-slate-400">To buy</p><p class="text-lg font-black text-emerald-700">{{ $group->pending_qty }}</p></div>
-                                <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100"><p class="text-xs font-black text-slate-400">Bought</p><p class="text-lg font-black text-slate-900">{{ $group->purchased_qty }}</p></div>
-                                <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100"><p class="text-xs font-black text-slate-400">Awaiting</p><p class="text-lg font-black text-sky-700">{{ $group->awaiting_arrival_qty }}</p></div>
-                                <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100"><p class="text-xs font-black text-slate-400">Problems</p><p class="text-lg font-black text-rose-700">{{ $group->problem_qty }}</p></div>
-                            </div>
+                            <p class="mt-1 text-sm font-semibold text-slate-600">{{ $group->customer_name ?: 'Unknown customer' }}</p>
+                            <p class="mt-2 text-xs font-bold text-slate-400">{{ $group->retailer_count }} retailer{{ $group->retailer_count === 1 ? '' : 's' }} · {{ $group->item_count }} item line{{ $group->item_count === 1 ? '' : 's' }} · {{ $group->requested_qty }} qty</p>
                         </div>
-                    </header>
+                        <a href="{{ route('purchasing.orders.show', $group->order_id) }}" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-slate-800">Open workspace</a>
+                    </div>
 
-                    <div class="space-y-4 p-5">
+                    <div class="mt-5 grid grid-cols-4 gap-2 text-center">
+                        <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase text-emerald-700">To buy</p><p class="text-lg font-black text-emerald-700">{{ $group->pending_qty }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase text-slate-400">Bought</p><p class="text-lg font-black text-slate-900">{{ $group->purchased_qty }}</p></div>
+                        <div class="rounded-2xl bg-sky-50 p-3 ring-1 ring-sky-100"><p class="text-[10px] font-black uppercase text-sky-700">Awaiting</p><p class="text-lg font-black text-sky-700">{{ $group->awaiting_arrival_qty }}</p></div>
+                        <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase text-rose-700">Problems</p><p class="text-lg font-black text-rose-700">{{ $group->problem_qty }}</p></div>
+                    </div>
+
+                    <div class="mt-4">
+                        <div class="flex items-center justify-between text-xs font-black text-slate-400">
+                            <span>Purchase progress</span>
+                            <span>{{ $progressPercent }}%</span>
+                        </div>
+                        <div class="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div class="h-full rounded-full bg-indigo-500" style="width: {{ $progressPercent }}%"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap gap-2">
                         @foreach ($group->retailer_groups as $retailer)
-                            <section class="rounded-3xl border border-slate-200 bg-white">
-                                <div class="flex flex-col gap-2 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
-                                    <div>
-                                        <p class="text-base font-black text-slate-950">{{ $retailer->name }}</p>
-                                        <p class="text-xs font-semibold text-slate-500">{{ $retailer->host ?: 'Retailer section' }}</p>
-                                    </div>
-                                    <div class="flex flex-wrap gap-2 text-xs font-black">
-                                        <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-emerald-700 ring-1 ring-emerald-100">{{ $retailer->pending_qty }} to buy</span>
-                                        <span class="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700 ring-1 ring-sky-100">{{ $retailer->awaiting_arrival_qty }} awaiting</span>
-                                        @if ($retailer->problem_qty > 0)
-                                            <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700 ring-1 ring-rose-100">{{ $retailer->problem_qty }} problem</span>
-                                        @endif
-                                    </div>
-                                </div>
-
-                                <div class="divide-y divide-slate-100">
-                                    @foreach ($retailer->items as $item)
-                                        @php [$label, $badgeClass] = $statusBadge($item); @endphp
-                                        <details class="group">
-                                            <summary class="grid cursor-pointer gap-3 px-4 py-4 hover:bg-slate-50 lg:grid-cols-[minmax(0,1.7fr)_90px_90px_90px_130px] lg:items-center">
-                                                <div class="min-w-0">
-                                                    <p class="font-black text-slate-950">{{ \Illuminate\Support\Str::limit($item->item_name, 120) }}</p>
-                                                    <p class="mt-1 text-xs font-semibold text-slate-500">Root #{{ $item->root_item_id }} · Item #{{ $item->id }}</p>
-                                                </div>
-                                                <div class="text-sm font-black text-slate-700">Qty {{ $item->quantity }}</div>
-                                                <div class="text-sm font-black text-emerald-700">Buy {{ $item->purchase_remaining_qty }}</div>
-                                                <div class="text-sm font-black text-sky-700">Arr {{ $item->arrived_qty }}</div>
-                                                <div><span class="inline-flex rounded-full border px-2.5 py-1 text-xs font-black {{ $badgeClass }}">{{ $label }}</span></div>
-                                            </summary>
-                                            <div class="border-t border-slate-100 bg-slate-50/60 p-4">
-                                                @include('shared.purchasing._item_action_forms', ['item' => $item])
-                                            </div>
-                                        </details>
-                                    @endforeach
-                                </div>
-                            </section>
+                            <span class="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-100">{{ $retailer->name }} · {{ $retailer->pending_qty }} buy · {{ $retailer->awaiting_arrival_qty }} wait</span>
                         @endforeach
                     </div>
                 </article>
             @empty
-                <div class="rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
+                <div class="xl:col-span-2 rounded-[2rem] border border-slate-200 bg-white p-10 text-center shadow-sm">
                     <p class="text-lg font-black text-slate-900">Nothing in this tab.</p>
                     <p class="mt-1 text-sm font-semibold text-slate-500">Try a different payment filter or clear the search.</p>
                 </div>
             @endforelse
         </section>
-
-        @if ($recentEvents->isNotEmpty())
-            <section class="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <div class="flex items-center justify-between gap-3">
-                    <div>
-                        <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Recent events</p>
-                        <h2 class="mt-1 text-lg font-black text-slate-950">Latest purchasing activity</h2>
-                    </div>
-                </div>
-                @include('shared.purchasing._purchase_event_table', ['purchaseEvents' => $recentEvents])
-            </section>
-        @endif
     </div>
 </x-app-layout>

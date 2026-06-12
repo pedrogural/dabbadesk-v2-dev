@@ -70,6 +70,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 
     Route::get('/purchasing', [PurchasingDeskController::class, 'index'])->name('purchasing.index');
+    Route::get('/purchasing/orders/{order}', [PurchasingDeskController::class, 'showOrder'])->name('purchasing.orders.show');
     Route::post('/purchasing/purchases', [PurchasingDeskController::class, 'storePurchase'])->name('purchasing.purchases.store');
     Route::post('/purchasing/problems', [PurchasingDeskController::class, 'storeProblem'])->name('purchasing.problems.store');
     Route::post('/purchasing/events/{purchase}/undo', [PurchasingDeskController::class, 'undoEvent'])->name('purchasing.events.undo');
