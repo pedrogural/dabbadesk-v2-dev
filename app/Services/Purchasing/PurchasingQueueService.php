@@ -23,16 +23,23 @@ class PurchasingQueueService
         $items = $this->itemRows($search);
         $orders = $this->groupOrders($items);
 
+        // Counts should match the selected payment filter.
+        // Example: Paid-only + To Buy should not show a global unpaid count.
+        $paymentScopedOrders = $orders
+            ->filter(fn ($order) => $this->matchesPayment($order['payment_status'], $payment))
+            ->values();
+
+        // Build tab counts from the exact same bucket rules used to display rows.
+        // This prevents the header badges saying "7" while the selected queue is empty.
         $summary = [
-            'to_buy' => $orders->filter(fn ($order) => $order['remaining_to_buy_qty'] > 0)->count(),
-            'awaiting_arrival' => $orders->filter(fn ($order) => $order['awaiting_arrival_qty'] > 0)->count(),
-            'problems' => $orders->filter(fn ($order) => $order['problem_qty'] > 0)->count(),
-            'completed' => $orders->filter(fn ($order) => $order['is_completed'])->count(),
-            'total' => $orders->count(),
+            'to_buy' => $paymentScopedOrders->filter(fn ($order) => $this->isToBuyOrder($order))->count(),
+            'awaiting_arrival' => $paymentScopedOrders->filter(fn ($order) => $this->isAwaitingArrivalOrder($order))->count(),
+            'problems' => $paymentScopedOrders->filter(fn ($order) => $this->isProblemOrder($order))->count(),
+            'completed' => $paymentScopedOrders->filter(fn ($order) => $this->isCompletedOrder($order))->count(),
+            'total' => $paymentScopedOrders->count(),
         ];
 
-        $filtered = $orders
-            ->filter(fn ($order) => $this->matchesPayment($order['payment_status'], $payment))
+        $filtered = $paymentScopedOrders
             ->filter(fn ($order) => $this->matchesTab($order, $tab))
             ->values();
 
@@ -190,12 +197,15 @@ class PurchasingQueueService
                 'oi.unit_price',
                 'oi.line_total',
                 'oi.status as item_status',
+                'oi.purchase_problem_reason',
+                'oi.purchase_problem_note',
                 'ore.retailer_id',
                 DB::raw('COALESCE(r.name, ore.retailer_name, "Unknown retailer") as retailer_name'),
                 DB::raw('COALESCE(oi.root_item_id, oi.id) as lineage_root_id'),
                 DB::raw('COALESCE(pt.purchased_qty, 0) as purchased_qty'),
                 DB::raw('COALESCE(pt.terminal_problem_qty, 0) as terminal_problem_qty'),
-                DB::raw('COALESCE(pt.pending_problem_qty, 0) as problem_qty'),
+                DB::raw("CASE WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END as item_sourcing_problem_qty"),
+                DB::raw("COALESCE(pt.pending_problem_qty, 0) + CASE WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END as problem_qty"),
                 DB::raw('COALESCE(at.arrived_qty, 0) as arrived_qty'),
                 DB::raw('COALESCE(pt.latest_purchase_event_at, NULL) as latest_purchase_event_at'),
                 DB::raw('COALESCE(at.latest_arrival_at, NULL) as latest_arrival_at'),
@@ -206,7 +216,7 @@ class PurchasingQueueService
                     WHEN COALESCE(st.settled_amount, 0) > 0 THEN 'part_paid'
                     ELSE 'unpaid'
                 END as payment_status"),
-                DB::raw('GREATEST(0, oi.quantity - COALESCE(pt.purchased_qty, 0) - COALESCE(pt.terminal_problem_qty, 0)) as remaining_to_buy_qty'),
+                DB::raw("GREATEST(0, oi.quantity - COALESCE(pt.purchased_qty, 0) - COALESCE(pt.terminal_problem_qty, 0) - CASE WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END) as remaining_to_buy_qty"),
                 DB::raw('GREATEST(0, COALESCE(pt.purchased_qty, 0) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(at.arrived_qty, 0)) as awaiting_arrival_qty'),
             ])
             ->whereNull('o.cancelled_at')
@@ -259,6 +269,7 @@ class PurchasingQueueService
                 $row->quantity = (int) $row->quantity;
                 $row->purchased_qty = (int) $row->purchased_qty;
                 $row->terminal_problem_qty = (int) $row->terminal_problem_qty;
+                $row->item_sourcing_problem_qty = (int) ($row->item_sourcing_problem_qty ?? 0);
                 $row->problem_qty = (int) $row->problem_qty;
                 $row->arrived_qty = (int) $row->arrived_qty;
                 $row->remaining_to_buy_qty = (int) $row->remaining_to_buy_qty;
@@ -355,12 +366,47 @@ class PurchasingQueueService
     private function matchesTab(array $order, string $tab): bool
     {
         return match ($tab) {
-            'to_buy' => $order['remaining_to_buy_qty'] > 0,
-            'awaiting_arrival' => $order['awaiting_arrival_qty'] > 0,
-            'problems' => $order['problem_qty'] > 0,
-            'completed' => $order['is_completed'],
+            'to_buy' => $this->isToBuyOrder($order),
+            'awaiting_arrival' => $this->isAwaitingArrivalOrder($order),
+            'problems' => $this->isProblemOrder($order),
+            'completed' => $this->isCompletedOrder($order),
             default => true,
         };
+    }
+
+    /**
+     * Purchasing queue priority:
+     *
+     * 1. Problems first: sourcing issues or failed purchase decisions must not
+     *    sit in the plain To Buy queue.
+     * 2. To Buy second: only clean buyable orders belong here.
+     * 3. Awaiting Arrival third: already bought and waiting for goods.
+     * 4. Completed last.
+     */
+    private function isProblemOrder(array $order): bool
+    {
+        return (int) ($order['problem_qty'] ?? 0) > 0;
+    }
+
+    private function isToBuyOrder(array $order): bool
+    {
+        return ! $this->isProblemOrder($order)
+            && (int) ($order['remaining_to_buy_qty'] ?? 0) > 0;
+    }
+
+    private function isAwaitingArrivalOrder(array $order): bool
+    {
+        return ! $this->isProblemOrder($order)
+            && ! $this->isToBuyOrder($order)
+            && (int) ($order['awaiting_arrival_qty'] ?? 0) > 0;
+    }
+
+    private function isCompletedOrder(array $order): bool
+    {
+        return ! $this->isProblemOrder($order)
+            && ! $this->isToBuyOrder($order)
+            && ! $this->isAwaitingArrivalOrder($order)
+            && (bool) ($order['is_completed'] ?? false);
     }
 
     private function matchesPayment(string $status, string $payment): bool

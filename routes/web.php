@@ -8,6 +8,7 @@ use App\Http\Controllers\MoneyDeskController;
 use App\Http\Controllers\OrderRequestsController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PurchasingController;
+use App\Http\Controllers\PurchasingDeskController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicIntakeSupportController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +23,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
     Route::get('/purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
     Route::get('/purchasing/orders/{order}', [PurchasingController::class, 'show'])->name('purchasing.show');
+    Route::get('/purchasing/orders/{order}/workspace', [PurchasingController::class, 'show'])->name('purchasing.orders.show');
+    Route::post('/purchasing/purchases', [PurchasingDeskController::class, 'storePurchase'])->name('purchasing.purchases.store');
+    Route::post('/purchasing/problems', [PurchasingDeskController::class, 'storeProblem'])->name('purchasing.problems.store');
+    Route::post('/purchasing/events/{purchase}/undo', [PurchasingDeskController::class, 'undoEvent'])->name('purchasing.events.undo');
 
     Route::get('/customers', [CustomersController::class, 'index'])->name('customers.index');
     Route::get('/customers/live-search', [CustomersController::class, 'liveSearch'])->name('customers.live-search');
