@@ -10,7 +10,7 @@
 <?php $component->withAttributes([]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-     <?php $__env->slot('header', null, []); ?> Purchase Desk <?php $__env->endSlot(); ?>
+     <?php $__env->slot('header', null, []); ?> Order Purchasing Workspace <?php $__env->endSlot(); ?>
 
     <?php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
@@ -54,13 +54,13 @@
                 <div class="mt-4 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
                     <div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <h1 class="text-3xl font-black tracking-tight">Order #<?php echo e($orderNumber); ?></h1>
+                            <h1 class="text-3xl font-black tracking-tight">Purchase Items for Order #<?php echo e($orderNumber); ?></h1>
                             <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($paymentClass); ?>"><?php echo e($paymentLabel); ?></span>
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($order->purchase_mode ?? '') === 'customer_self_purchase'): ?>
                                 <span class="rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700 ring-1 ring-sky-200">Customer self-purchase</span>
                             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
-                        <p class="mt-2 text-sm font-semibold text-slate-300"><?php echo e($customer); ?></p>
+                        <p class="mt-2 text-sm font-semibold text-slate-300">Order-specific purchasing screen · <?php echo e($customer); ?></p>
                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($order->bill_to_email): ?>
                             <p class="mt-1 text-xs font-bold text-slate-400"><?php echo e($order->bill_to_email); ?></p>
                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -175,7 +175,7 @@
                                     <div class="grid gap-3 px-4 py-4 md:grid-cols-[48px_1fr_120px_120px_130px_70px] md:items-center <?php echo e($canBuy ? 'bg-white' : 'bg-slate-50/70'); ?>">
                                         <div>
                                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canBuy): ?>
-                                                <input type="checkbox" name="order_item_ids[]" value="<?php echo e($item->item_id); ?>" checked data-line-checkbox class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                                <input type="checkbox" name="order_item_ids[]" value="<?php echo e($item->item_id); ?>" data-line-checkbox class="h-5 w-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                                             <?php else: ?>
                                                 <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-xs font-black text-emerald-700 ring-1 ring-emerald-200">✓</span>
                                             <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -247,23 +247,23 @@
                             <div class="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
                                 <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                     <div>
-                                        <p class="text-sm font-black text-indigo-950"><span data-selected-lines><?php echo e($remainingItems->count()); ?></span> selected item line<?php echo e($remainingItems->count() === 1 ? '' : 's'); ?></p>
-                                        <p class="mt-1 text-xs font-bold text-indigo-700">Tick only the items you are buying now. Reduce quantity where the retailer has less stock.</p>
+                                        <p class="text-sm font-black text-indigo-950"><span data-selected-lines>0</span> selected item lines</p>
+                                        <p class="mt-1 text-xs font-bold text-indigo-700">No items are selected by default. Tick only the items you are buying now. Reduce quantity where the retailer has less stock.</p>
                                     </div>
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" data-select-all class="rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">Select all</button>
-                                        <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Select none</button>
+                                        <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
                                     </div>
                                 </div>
 
                                 <div class="mt-4 grid gap-3 lg:grid-cols-4">
                                     <div class="lg:col-span-2">
                                         <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Retailer order reference</label>
-                                        <input name="retailer_order_reference" maxlength="255" placeholder="e.g. 123-1234567-1234567" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                        <input name="retailer_order_reference" maxlength="255" required placeholder="e.g. 123-1234567-1234567" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
                                     </div>
                                     <div>
                                         <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">ETA / expected UK hub</label>
-                                        <input name="expected_uk_hub_at" type="date" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                        <input name="expected_uk_hub_at" type="date" required class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
                                     </div>
                                     <div>
                                         <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordered date</label>
@@ -315,6 +315,33 @@
             });
 
             checkboxes.forEach((checkbox) => checkbox.addEventListener('change', update));
+
+            form.addEventListener('submit', (event) => {
+                const selectedCount = checkboxes.filter((checkbox) => checkbox.checked).length;
+                const reference = form.querySelector('[name="retailer_order_reference"]');
+                const eta = form.querySelector('[name="expected_uk_hub_at"]');
+
+                if (selectedCount === 0) {
+                    event.preventDefault();
+                    alert('Please select at least one item to purchase.');
+                    return;
+                }
+
+                if (! reference?.value.trim()) {
+                    event.preventDefault();
+                    reference?.focus();
+                    alert('Retailer order reference is required before saving a purchase.');
+                    return;
+                }
+
+                if (! eta?.value) {
+                    event.preventDefault();
+                    eta?.focus();
+                    alert('ETA / expected UK hub date is required before saving a purchase.');
+                    return;
+                }
+            });
+
             update();
         });
     </script>
