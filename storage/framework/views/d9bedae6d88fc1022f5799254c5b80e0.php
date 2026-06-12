@@ -10,146 +10,129 @@
 <?php $component->withAttributes([]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-     <?php $__env->slot('header', null, []); ?> 
-        Purchasing Desk
-     <?php $__env->endSlot(); ?>
+     <?php $__env->slot('header', null, []); ?> Purchase Queue <?php $__env->endSlot(); ?>
 
     <?php
-        $badgeClasses = [
-            'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-            'part_paid' => 'bg-amber-50 text-amber-700 ring-amber-200',
-            'unpaid' => 'bg-slate-50 text-slate-600 ring-slate-200',
-        ];
-        $actionClasses = [
-            'Buy Items' => 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-            'Await Arrival' => 'bg-sky-50 text-sky-700 ring-sky-200',
-            'Resolve Problem' => 'bg-rose-50 text-rose-700 ring-rose-200',
-            'Completed' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+        $money = fn ($amount) => '£' . number_format((float) $amount, 2);
+        $paymentBadge = [
+            'paid' => ['label' => 'Fully Paid', 'class' => 'bg-emerald-50 text-emerald-700 ring-emerald-200', 'dot' => 'bg-emerald-500'],
+            'part_paid' => ['label' => 'Part Paid', 'class' => 'bg-amber-50 text-amber-700 ring-amber-200', 'dot' => 'bg-amber-500'],
+            'unpaid' => ['label' => 'Unpaid', 'class' => 'bg-rose-50 text-rose-700 ring-rose-200', 'dot' => 'bg-rose-500'],
         ];
     ?>
 
-    <div class="space-y-6">
-        <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="border-b border-slate-100 bg-gradient-to-br from-slate-50 to-white px-5 py-5 sm:px-6">
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div class="mx-auto max-w-6xl space-y-5">
+        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 text-white sm:px-7">
+                <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                        <p class="text-xs font-bold uppercase tracking-[0.22em] text-indigo-500">Order-first purchasing</p>
-                        <h2 class="mt-2 text-2xl font-black tracking-tight text-slate-950">Purchasing queue</h2>
-                        <p class="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                            A calm queue of customer orders needing purchasing attention. Details live inside the workspace.
+                        <p class="text-xs font-black uppercase tracking-[0.24em] text-indigo-200">Order → Retailer → Reference</p>
+                        <h1 class="mt-2 text-3xl font-black tracking-tight">Purchase Queue</h1>
+                        <p class="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-300">
+                            Only orders with payment are shown by default. Use All Orders when a purchaser deliberately needs to buy before payment is recorded.
                         </p>
                     </div>
-
-                    <form method="GET" action="<?php echo e(route('purchasing.index')); ?>" class="flex w-full flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:w-auto lg:min-w-[520px] lg:flex-row lg:items-center">
-                        <input type="hidden" name="tab" value="<?php echo e($filters['tab']); ?>">
-                        <label class="sr-only" for="purchasing-q">Search purchasing queue</label>
-                        <input
-                            id="purchasing-q"
-                            name="q"
-                            value="<?php echo e($filters['q']); ?>"
-                            placeholder="Search order, customer, item or retailer"
-                            class="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200"
-                        >
-                        <select name="payment" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200">
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $paymentOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $value => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                                <option value="<?php echo e($value); ?>" <?php if($filters['payment'] === $value): echo 'selected'; endif; ?>><?php echo e($label); ?></option>
-                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                        </select>
-                        <button class="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">
-                            Search
-                        </button>
-                    </form>
+                    <div class="grid grid-cols-3 gap-2 sm:min-w-[420px]">
+                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">To buy</p>
+                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['to_buy'] ?? 0); ?></p>
+                        </div>
+                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Awaiting</p>
+                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['awaiting_arrival'] ?? 0); ?></p>
+                        </div>
+                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Problems</p>
+                            <p class="mt-1 text-2xl font-black"><?php echo e($summary['problems'] ?? 0); ?></p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="border-b border-slate-100 px-5 py-4 sm:px-6">
-                <div class="flex flex-wrap gap-2">
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $tabs; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $tab): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                        <?php
-                            $isActive = $filters['tab'] === $key;
-                            $url = route('purchasing.index', array_filter([
-                                'tab' => $key,
-                                'payment' => $filters['payment'],
-                                'q' => $filters['q'],
-                            ], fn ($value) => $value !== null && $value !== ''));
-                        ?>
-                        <a
-                            href="<?php echo e($url); ?>"
-                            class="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-black ring-1 transition <?php echo e($isActive ? 'bg-indigo-600 text-white ring-indigo-600 shadow-sm shadow-indigo-100' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-900'); ?>"
-                        >
-                            <span><?php echo e($tab['label']); ?></span>
-                            <span class="rounded-full px-2 py-0.5 text-[11px] <?php echo e($isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'); ?>"><?php echo e($tab['count']); ?></span>
-                        </a>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+            <form method="GET" action="<?php echo e(route('purchasing.index')); ?>" class="border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
+                <input type="hidden" name="tab" value="to_buy">
+                <input type="hidden" name="payment" value="<?php echo e($filters['payment']); ?>">
+                <div class="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
+                    <div>
+                        <label for="purchase-search" class="sr-only">Search orders</label>
+                        <input id="purchase-search" name="q" value="<?php echo e($filters['q']); ?>" placeholder="Search order number, customer, item or retailer" class="h-12 w-full rounded-2xl border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200">
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'paid_or_part', 'q' => $filters['q']])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'paid_or_part' ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">Paid & Part Paid</a>
+                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'all', 'q' => $filters['q']])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'all' ? 'bg-rose-600 text-white ring-rose-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">All Orders</a>
+                        <button class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-indigo-700">Search</button>
+                    </div>
                 </div>
-            </div>
+            </form>
+        </section>
 
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-100 text-sm">
-                    <thead class="bg-slate-50 text-left text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
-                        <tr>
-                            <th class="px-5 py-3 sm:px-6">Order</th>
-                            <th class="px-5 py-3">Customer</th>
-                            <th class="px-5 py-3">Action</th>
-                            <th class="px-5 py-3">Payment</th>
-                            <th class="px-5 py-3 text-right">Qty</th>
-                            <th class="px-5 py-3 text-right">Open</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $orders; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $queueOrder): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                            <tr class="transition hover:bg-indigo-50/30">
-                                <td class="whitespace-nowrap px-5 py-4 sm:px-6">
-                                    <div class="font-black text-slate-950">#<?php echo e($queueOrder['order_number']); ?></div>
-                                    <div class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($queueOrder['order_status'] ?: 'active'); ?></div>
-                                </td>
-                                <td class="px-5 py-4">
-                                    <div class="max-w-[320px] truncate font-bold text-slate-800"><?php echo e($queueOrder['customer']); ?></div>
-                                    <div class="mt-1 max-w-[320px] truncate text-xs font-semibold text-slate-400"><?php echo e($queueOrder['email']); ?></div>
-                                </td>
-                                <td class="whitespace-nowrap px-5 py-4">
-                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 <?php echo e($actionClasses[$queueOrder['action']] ?? 'bg-slate-50 text-slate-600 ring-slate-200'); ?>">
-                                        <?php echo e($queueOrder['action']); ?>
+        <section class="space-y-3">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $orders; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $queueOrder): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                <?php
+                    $badge = $paymentBadge[$queueOrder['payment_status']] ?? $paymentBadge['unpaid'];
+                    $retailerNames = collect($queueOrder['items'])->pluck('retailer_name')->filter()->unique()->values();
+                    $retailerTotal = max(1, (int) $queueOrder['retailer_count']);
+                    $purchasedRetailers = collect($queueOrder['items'])
+                        ->groupBy(fn ($item) => (string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer'))
+                        ->filter(fn ($rows) => (int) $rows->sum('remaining_to_buy_qty') === 0 && (int) $rows->sum('purchased_qty') > 0)
+                        ->count();
+                    $statusText = $purchasedRetailers === 0 ? 'Not Started' : $purchasedRetailers . ' / ' . $retailerTotal . ' Retailers Purchased';
+                ?>
 
-                                    </span>
-                                </td>
-                                <td class="whitespace-nowrap px-5 py-4">
-                                    <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-black ring-1 <?php echo e($badgeClasses[$queueOrder['payment_status']] ?? 'bg-slate-50 text-slate-600 ring-slate-200'); ?>">
-                                        <?php echo e(str_replace('_', '-', ucfirst($queueOrder['payment_status']))); ?>
+                <article class="group rounded-[1.7rem] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md sm:p-5">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div class="min-w-0 flex-1">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <h2 class="text-xl font-black text-slate-950">#<?php echo e($queueOrder['order_number']); ?></h2>
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black ring-1 <?php echo e($badge['class']); ?>">
+                                    <span class="h-2 w-2 rounded-full <?php echo e($badge['dot']); ?>"></span><?php echo e($badge['label']); ?>
 
-                                    </span>
-                                </td>
-                                <td class="whitespace-nowrap px-5 py-4 text-right">
-                                    <div class="font-black text-slate-900">
-                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($filters['tab'] === 'awaiting_arrival'): ?>
-                                            <?php echo e($queueOrder['awaiting_arrival_qty']); ?> awaiting
-                                        <?php elseif($filters['tab'] === 'problems'): ?>
-                                            <?php echo e($queueOrder['problem_qty']); ?> problem
-                                        <?php elseif($filters['tab'] === 'completed'): ?>
-                                            <?php echo e($queueOrder['purchased_qty']); ?> bought
-                                        <?php else: ?>
-                                            <?php echo e($queueOrder['remaining_to_buy_qty']); ?> to buy
-                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                                    </div>
-                                    <div class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($queueOrder['retailer_count']); ?> retailer<?php echo e($queueOrder['retailer_count'] === 1 ? '' : 's'); ?></div>
-                                </td>
-                                <td class="whitespace-nowrap px-5 py-4 text-right">
-                                    <a href="<?php echo e(route('purchasing.orders.show', $queueOrder['order_id'])); ?>" class="inline-flex items-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-indigo-700">
-                                        Open Workspace
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                            <tr>
-                                <td colspan="6" class="px-5 py-14 text-center sm:px-6">
-                                    <div class="text-lg font-black text-slate-800">Nothing here</div>
-                                    <p class="mt-2 text-sm font-medium text-slate-500">This queue has no matching orders right now.</p>
-                                </td>
-                            </tr>
-                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                                </span>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($queueOrder['payment_status'] === 'part_paid'): ?>
+                                    <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-200"><?php echo e($money($queueOrder['settled_amount'])); ?> / <?php echo e($money($queueOrder['grand_total'])); ?></span>
+                                <?php elseif($queueOrder['payment_status'] === 'unpaid'): ?>
+                                    <span class="rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-200">Override purchase only</span>
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            </div>
+
+                            <p class="mt-1 truncate text-sm font-bold text-slate-700"><?php echo e($queueOrder['customer']); ?></p>
+                            <div class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Retailers</p>
+                                    <p class="mt-1 font-black text-slate-900"><?php echo e($queueOrder['retailer_count']); ?></p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Items</p>
+                                    <p class="mt-1 font-black text-slate-900"><?php echo e($queueOrder['item_count']); ?></p>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Progress</p>
+                                    <p class="mt-1 font-black text-slate-900"><?php echo e($statusText); ?></p>
+                                </div>
+                            </div>
+
+                            <div class="mt-4 flex flex-wrap gap-2">
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailerNames; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailerName): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                    <?php
+                                        $rows = collect($queueOrder['items'])->where('retailer_name', $retailerName);
+                                        $done = (int) $rows->sum('remaining_to_buy_qty') === 0 && (int) $rows->sum('purchased_qty') > 0;
+                                    ?>
+                                    <span class="rounded-full px-2.5 py-1 text-xs font-black ring-1 <?php echo e($done ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-50 text-slate-600 ring-slate-200'); ?>"><?php echo e($retailerName); ?> <?php echo e($done ? '✓' : '○'); ?></span>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="flex shrink-0 flex-col gap-2 sm:flex-row lg:flex-col">
+                            <a href="<?php echo e(route('purchasing.orders.show', $queueOrder['order_id'])); ?>" class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700">Open Order</a>
+                        </div>
+                    </div>
+                </article>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                <div class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+                    <p class="text-lg font-black text-slate-900">Nothing needs purchasing here.</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-500">Try All Orders or adjust your search.</p>
+                </div>
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
         </section>
     </div>
  <?php echo $__env->renderComponent(); ?>

@@ -15,7 +15,7 @@ class PurchasingController extends Controller
     {
         return view('purchasing.index', $service->queue([
             'tab' => $request->query('tab', 'to_buy'),
-            'payment' => $request->query('payment', 'paid'),
+            'payment' => $request->query('payment', 'paid_or_part'),
             'q' => $request->query('q', ''),
         ]));
     }

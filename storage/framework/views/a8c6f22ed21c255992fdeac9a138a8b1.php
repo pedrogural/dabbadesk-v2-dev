@@ -10,22 +10,28 @@
 <?php $component->withAttributes([]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-     <?php $__env->slot('header', null, []); ?> 
-        Purchasing Workspace
-     <?php $__env->endSlot(); ?>
+     <?php $__env->slot('header', null, []); ?> Order Purchasing <?php $__env->endSlot(); ?>
 
     <?php
+        $money = fn ($amount) => '£' . number_format((float) $amount, 2);
         $orderNumber = $order->order_number ?? $order->id;
         $customer = trim((string) ($order->bill_to_company ?: $order->bill_to_name ?: 'Unknown customer'));
-        $queueOrder = $queueOrder ?? null;
-        $buyItems = $items->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0)->values();
-        $awaitingItems = $items->filter(fn ($item) => (int) $item->awaiting_arrival_qty > 0)->values();
-        $problemItems = $items->filter(fn ($item) => (int) $item->problem_qty > 0)->values();
-        $tabUrls = collect($tabs)->mapWithKeys(fn ($label, $key) => [$key => route('purchasing.orders.show', ['order' => $order->id, 'tab' => $key])]);
-        $paymentStatus = $queueOrder['payment_status'] ?? 'unknown';
+        $paymentStatus = $queueOrder['payment_status'] ?? 'unpaid';
+        $paymentLabel = match ($paymentStatus) {
+            'paid' => 'Fully Paid',
+            'part_paid' => 'Part Paid',
+            default => 'Unpaid',
+        };
+        $paymentClass = match ($paymentStatus) {
+            'paid' => 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+            'part_paid' => 'bg-amber-50 text-amber-700 ring-amber-200',
+            default => 'bg-rose-50 text-rose-700 ring-rose-200',
+        };
+        $retailerTotal = max(1, $retailers->count());
+        $purchasedRetailers = $retailers->filter(fn ($retailer) => (int) $retailer['remaining_to_buy_qty'] === 0 && (int) $retailer['purchased_qty'] > 0)->count();
     ?>
 
-    <div class="space-y-6">
+    <div class="mx-auto max-w-6xl space-y-5">
         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?>
             <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800"><?php echo e(session('success')); ?></div>
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
@@ -38,140 +44,174 @@
             </div>
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-        <section class="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-            <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 text-white sm:px-6">
-                <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <section class="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+            <div class="bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 px-5 py-6 text-white sm:px-7">
+                <a href="<?php echo e(route('purchasing.index')); ?>" class="text-xs font-black uppercase tracking-[0.22em] text-indigo-200 hover:text-white">← Back to Purchase Queue</a>
+                <div class="mt-4 flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                     <div>
-                        <a href="<?php echo e(route('purchasing.index')); ?>" class="text-xs font-black uppercase tracking-[0.22em] text-indigo-200 hover:text-white">← Back to queue</a>
-                        <h2 class="mt-3 text-3xl font-black tracking-tight">Order #<?php echo e($orderNumber); ?></h2>
+                        <h1 class="text-3xl font-black tracking-tight">Order #<?php echo e($orderNumber); ?></h1>
                         <p class="mt-1 text-sm font-semibold text-slate-300"><?php echo e($customer); ?></p>
-                        <p class="mt-2 max-w-2xl text-xs font-semibold leading-5 text-slate-400">Purchasing is always recorded inside this customer order. Items from different customer orders are never merged into one retailer basket.</p>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($paymentClass); ?>"><?php echo e($paymentLabel); ?></span>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($paymentStatus === 'part_paid'): ?>
+                                <span class="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black text-white ring-1 ring-white/10"><?php echo e($money($queueOrder['settled_amount'] ?? 0)); ?> / <?php echo e($money($queueOrder['grand_total'] ?? 0)); ?></span>
+                            <?php elseif($paymentStatus === 'unpaid'): ?>
+                                <span class="rounded-full bg-rose-500/20 px-3 py-1.5 text-xs font-black text-rose-100 ring-1 ring-rose-300/30">Manual purchase override</span>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
+
+                    <div class="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
                         <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-300">To buy</div>
-                            <div class="mt-1 text-2xl font-black"><?php echo e($queueOrder['remaining_to_buy_qty'] ?? 0); ?></div>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Order Value</p>
+                            <p class="mt-1 text-xl font-black"><?php echo e($money($queueOrder['grand_total'] ?? $order->grand_total ?? 0)); ?></p>
                         </div>
                         <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-300">Awaiting</div>
-                            <div class="mt-1 text-2xl font-black"><?php echo e($queueOrder['awaiting_arrival_qty'] ?? 0); ?></div>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Paid</p>
+                            <p class="mt-1 text-xl font-black"><?php echo e($money($queueOrder['settled_amount'] ?? 0)); ?></p>
                         </div>
                         <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-300">Problems</div>
-                            <div class="mt-1 text-2xl font-black"><?php echo e($queueOrder['problem_qty'] ?? 0); ?></div>
-                        </div>
-                        <div class="rounded-2xl bg-white/10 p-3 ring-1 ring-white/10">
-                            <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-300">Payment</div>
-                            <div class="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-xs font-black text-slate-900"><?php echo e(str_replace('_', '-', ucfirst($paymentStatus))); ?></div>
+                            <p class="text-[10px] font-black uppercase tracking-wide text-slate-300">Purchasing</p>
+                            <p class="mt-1 text-xl font-black"><?php echo e($purchasedRetailers); ?> / <?php echo e($retailerTotal); ?></p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="border-b border-slate-100 bg-white px-5 py-3 sm:px-6">
+            <div class="border-b border-slate-100 bg-white px-5 py-4 sm:px-7">
                 <div class="flex flex-wrap gap-2">
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $tabs; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                        <a href="<?php echo e($tabUrls[$key]); ?>" class="rounded-2xl px-4 py-2 text-sm font-black ring-1 transition <?php echo e($activeTab === $key ? 'bg-indigo-600 text-white ring-indigo-600 shadow-sm shadow-indigo-100' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50 hover:text-slate-950'); ?>">
-                            <?php echo e($label); ?>
-
-                        </a>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                        <?php
+                            $hasProblem = (int) $retailer['problem_qty'] > 0;
+                            $isPurchased = (int) $retailer['remaining_to_buy_qty'] === 0 && (int) $retailer['purchased_qty'] > 0;
+                            $pillClass = $hasProblem
+                                ? 'bg-rose-50 text-rose-700 ring-rose-200'
+                                : ($isPurchased ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-slate-50 text-slate-600 ring-slate-200');
+                        ?>
+                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($pillClass); ?>"><?php echo e($retailer['retailer_name']); ?> <?php echo e($hasProblem ? '!' : ($isPurchased ? '✓' : '○')); ?></span>
                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                    <a href="<?php echo e(route('orders.show', $order->id)); ?>" class="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-black text-slate-700 ring-1 ring-slate-200 hover:bg-slate-200">Order UX ↗</a>
                 </div>
             </div>
         </section>
 
-        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($activeTab === 'overview'): ?>
-            <section class="grid gap-5 lg:grid-cols-3">
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
-                    <h3 class="text-lg font-black text-slate-950">Retailer work groups</h3>
-                    <p class="mt-1 text-sm text-slate-500">Retailers are sections inside this order, not global baskets.</p>
+        <section class="grid gap-4 lg:grid-cols-2">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                <?php
+                    $retailerItems = collect($retailer['items']);
+                    $remainingItems = $retailerItems->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0)->values();
+                    $rootIds = $retailerItems->pluck('lineage_root_id')->filter()->unique()->values();
+                    $history = $purchases->filter(fn ($purchase) => $rootIds->contains((int) $purchase->root_item_id))->whereNull('cancelled_at')->values();
+                    $refs = $history->pluck('retailer_order_reference')->filter()->unique()->values();
+                    $expected = $history->pluck('expected_uk_hub_at')->filter()->sort()->first();
+                    $hasProblem = (int) $retailer['problem_qty'] > 0;
+                    $isPurchased = (int) $retailer['remaining_to_buy_qty'] === 0 && (int) $retailer['purchased_qty'] > 0;
+                    $isReceived = $isPurchased && (int) $retailer['awaiting_arrival_qty'] === 0 && (int) $retailer['arrived_qty'] > 0;
+                    $statusLabel = $hasProblem ? 'Problem' : ($isReceived ? 'Received' : ($isPurchased ? 'Purchased' : 'Ready To Purchase'));
+                    $cardClass = $hasProblem ? 'border-rose-200' : ($isPurchased ? 'border-emerald-200' : 'border-slate-200');
+                ?>
 
-                    <div class="mt-5 divide-y divide-slate-100 rounded-2xl border border-slate-100">
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                            <div class="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <div class="font-black text-slate-900"><?php echo e($retailer['retailer_name']); ?></div>
-                                    <div class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($retailer['items']->count()); ?> item<?php echo e($retailer['items']->count() === 1 ? '' : 's'); ?></div>
-                                </div>
-                                <div class="flex flex-wrap gap-2 text-xs font-black">
-                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($retailer['remaining_to_buy_qty'] > 0): ?>
-                                        <span class="rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-indigo-200"><?php echo e($retailer['remaining_to_buy_qty']); ?> to buy</span>
-                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($retailer['awaiting_arrival_qty'] > 0): ?>
-                                        <span class="rounded-full bg-sky-50 px-2.5 py-1 text-sky-700 ring-1 ring-sky-200"><?php echo e($retailer['awaiting_arrival_qty']); ?> awaiting</span>
-                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($retailer['problem_qty'] > 0): ?>
-                                        <span class="rounded-full bg-rose-50 px-2.5 py-1 text-rose-700 ring-1 ring-rose-200"><?php echo e($retailer['problem_qty']); ?> problem</span>
-                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                                </div>
+                <article class="overflow-hidden rounded-[1.7rem] border <?php echo e($cardClass); ?> bg-white shadow-sm">
+                    <div class="p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-400">Retailer</p>
+                                <h2 class="mt-1 text-2xl font-black text-slate-950"><?php echo e($retailer['retailer_name']); ?></h2>
+                                <p class="mt-1 text-sm font-bold text-slate-500"><?php echo e($retailerItems->count()); ?> item<?php echo e($retailerItems->count() === 1 ? '' : 's'); ?></p>
                             </div>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                    </div>
-                </div>
+                            <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($hasProblem ? 'bg-rose-50 text-rose-700 ring-rose-200' : ($isPurchased ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-indigo-50 text-indigo-700 ring-indigo-200')); ?>"><?php echo e($statusLabel); ?></span>
+                        </div>
 
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h3 class="text-lg font-black text-slate-950">Next action</h3>
-                    <div class="mt-4 space-y-3 text-sm font-semibold text-slate-600">
-                        <a href="<?php echo e($tabUrls['buy']); ?>" class="block rounded-2xl bg-indigo-50 p-4 text-indigo-800 ring-1 ring-indigo-100">Buy: record purchase events and undo mistakes.</a>
-                        <a href="<?php echo e($tabUrls['awaiting']); ?>" class="block rounded-2xl bg-sky-50 p-4 text-sky-800 ring-1 ring-sky-100">Awaiting Arrival: review bought items waiting for goods.</a>
-                        <a href="<?php echo e($tabUrls['problems']); ?>" class="block rounded-2xl bg-rose-50 p-4 text-rose-800 ring-1 ring-rose-100">Problems: sourcing failures and supplier issues.</a>
-                    </div>
-                </div>
-            </section>
-        <?php elseif($activeTab === 'buy'): ?>
-            <?php echo $__env->make('purchasing.partials.items', [
-                'rows' => $buyItems->merge($items->filter(fn ($item) => (int) $item->remaining_to_buy_qty === 0 && (int) $item->purchased_qty > 0))->unique('item_id')->values(),
-                'title' => 'Buy items',
-                'empty' => 'There are no remaining items to buy for this order.',
-                'showPurchaseAction' => true,
-                'purchasesByRoot' => $purchasesByRoot,
-            ], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
-        <?php elseif($activeTab === 'awaiting'): ?>
-            <?php echo $__env->make('purchasing.partials.items', ['rows' => $awaitingItems, 'title' => 'Awaiting arrival', 'empty' => 'Nothing is currently awaiting arrival.', 'showPurchaseAction' => false, 'purchasesByRoot' => $purchasesByRoot], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
-        <?php elseif($activeTab === 'problems'): ?>
-            <?php echo $__env->make('purchasing.partials.items', ['rows' => $problemItems, 'title' => 'Problems', 'empty' => 'No open purchasing problems for this order.', 'showPurchaseAction' => false, 'purchasesByRoot' => $purchasesByRoot], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
-        <?php else: ?>
-            <section class="grid gap-5 lg:grid-cols-2">
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h3 class="text-lg font-black text-slate-950">Purchase events</h3>
-                    <div class="mt-4 divide-y divide-slate-100 rounded-2xl border border-slate-100">
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $purchases; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $purchase): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                            <div class="p-4 <?php echo e($purchase->cancelled_at ? 'bg-slate-50 text-slate-400' : ''); ?>">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div class="font-black text-slate-900"><?php echo e($purchase->item_name); ?></div>
-                                        <div class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($purchase->master_retailer_name ?: 'Retailer'); ?> · Qty <?php echo e($purchase->qty); ?> · Ref <?php echo e($purchase->retailer_order_reference ?: '—'); ?></div>
+                        <div class="mt-5 space-y-2">
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailerItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
+                                    <div class="flex items-start justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <p class="font-black text-slate-900"><?php echo e($item->item_name); ?></p>
+                                            <p class="mt-1 text-xs font-semibold text-slate-500">Qty <?php echo e((int) $item->quantity); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->product_code): ?> · SKU <?php echo e($item->product_code); ?><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></p>
+                                        </div>
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->product_url): ?>
+                                            <a href="<?php echo e($item->product_url); ?>" target="_blank" class="shrink-0 rounded-xl bg-white px-2.5 py-1.5 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">Open</a>
+                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                     </div>
-                                    <span class="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-200"><?php echo e($purchase->cancelled_at ? 'undone' : $purchase->status); ?></span>
                                 </div>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                        </div>
+
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurchased): ?>
+                            <div class="mt-5 rounded-2xl bg-emerald-50 p-4 ring-1 ring-emerald-100">
+                                <p class="text-[10px] font-black uppercase tracking-wide text-emerald-700">Reference</p>
+                                <p class="mt-1 text-sm font-black text-emerald-950"><?php echo e($refs->isNotEmpty() ? $refs->join(', ') : 'No reference saved'); ?></p>
+                                <p class="mt-3 text-[10px] font-black uppercase tracking-wide text-emerald-700">Expected Delivery</p>
+                                <p class="mt-1 text-sm font-black text-emerald-950"><?php echo e($expected ? \Carbon\Carbon::parse($expected)->format('d M Y') : 'Not set'); ?></p>
                             </div>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                            <div class="p-6 text-sm font-semibold text-slate-500">No purchase events yet.</div>
                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
-                </div>
 
-                <div class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <h3 class="text-lg font-black text-slate-950">Arrival matches</h3>
-                    <div class="mt-4 divide-y divide-slate-100 rounded-2xl border border-slate-100">
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $arrivals; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $arrival): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
-                            <div class="p-4">
-                                <div class="flex items-start justify-between gap-3">
-                                    <div>
-                                        <div class="font-black text-slate-900"><?php echo e($arrival->item_name); ?></div>
-                                        <div class="mt-1 text-xs font-semibold text-slate-400">Qty <?php echo e($arrival->qty); ?> · <?php echo e($arrival->matched_at); ?></div>
+                    <div class="border-t border-slate-100 bg-slate-50/70 p-4">
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
+                            <details class="rounded-2xl border border-indigo-100 bg-white shadow-sm" <?php if($loop->first): ?> open <?php endif; ?>>
+                                <summary class="cursor-pointer select-none px-4 py-3 text-sm font-black text-indigo-800">Purchase <?php echo e($retailer['retailer_name']); ?></summary>
+                                <form method="POST" action="<?php echo e(route('purchasing.purchases.bulk')); ?>" class="space-y-4 border-t border-indigo-100 p-4">
+                                    <?php echo csrf_field(); ?>
+                                    <input type="hidden" name="order_id" value="<?php echo e($order->id); ?>">
+
+                                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100">
+                                        <p class="text-xs font-black uppercase tracking-wide text-indigo-700">Items included</p>
+                                        <div class="mt-2 space-y-2">
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $remainingItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                                <div class="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 ring-1 ring-indigo-100">
+                                                    <div class="min-w-0">
+                                                        <input type="hidden" name="order_item_ids[]" value="<?php echo e($item->item_id); ?>">
+                                                        <p class="truncate text-sm font-black text-slate-900"><?php echo e($item->item_name); ?></p>
+                                                    </div>
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="text-xs font-black text-slate-400">Qty</span>
+                                                        <input name="qty[<?php echo e($item->item_id); ?>]" type="number" min="0" max="<?php echo e((int) $item->remaining_to_buy_qty); ?>" value="<?php echo e((int) $item->remaining_to_buy_qty); ?>" class="h-9 w-20 rounded-xl border-indigo-200 text-sm font-black focus:border-indigo-400 focus:ring-indigo-300">
+                                                    </div>
+                                                </div>
+                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+                                        </div>
                                     </div>
-                                    <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-200"><?php echo e($arrival->status); ?></span>
-                                </div>
+
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div class="sm:col-span-2">
+                                            <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Retailer Reference</label>
+                                            <input name="retailer_order_reference" maxlength="255" placeholder="One reference for this retailer purchase" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Expected Delivery</label>
+                                            <input name="expected_uk_hub_at" type="date" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordered Date</label>
+                                            <input name="ordered_at" type="date" value="<?php echo e(now()->format('Y-m-d')); ?>" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                        </div>
+                                        <div class="sm:col-span-2">
+                                            <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Internal Notes</label>
+                                            <textarea name="note" rows="2" maxlength="2000" placeholder="Optional" class="mt-1 w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-indigo-300 focus:ring-indigo-200"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <button class="w-full rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Save Purchase</button>
+                                </form>
+                            </details>
+                        <?php else: ?>
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <p class="text-sm font-black text-slate-700">This retailer is purchased.</p>
+                                <details class="relative">
+                                    <summary class="cursor-pointer select-none rounded-2xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-slate-200">Actions</summary>
+                                    <div class="mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-2 text-xs font-black text-slate-600 shadow-sm">
+                                        <a href="<?php echo e(route('orders.show', $order->id)); ?>" class="block rounded-xl px-3 py-2 hover:bg-slate-50">View full order</a>
+                                        <span class="block rounded-xl px-3 py-2 text-slate-400">Split purchase later</span>
+                                        <span class="block rounded-xl px-3 py-2 text-slate-400">View activity later</span>
+                                    </div>
+                                </details>
                             </div>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
-                            <div class="p-6 text-sm font-semibold text-slate-500">No arrival matches yet.</div>
                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
-                </div>
-            </section>
-        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </article>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
+        </section>
     </div>
  <?php echo $__env->renderComponent(); ?>
 <?php endif; ?>

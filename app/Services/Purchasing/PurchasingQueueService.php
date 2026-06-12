@@ -17,7 +17,7 @@ class PurchasingQueueService
     public function queue(array $filters = []): array
     {
         $tab = $this->normaliseTab($filters['tab'] ?? 'to_buy');
-        $payment = $this->normalisePayment($filters['payment'] ?? 'paid');
+        $payment = $this->normalisePayment($filters['payment'] ?? 'paid_or_part');
         $search = trim((string) ($filters['q'] ?? ''));
 
         $items = $this->itemRows($search);
@@ -357,10 +357,8 @@ class PurchasingQueueService
     private function paymentOptions(): array
     {
         return [
-            'paid' => 'Paid only',
-            'part_paid' => 'Part-paid',
-            'unpaid' => 'Unpaid',
-            'all' => 'All payment states',
+            'paid_or_part' => 'Paid & Part Paid',
+            'all' => 'All Orders',
         ];
     }
 
@@ -412,7 +410,11 @@ class PurchasingQueueService
 
     private function matchesPayment(string $status, string $payment): bool
     {
-        return $payment === 'all' || $status === $payment;
+        return match ($payment) {
+            'paid_or_part' => in_array($status, ['paid', 'part_paid'], true),
+            'all' => true,
+            default => $status === $payment,
+        };
     }
 
     private function normaliseTab(string $tab): string
@@ -422,6 +424,6 @@ class PurchasingQueueService
 
     private function normalisePayment(string $payment): string
     {
-        return in_array($payment, ['paid', 'part_paid', 'unpaid', 'all'], true) ? $payment : 'paid';
+        return in_array($payment, ['paid_or_part', 'all'], true) ? $payment : 'paid_or_part';
     }
 }
