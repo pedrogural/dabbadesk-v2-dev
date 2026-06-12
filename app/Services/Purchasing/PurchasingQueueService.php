@@ -19,8 +19,10 @@ class PurchasingQueueService
         $tab = $this->normaliseTab($filters['tab'] ?? 'to_buy');
         $payment = $this->normalisePayment($filters['payment'] ?? 'paid_or_part');
         $search = trim((string) ($filters['q'] ?? ''));
+        $mineOnly = (bool) ($filters['mine'] ?? false);
+        $userId = isset($filters['user_id']) ? (int) $filters['user_id'] : null;
 
-        $items = $this->itemRows($search);
+        $items = $this->itemRows($search, null, $mineOnly ? $userId : null);
         $orders = $this->groupOrders($items);
 
         // Counts should match the selected payment filter.
@@ -48,6 +50,7 @@ class PurchasingQueueService
                 'tab' => $tab,
                 'payment' => $payment,
                 'q' => $search,
+                'mine' => $mineOnly,
             ],
             'summary' => $summary,
             'orders' => $filtered,
@@ -138,7 +141,7 @@ class PurchasingQueueService
         ];
     }
 
-    private function itemRows(string $search = '', ?int $orderId = null): Collection
+    private function itemRows(string $search = '', ?int $orderId = null, ?int $mineUserId = null): Collection
     {
         $purchaseTotals = DB::table('order_item_purchases')
             ->selectRaw('root_item_id')
@@ -200,6 +203,8 @@ class PurchasingQueueService
                 'oi.status as item_status',
                 'oi.purchase_problem_reason',
                 'oi.purchase_problem_note',
+                'oi.requires_inspection',
+                'oi.inspection_note',
                 'ore.retailer_id',
                 DB::raw('COALESCE(r.name, ore.retailer_name, "Unknown retailer") as retailer_name'),
                 DB::raw('COALESCE(oi.root_item_id, oi.id) as lineage_root_id'),
@@ -246,6 +251,13 @@ class PurchasingQueueService
             $query->where('o.id', $orderId);
         }
 
+        if ($mineUserId !== null && $mineUserId > 0) {
+            $query->where(function ($query) use ($mineUserId) {
+                $query->where('o.created_by_user_id', $mineUserId)
+                    ->orWhere('o.updated_by_user_id', $mineUserId);
+            });
+        }
+
         if ($search !== '') {
             $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
             $query->where(function ($query) use ($like) {
@@ -276,6 +288,8 @@ class PurchasingQueueService
                 $row->remaining_to_buy_qty = (int) $row->remaining_to_buy_qty;
                 $row->awaiting_arrival_qty = (int) $row->awaiting_arrival_qty;
                 $row->purchase_event_count = (int) $row->purchase_event_count;
+                $row->requires_inspection = (int) ($row->requires_inspection ?? 0);
+                $row->inspection_note = trim((string) ($row->inspection_note ?? ''));
 
                 return $row;
             });
@@ -294,6 +308,7 @@ class PurchasingQueueService
                 $arrived = (int) $rows->sum('arrived_qty');
                 $requested = (int) $rows->sum('quantity');
                 $retailerCount = $rows->pluck('retailer_name')->filter()->unique()->count();
+                $inspectionCount = $rows->filter(fn ($item) => (int) ($item->requires_inspection ?? 0) === 1)->count();
 
                 $action = 'Completed';
                 if ($problem > 0) {
@@ -321,6 +336,7 @@ class PurchasingQueueService
                     'remaining_to_buy_qty' => $remaining,
                     'awaiting_arrival_qty' => $awaiting,
                     'problem_qty' => $problem,
+                    'inspection_count' => $inspectionCount,
                     'action' => $action,
                     'is_completed' => $remaining === 0 && $awaiting === 0 && $problem === 0 && $purchased > 0,
                     'latest_activity_at' => collect([$rows->max('latest_purchase_event_at'), $rows->max('latest_arrival_at')])->filter()->max(),

@@ -17,6 +17,8 @@ class PurchasingController extends Controller
             'tab' => $request->query('tab', 'to_buy'),
             'payment' => $request->query('payment', 'paid_or_part'),
             'q' => $request->query('q', ''),
+            'mine' => $request->boolean('mine'),
+            'user_id' => Auth::id(),
         ]));
     }
 
@@ -521,6 +523,66 @@ class PurchasingController extends Controller
         return redirect()
             ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => 'buy'])
             ->with('success', 'Purchase undone.');
+    }
+
+
+
+    public function updateInspectionFlag(Request $request, int $item)
+    {
+        $validated = $request->validate([
+            'requires_inspection' => ['nullable', 'boolean'],
+            'inspection_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $row = DB::table('order_items as oi')
+            ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->select(['oi.*', 'o.order_number'])
+            ->where('oi.id', $item)
+            ->first();
+
+        abort_if(! $row, 404);
+
+        $requiresInspection = (bool) ($validated['requires_inspection'] ?? false);
+        $note = trim((string) ($validated['inspection_note'] ?? ''));
+
+        if ($requiresInspection && $note === '') {
+            throw ValidationException::withMessages([
+                'inspection_note' => 'Please add a package check note when marking an item purple.',
+            ]);
+        }
+
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($row, $requiresInspection, $note, $userId) {
+            DB::table('order_items')
+                ->where('id', (int) $row->id)
+                ->update([
+                    'requires_inspection' => $requiresInspection ? 1 : 0,
+                    'inspection_note' => $requiresInspection ? $note : null,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => (int) $row->order_id,
+                'type' => 'purchasing',
+                'is_pinned' => 0,
+                'title' => $requiresInspection ? 'Package check marked' : 'Package check cleared',
+                'body' => $requiresInspection
+                    ? 'Item #' . $row->id . ' on Order #' . ($row->order_number ?? $row->order_id) . ' was marked for package check. Note: ' . $note
+                    : 'Item #' . $row->id . ' on Order #' . ($row->order_number ?? $row->order_id) . ' package check marker was cleared.',
+                'occurred_at' => now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return redirect()
+            ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => 'buy'])
+            ->with('success', $requiresInspection ? 'Item marked purple for package check.' : 'Package check marker cleared.');
     }
 
     private function remainingToBuyQty(int $rootItemId, int $itemQty): int

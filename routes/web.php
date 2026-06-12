@@ -28,6 +28,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/purchasing/problems', [PurchasingController::class, 'storeProblem'])->name('purchasing.problems.store');
     Route::post('/purchasing/purchases/{purchase}/undo', [PurchasingController::class, 'undoPurchase'])->name('purchasing.purchases.undo');
 
+    Route::post('/purchasing/items/{item}/inspection', [PurchasingController::class, 'updateInspectionFlag'])->name('purchasing.items.inspection.update');
+
     Route::get('/customers', [CustomersController::class, 'index'])->name('customers.index');
     Route::get('/customers/live-search', [CustomersController::class, 'liveSearch'])->name('customers.live-search');
     Route::get('/customers/create', [CustomersController::class, 'create'])->name('customers.create');

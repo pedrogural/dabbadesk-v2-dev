@@ -56,9 +56,13 @@
                         <label for="purchase-search" class="sr-only">Search orders</label>
                         <input id="purchase-search" name="q" value="<?php echo e($filters['q']); ?>" placeholder="Search order number, customer, item or retailer" class="h-12 w-full rounded-2xl border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:border-indigo-300 focus:bg-white focus:ring-indigo-200">
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'paid_or_part', 'q' => $filters['q']])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'paid_or_part' ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">Paid & Part Paid</a>
-                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'all', 'q' => $filters['q']])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'all' ? 'bg-rose-600 text-white ring-rose-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">All Orders</a>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="inline-flex h-12 items-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">
+                            <input type="checkbox" name="mine" value="1" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" <?php echo e(($filters['mine'] ?? false) ? 'checked' : ''); ?>>
+                            Mine only
+                        </label>
+                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'paid_or_part', 'q' => $filters['q'], 'mine' => ($filters['mine'] ?? false) ? 1 : null])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'paid_or_part' ? 'bg-indigo-600 text-white ring-indigo-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">Paid & Part Paid</a>
+                        <a href="<?php echo e(route('purchasing.index', ['tab' => 'to_buy', 'payment' => 'all', 'q' => $filters['q'], 'mine' => ($filters['mine'] ?? false) ? 1 : null])); ?>" class="rounded-2xl px-4 py-3 text-sm font-black ring-1 transition <?php echo e($filters['payment'] === 'all' ? 'bg-rose-600 text-white ring-rose-600' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50'); ?>">All Orders</a>
                         <button class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-indigo-700">Search</button>
                     </div>
                 </div>
@@ -87,6 +91,9 @@
                                     <span class="h-2 w-2 rounded-full <?php echo e($badge['dot']); ?>"></span><?php echo e($badge['label']); ?>
 
                                 </span>
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($queueOrder['inspection_count'] ?? 0) > 0): ?>
+                                    <span class="rounded-full bg-purple-50 px-2.5 py-1 text-xs font-black text-purple-700 ring-1 ring-purple-200">Package check</span>
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($queueOrder['payment_status'] === 'part_paid'): ?>
                                     <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-200"><?php echo e($money($queueOrder['settled_amount'])); ?> / <?php echo e($money($queueOrder['grand_total'])); ?></span>
                                 <?php elseif($queueOrder['payment_status'] === 'unpaid'): ?>
@@ -96,7 +103,7 @@
 
                             <p class="mt-1 truncate text-sm font-bold text-slate-700"><?php echo e($queueOrder['customer']); ?></p>
 
-                            <div class="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+                            <div class="mt-4 grid gap-3 text-sm sm:grid-cols-5">
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                     <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Retailers</p>
                                     <p class="mt-1 font-black text-slate-900"><?php echo e($queueOrder['retailer_count']); ?></p>
@@ -108,6 +115,10 @@
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                     <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Customer Value</p>
                                     <p class="mt-1 font-black text-slate-900"><?php echo e($money($waitingValue)); ?></p>
+                                </div>
+                                <div class="rounded-2xl bg-purple-50 p-3 ring-1 ring-purple-100">
+                                    <p class="text-[10px] font-black uppercase tracking-wide text-purple-500">Package Check</p>
+                                    <p class="mt-1 font-black text-purple-800"><?php echo e($queueOrder['inspection_count'] ?? 0); ?></p>
                                 </div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                     <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Progress</p>
