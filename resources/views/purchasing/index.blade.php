@@ -121,7 +121,7 @@
                                     <div class="mt-1 text-xs font-semibold text-slate-400">{{ $queueOrder['retailer_count'] }} retailer{{ $queueOrder['retailer_count'] === 1 ? '' : 's' }}</div>
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-4 text-right">
-                                    <a href="{{ route('purchasing.show', $queueOrder['order_id']) }}" class="inline-flex items-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-indigo-700">
+                                    <a href="{{ route('purchasing.orders.show', $queueOrder['order_id']) }}" class="inline-flex items-center rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-indigo-700">
                                         Open Workspace
                                     </a>
                                 </td>

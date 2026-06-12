@@ -127,6 +127,7 @@ class PurchasingQueueService
             'retailers' => $retailers,
             'purchases' => $purchases,
             'arrivals' => $arrivals,
+            'purchasesByRoot' => $purchases->groupBy('root_item_id'),
             'tabs' => [
                 'overview' => 'Overview',
                 'buy' => 'Buy',
