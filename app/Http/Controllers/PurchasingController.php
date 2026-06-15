@@ -324,8 +324,13 @@ class PurchasingController extends Controller
         ]);
 
         $allowedProblemCodes = [
-            'unavailable',
+            'out_of_stock',
+            'price_increased',
+            'discontinued',
+            'retailer_restriction',
             'supplier_cancelled',
+            'wrong_listing',
+            'unavailable',
             'lost',
             'damaged',
             'wrong_item',
@@ -388,7 +393,8 @@ class PurchasingController extends Controller
             'lost' => 'lost',
             'damaged' => 'damaged',
             'wrong_item' => 'wrong_item',
-            'unavailable' => 'unavailable',
+            'out_of_stock', 'discontinued', 'retailer_restriction', 'unavailable' => 'unavailable',
+            'price_increased', 'wrong_listing' => 'problem',
             default => 'problem',
         };
 
@@ -490,7 +496,7 @@ class PurchasingController extends Controller
                 ]);
 
             $activeQty = DB::table('order_item_purchases')
-                ->where('root_item_id', $row->root_item_id)
+                ->where('root_item_id', $rootItemId)
                 ->whereIn('status', ['purchased', 'ordered', 'received'])
                 ->whereNull('cancelled_at')
                 ->sum('qty');
@@ -526,6 +532,238 @@ class PurchasingController extends Controller
     }
 
 
+
+    public function updatePurchase(Request $request, int $purchase)
+    {
+        $validated = $request->validate([
+            'qty' => ['required', 'integer', 'min:1', 'max:999'],
+            'purchase_unit_price' => ['required', 'numeric', 'min:0', 'max:999999.99'],
+            'retailer_order_reference' => ['required', 'string', 'max:255'],
+            'expected_uk_hub_at' => ['required', 'date'],
+            'ordered_at' => ['nullable', 'date'],
+            'marketplace_seller' => ['nullable', 'string', 'max:255'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $row = DB::table('order_item_purchases as oip')
+            ->join('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
+            ->leftJoin('orders as o', 'o.id', '=', 'oip.order_id')
+            ->select([
+                'oip.*',
+                'oi.quantity as item_quantity',
+                'oi.purchase_price as item_purchase_price',
+                'oi.marketplace_seller as item_marketplace_seller',
+                'o.order_number',
+            ])
+            ->where('oip.id', $purchase)
+            ->first();
+
+        abort_if(! $row, 404);
+
+        if ($row->cancelled_at !== null) {
+            throw ValidationException::withMessages([
+                'purchase' => 'This purchase has already been undone and cannot be edited.',
+            ]);
+        }
+
+        $activeArrivalQty = (int) DB::table('purchase_arrival_assignments')
+            ->where('order_item_purchase_id', $purchase)
+            ->whereNull('undone_at')
+            ->sum('qty');
+
+        if ($activeArrivalQty > 0) {
+            throw ValidationException::withMessages([
+                'purchase' => 'This purchase already has an active arrival assignment. Edit or undo the arrival before editing this purchase.',
+            ]);
+        }
+
+        $newQty = (int) $validated['qty'];
+        $currentQty = (int) $row->qty;
+        $rootItemId = (int) ($row->root_item_id ?: $row->order_item_id);
+        $remainingOutsideThisPurchase = $this->remainingToBuyQty($rootItemId, (int) $row->item_quantity) + $currentQty;
+
+        if ($newQty > $remainingOutsideThisPurchase) {
+            throw ValidationException::withMessages([
+                'qty' => 'Only ' . $remainingOutsideThisPurchase . ' item' . ($remainingOutsideThisPurchase === 1 ? '' : 's') . ' are available for this purchase after accounting for existing purchase events.',
+            ]);
+        }
+
+        $unitPrice = round((float) $validated['purchase_unit_price'], 2);
+        $lineTotal = round($unitPrice * $newQty, 2);
+        $reference = trim((string) $validated['retailer_order_reference']);
+        $seller = trim((string) ($validated['marketplace_seller'] ?? '')) ?: null;
+        $note = trim((string) ($validated['note'] ?? '')) ?: null;
+        $orderedAt = ! empty($validated['ordered_at']) ? Carbon::parse($validated['ordered_at']) : ($row->ordered_at ? Carbon::parse($row->ordered_at) : now());
+        $expectedHubAt = Carbon::parse($validated['expected_uk_hub_at']);
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($row, $purchase, $rootItemId, $newQty, $unitPrice, $lineTotal, $reference, $seller, $note, $orderedAt, $expectedHubAt, $userId) {
+            DB::table('order_item_purchases')
+                ->where('id', $purchase)
+                ->update([
+                    'qty' => $newQty,
+                    'purchase_unit_price' => $unitPrice,
+                    'purchase_line_total' => $lineTotal,
+                    'retailer_order_reference' => $reference,
+                    'marketplace_seller' => $seller ?: ($row->marketplace_seller ?: null),
+                    'note' => $note,
+                    'ordered_at' => $orderedAt,
+                    'expected_uk_hub_at' => $expectedHubAt,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $activeQty = DB::table('order_item_purchases')
+                ->where('root_item_id', $rootItemId)
+                ->whereIn('status', ['purchased', 'ordered', 'received'])
+                ->whereNull('cancelled_at')
+                ->sum('qty');
+
+            DB::table('order_items')
+                ->where('id', $row->order_item_id)
+                ->update([
+                    'status' => ((int) $activeQty > 0) ? 'purchased' : 'requested',
+                    'purchase_price' => $unitPrice,
+                    'purchased_at' => $orderedAt,
+                    'retailer_order_reference' => $reference,
+                    'marketplace_seller' => $seller ?: ($row->item_marketplace_seller ?: null),
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => (int) $row->order_id,
+                'type' => 'purchasing',
+                'is_pinned' => 0,
+                'title' => 'Purchase edited',
+                'body' => 'Purchase #' . $purchase . ' was edited for Order #' . ($row->order_number ?? $row->order_id) . '. Qty ' . $row->qty . ' → ' . $newQty . '. Ref: ' . $reference . '.',
+                'occurred_at' => now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return redirect()
+            ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => 'buy'])
+            ->with('success', 'Purchase updated.');
+    }
+
+
+
+    public function bulkUpdatePurchases(Request $request)
+    {
+        $validated = $request->validate([
+            'purchase_ids' => ['required', 'array', 'min:1'],
+            'purchase_ids.*' => ['integer', 'exists:order_item_purchases,id'],
+            'retailer_order_reference' => ['nullable', 'string', 'max:255'],
+            'expected_uk_hub_at' => ['nullable', 'date'],
+            'ordered_at' => ['nullable', 'date'],
+            'note' => ['nullable', 'string', 'max:2000'],
+            'order_id' => ['nullable', 'integer', 'exists:orders,id'],
+        ]);
+
+        $purchaseIds = collect($validated['purchase_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+
+        $updates = [];
+        $reference = trim((string) ($validated['retailer_order_reference'] ?? ''));
+        $note = trim((string) ($validated['note'] ?? ''));
+
+        if ($reference !== '') {
+            $updates['retailer_order_reference'] = $reference;
+        }
+        if (! empty($validated['expected_uk_hub_at'])) {
+            $updates['expected_uk_hub_at'] = Carbon::parse($validated['expected_uk_hub_at']);
+        }
+        if (! empty($validated['ordered_at'])) {
+            $updates['ordered_at'] = Carbon::parse($validated['ordered_at']);
+        }
+        if ($note !== '') {
+            $updates['note'] = $note;
+        }
+
+        if (empty($updates)) {
+            throw ValidationException::withMessages([
+                'bulk_edit' => 'Enter at least one shared field to update.',
+            ]);
+        }
+
+        $rows = DB::table('order_item_purchases')
+            ->whereIn('id', $purchaseIds)
+            ->get();
+
+        abort_if($rows->count() !== $purchaseIds->count(), 404);
+
+        $lockedIds = [];
+        foreach ($rows as $row) {
+            $hasArrival = DB::table('purchase_arrival_assignments')
+                ->where('order_item_purchase_id', (int) $row->id)
+                ->whereNull('undone_at')
+                ->exists();
+
+            if ($row->cancelled_at !== null || $hasArrival) {
+                $lockedIds[] = (int) $row->id;
+            }
+        }
+
+        if (! empty($lockedIds)) {
+            throw ValidationException::withMessages([
+                'bulk_edit' => 'Some selected purchases cannot be edited because they have arrived or were undone: #' . implode(', #', $lockedIds),
+            ]);
+        }
+
+        $userId = Auth::id();
+        $updates['updated_by_user_id'] = $userId;
+        $updates['updated_at'] = now();
+
+        DB::transaction(function () use ($rows, $purchaseIds, $updates, $reference, $userId) {
+            DB::table('order_item_purchases')
+                ->whereIn('id', $purchaseIds)
+                ->update($updates);
+
+            if ($reference !== '') {
+                foreach ($rows as $row) {
+                    DB::table('order_items')
+                        ->where('id', (int) $row->order_item_id)
+                        ->update([
+                            'retailer_order_reference' => $reference,
+                            'updated_by_user_id' => $userId,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+
+            foreach ($rows->groupBy('order_id') as $orderId => $orderRows) {
+                DB::table('activity_logs')->insert([
+                    'subject_type' => 'order',
+                    'subject_id' => (int) $orderId,
+                    'type' => 'purchasing',
+                    'is_pinned' => 0,
+                    'title' => 'Purchases bulk edited',
+                    'body' => 'Bulk edited ' . $orderRows->count() . ' purchase event' . ($orderRows->count() === 1 ? '' : 's') . '.',
+                    'occurred_at' => now(),
+                    'created_by_user_id' => $userId,
+                    'updated_by_user_id' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        });
+
+        $redirectOrderId = isset($validated['order_id']) ? (int) $validated['order_id'] : 0;
+
+        if ($redirectOrderId > 0) {
+            return redirect()
+                ->route('purchasing.orders.show', ['order' => $redirectOrderId, 'tab' => 'buy'])
+                ->with('success', 'Selected purchases updated.');
+        }
+
+        return redirect()
+            ->route('purchasing.index', ['tab' => 'purchases'])
+            ->with('success', 'Selected purchases updated.');
+    }
 
     public function updateInspectionFlag(Request $request, int $item)
     {

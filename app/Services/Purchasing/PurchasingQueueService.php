@@ -39,6 +39,7 @@ class PurchasingQueueService
             'problems' => $paymentScopedOrders->filter(fn ($order) => $this->isProblemOrder($order))->count(),
             'completed' => $paymentScopedOrders->filter(fn ($order) => $this->isCompletedOrder($order))->count(),
             'total' => $paymentScopedOrders->count(),
+            'purchases' => $this->purchaseRows($search, $mineOnly ? $userId : null)->count(),
         ];
 
         $filtered = $paymentScopedOrders
@@ -54,6 +55,7 @@ class PurchasingQueueService
             ],
             'summary' => $summary,
             'orders' => $filtered,
+            'purchaseRows' => $tab === 'purchases' ? $this->purchaseRows($search, $mineOnly ? $userId : null) : collect(),
             'tabs' => $this->tabs($summary),
             'paymentOptions' => $this->paymentOptions(),
         ];
@@ -263,12 +265,25 @@ class PurchasingQueueService
             $query->where(function ($query) use ($like) {
                 $query->where('o.order_number', 'like', $like)
                     ->orWhere('o.bill_to_name', 'like', $like)
+                    ->orWhereRaw("CONCAT(COALESCE(o.bill_to_name, ''), ' ', COALESCE(o.bill_to_email, '')) LIKE ?", [$like])
                     ->orWhere('o.bill_to_company', 'like', $like)
                     ->orWhere('o.bill_to_email', 'like', $like)
                     ->orWhere('oi.item_name', 'like', $like)
                     ->orWhere('oi.product_code', 'like', $like)
                     ->orWhere('ore.retailer_name', 'like', $like)
-                    ->orWhere('r.name', 'like', $like);
+                    ->orWhere('r.name', 'like', $like)
+                    ->orWhereExists(function ($exists) use ($like) {
+                        $exists->selectRaw('1')
+                            ->from('order_item_purchases as search_oip')
+                            ->whereColumn('search_oip.root_item_id', DB::raw('COALESCE(oi.root_item_id, oi.id)'))
+                            ->where(function ($purchaseSearch) use ($like) {
+                                $purchaseSearch->where('search_oip.retailer_order_reference', 'like', $like)
+                                    ->orWhere('search_oip.marketplace_seller', 'like', $like)
+                                    ->orWhere('search_oip.problem_code', 'like', $like)
+                                    ->orWhere('search_oip.problem_notes', 'like', $like)
+                                    ->orWhere('search_oip.note', 'like', $like);
+                            });
+                    });
             });
         }
 
@@ -291,6 +306,79 @@ class PurchasingQueueService
                 $row->requires_inspection = (int) ($row->requires_inspection ?? 0);
                 $row->inspection_note = trim((string) ($row->inspection_note ?? ''));
 
+                return $row;
+            });
+    }
+
+
+    private function purchaseRows(string $search = '', ?int $mineUserId = null): Collection
+    {
+        $arrivalTotals = DB::table('purchase_arrival_assignments')
+            ->selectRaw('order_item_purchase_id')
+            ->selectRaw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as active_arrival_qty')
+            ->groupBy('order_item_purchase_id');
+
+        $query = DB::table('order_item_purchases as oip')
+            ->join('orders as o', 'o.id', '=', 'oip.order_id')
+            ->leftJoin('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
+            ->leftJoin('retailers as r', 'r.id', '=', 'oip.retailer_id')
+            ->leftJoin('users as u', 'u.id', '=', 'oip.created_by_user_id')
+            ->leftJoinSub($arrivalTotals, 'arr', function ($join) {
+                $join->on('arr.order_item_purchase_id', '=', 'oip.id');
+            })
+            ->select([
+                'oip.*',
+                'o.order_number',
+                'o.bill_to_name',
+                'o.bill_to_company',
+                'o.bill_to_email',
+                'oi.item_name',
+                'oi.product_code',
+                'oi.product_url',
+                DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
+                'u.name as recorded_by_name',
+                DB::raw('COALESCE(arr.active_arrival_qty, 0) as active_arrival_qty'),
+            ])
+            ->whereNull('o.cancelled_at')
+            ->whereNull('o.completed_at')
+            ->whereIn('oip.status', ['purchased', 'ordered', 'received']);
+
+        if ($mineUserId !== null && $mineUserId > 0) {
+            $query->where(function ($query) use ($mineUserId) {
+                $query->where('oip.created_by_user_id', $mineUserId)
+                    ->orWhere('oip.updated_by_user_id', $mineUserId)
+                    ->orWhere('o.created_by_user_id', $mineUserId)
+                    ->orWhere('o.updated_by_user_id', $mineUserId);
+            });
+        }
+
+        if ($search !== '') {
+            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
+            $query->where(function ($query) use ($like) {
+                $query->where('o.order_number', 'like', $like)
+                    ->orWhere('o.bill_to_name', 'like', $like)
+                    ->orWhere('o.bill_to_company', 'like', $like)
+                    ->orWhere('o.bill_to_email', 'like', $like)
+                    ->orWhereRaw("CONCAT(COALESCE(o.bill_to_name, ''), ' ', COALESCE(o.bill_to_email, '')) LIKE ?", [$like])
+                    ->orWhere('oi.item_name', 'like', $like)
+                    ->orWhere('oi.product_code', 'like', $like)
+                    ->orWhere('r.name', 'like', $like)
+                    ->orWhere('oip.retailer_order_reference', 'like', $like)
+                    ->orWhere('oip.marketplace_seller', 'like', $like)
+                    ->orWhere('oip.problem_code', 'like', $like)
+                    ->orWhere('oip.problem_notes', 'like', $like)
+                    ->orWhere('oip.note', 'like', $like);
+            });
+        }
+
+        return $query
+            ->orderByDesc('oip.created_at')
+            ->limit(750)
+            ->get()
+            ->map(function ($row) {
+                $row->qty = (int) $row->qty;
+                $row->active_arrival_qty = (int) ($row->active_arrival_qty ?? 0);
+                $row->can_edit = empty($row->cancelled_at) && $row->active_arrival_qty === 0;
                 return $row;
             });
     }
@@ -362,11 +450,9 @@ class PurchasingQueueService
     private function tabs(array $summary): array
     {
         return [
-            'to_buy' => ['label' => 'To Buy', 'count' => $summary['to_buy']],
-            'awaiting_arrival' => ['label' => 'Awaiting Arrival', 'count' => $summary['awaiting_arrival']],
+            'to_buy' => ['label' => 'To Purchase', 'count' => $summary['to_buy']],
+            'purchases' => ['label' => 'Purchased', 'count' => $summary['purchases'] ?? 0],
             'problems' => ['label' => 'Problems', 'count' => $summary['problems']],
-            'completed' => ['label' => 'Completed', 'count' => $summary['completed']],
-            'all' => ['label' => 'All Active', 'count' => $summary['total']],
         ];
     }
 
@@ -385,6 +471,7 @@ class PurchasingQueueService
             'awaiting_arrival' => $this->isAwaitingArrivalOrder($order),
             'problems' => $this->isProblemOrder($order),
             'completed' => $this->isCompletedOrder($order),
+            'purchases' => false,
             default => true,
         };
     }
@@ -435,7 +522,7 @@ class PurchasingQueueService
 
     private function normaliseTab(string $tab): string
     {
-        return in_array($tab, ['to_buy', 'awaiting_arrival', 'problems', 'completed', 'all'], true) ? $tab : 'to_buy';
+        return in_array($tab, ['to_buy', 'purchases', 'problems'], true) ? $tab : 'to_buy';
     }
 
     private function normalisePayment(string $payment): string

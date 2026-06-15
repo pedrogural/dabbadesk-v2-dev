@@ -27,6 +27,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/purchasing/purchases/bulk', [PurchasingController::class, 'storeBulkPurchase'])->name('purchasing.purchases.bulk');
     Route::post('/purchasing/problems', [PurchasingController::class, 'storeProblem'])->name('purchasing.problems.store');
     Route::post('/purchasing/purchases/{purchase}/undo', [PurchasingController::class, 'undoPurchase'])->name('purchasing.purchases.undo');
+    Route::patch('/purchasing/purchases/bulk', [PurchasingController::class, 'bulkUpdatePurchases'])->name('purchasing.purchases.bulk-update');
+    Route::patch('/purchasing/purchases/{purchase}', [PurchasingController::class, 'updatePurchase'])->name('purchasing.purchases.update');
 
     Route::post('/purchasing/items/{item}/inspection', [PurchasingController::class, 'updateInspectionFlag'])->name('purchasing.items.inspection.update');
 

@@ -1,7 +1,18 @@
-<x-app-layout>
-    <x-slot name="header">Purchasing Workspace</x-slot>
+<?php if (isset($component)) { $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54 = $attributes; } ?>
+<?php $component = App\View\Components\AppLayout::resolve([] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('app-layout'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\App\View\Components\AppLayout::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-    @php
+     <?php $__env->slot('header', null, []); ?> Purchasing Workspace <?php $__env->endSlot(); ?>
+
+    <?php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
         $orderNumber = $order->order_number ?? $order->id;
         $customer = trim((string) ($order->bill_to_company ?: $order->bill_to_name ?: 'Unknown customer'));
@@ -27,55 +38,55 @@
             'other' => 'Other',
         ];
         $purchaseStatuses = ['purchased', 'ordered', 'received'];
-    @endphp
+    ?>
 
     <div class="mx-auto max-w-7xl space-y-5">
-        @if (session('success'))
-            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800">{{ session('success') }}</div>
-        @endif
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?>
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm font-bold text-emerald-800"><?php echo e(session('success')); ?></div>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-        @if ($errors->any())
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?>
             <div class="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-bold text-rose-800">
-                @foreach ($errors->all() as $error)
-                    <div>{{ $error }}</div>
-                @endforeach
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                    <div><?php echo e($error); ?></div>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
             </div>
-        @endif
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
         <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
             <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
-                    <a href="{{ route('purchasing.index') }}" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
+                    <a href="<?php echo e(route('purchasing.index')); ?>" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
                     <div class="mt-3 flex flex-wrap items-center gap-2">
                         <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Workspace</h1>
-                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $paymentClass }}">{{ $paymentLabel }}</span>
-                        @if ($inspectionQty > 0)
-                            <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">{{ $inspectionQty }} package check</span>
-                        @endif
+                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($paymentClass); ?>"><?php echo e($paymentLabel); ?></span>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($inspectionQty > 0): ?>
+                            <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200"><?php echo e($inspectionQty); ?> package check</span>
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
-                    <p class="mt-1 text-sm font-bold text-slate-700">Order #{{ $orderNumber }} · {{ $customer }}</p>
-                    @if ($order->bill_to_email)
-                        <p class="mt-1 text-xs font-semibold text-slate-400">{{ $order->bill_to_email }}</p>
-                    @endif
+                    <p class="mt-1 text-sm font-bold text-slate-700">Order #<?php echo e($orderNumber); ?> · <?php echo e($customer); ?></p>
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($order->bill_to_email): ?>
+                        <p class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($order->bill_to_email); ?></p>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </div>
 
                 <div class="grid grid-cols-3 gap-2 xl:min-w-[520px]">
-                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 text-2xl font-black text-indigo-950">{{ $remainingQty }}</p></div>
-                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 text-2xl font-black text-emerald-950">{{ $purchasedQty }}</p></div>
-                    <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 text-2xl font-black text-rose-950">{{ $problemQty }}</p></div>
+                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 text-2xl font-black text-indigo-950"><?php echo e($remainingQty); ?></p></div>
+                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 text-2xl font-black text-emerald-950"><?php echo e($purchasedQty); ?></p></div>
+                    <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 text-2xl font-black text-rose-950"><?php echo e($problemQty); ?></p></div>
                 </div>
             </div>
 
             <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs font-black">
-                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailers: {{ $retailers->count() }}</span>
-                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Order total: {{ $money($order->grand_total ?? 0) }}</span>
-                <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
+                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailers: <?php echo e($retailers->count()); ?></span>
+                <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Order total: <?php echo e($money($order->grand_total ?? 0)); ?></span>
+                <a href="<?php echo e(route('orders.show', $order->id)); ?>" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
             </div>
         </section>
 
         <section class="space-y-4">
-            @forelse ($retailers as $retailer)
-                @php
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $retailers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $retailer): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                <?php
                     $retailerItems = collect($retailer['items']);
                     $remainingItems = $retailerItems->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0)->values();
                     $waitingQty = (int) $remainingItems->sum('remaining_to_buy_qty');
@@ -86,81 +97,81 @@
                     $cardRing = $problemQtyForRetailer > 0 ? 'border-rose-200' : ($waitingQty > 0 ? 'border-indigo-200' : 'border-emerald-200');
                     $purchaseFormId = 'purchase-retailer-' . ($retailer['retailer_id'] ?? 'unknown') . '-' . $loop->index;
                     $bulkEditFormId = 'bulk-edit-retailer-' . ($retailer['retailer_id'] ?? 'unknown') . '-' . $loop->index;
-                @endphp
+                ?>
 
-                <article class="overflow-visible rounded-[1.75rem] border {{ $cardRing }} bg-white shadow-sm" data-retailer-card>
+                <article class="overflow-visible rounded-[1.75rem] border <?php echo e($cardRing); ?> bg-white shadow-sm" data-retailer-card>
                     <div class="border-b border-slate-100 p-5 sm:p-6">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
-                                    <h2 class="text-2xl font-black text-slate-950">{{ $retailer['retailer_name'] }}</h2>
-                                    @if ($inspectionForRetailer > 0)
+                                    <h2 class="text-2xl font-black text-slate-950"><?php echo e($retailer['retailer_name']); ?></h2>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($inspectionForRetailer > 0): ?>
                                         <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">Package check</span>
-                                    @endif
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
-                                <p class="mt-2 text-sm font-bold text-slate-500">{{ $remainingItems->count() }} item line{{ $remainingItems->count() === 1 ? '' : 's' }} waiting · {{ $waitingQty }} qty to buy</p>
+                                <p class="mt-2 text-sm font-bold text-slate-500"><?php echo e($remainingItems->count()); ?> item line<?php echo e($remainingItems->count() === 1 ? '' : 's'); ?> waiting · <?php echo e($waitingQty); ?> qty to buy</p>
                             </div>
 
                             <div class="grid grid-cols-3 gap-2 text-sm lg:min-w-[520px]">
-                                <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 font-black text-indigo-950">{{ $waitingQty }}</p></div>
-                                <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 font-black text-emerald-950">{{ $purchasedQtyForRetailer }}</p></div>
-                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 font-black text-rose-950">{{ $problemQtyForRetailer }}</p></div>
+                                <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 font-black text-indigo-950"><?php echo e($waitingQty); ?></p></div>
+                                <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 font-black text-emerald-950"><?php echo e($purchasedQtyForRetailer); ?></p></div>
+                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 font-black text-rose-950"><?php echo e($problemQtyForRetailer); ?></p></div>
                             </div>
                         </div>
                     </div>
 
                     <div class="space-y-5 p-5 sm:p-6">
-                        <input form="{{ $purchaseFormId }}" type="hidden" name="order_id" value="{{ $order->id }}">
+                        <input form="<?php echo e($purchaseFormId); ?>" type="hidden" name="order_id" value="<?php echo e($order->id); ?>">
 
                         <section>
                             <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
                                     <h3 class="text-sm font-black uppercase tracking-wide text-indigo-700">To Purchase</h3>
-                                    <p class="mt-1 text-xs font-bold text-slate-500">Waiting value {{ $money($waitingValue) }}. Select only items being bought now.</p>
+                                    <p class="mt-1 text-xs font-bold text-slate-500">Waiting value <?php echo e($money($waitingValue)); ?>. Select only items being bought now.</p>
                                 </div>
-                                @if ($remainingItems->isNotEmpty())
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
                                     <div class="flex flex-wrap gap-2">
                                         <button type="button" data-select-all class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">Select all</button>
                                         <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
                                     </div>
-                                @endif
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                             </div>
 
-                            @if ($remainingItems->isNotEmpty())
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
                                 <div class="overflow-hidden rounded-2xl border border-slate-200">
                                     <div class="hidden grid-cols-[56px_1fr_110px_150px_160px_88px] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-400 md:grid">
                                         <div>Buy</div><div>Item</div><div>Remaining</div><div>Qty now</div><div>Actual price</div><div>Link</div>
                                     </div>
                                     <div class="divide-y divide-slate-100">
-                                        @foreach ($remainingItems as $item)
-                                            @php
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $remainingItems; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                            <?php
                                                 $remaining = (int) $item->remaining_to_buy_qty;
                                                 $isPurple = (int)($item->requires_inspection ?? 0) === 1;
-                                            @endphp
-                                            <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start {{ $isPurple ? 'bg-purple-50/80 ring-1 ring-inset ring-purple-100' : 'bg-white' }}">
+                                            ?>
+                                            <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start <?php echo e($isPurple ? 'bg-purple-50/80 ring-1 ring-inset ring-purple-100' : 'bg-white'); ?>">
                                                 <div>
                                                     <label class="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
-                                                        <input form="{{ $purchaseFormId }}" type="checkbox" name="order_item_ids[]" value="{{ $item->item_id }}" data-line-checkbox class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                                        <input form="<?php echo e($purchaseFormId); ?>" type="checkbox" name="order_item_ids[]" value="<?php echo e($item->item_id); ?>" data-line-checkbox class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
                                                         <span class="text-xs font-black text-slate-700 md:hidden">Buy</span>
                                                     </label>
                                                 </div>
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <p class="font-black leading-5 text-slate-950">{{ $item->item_name }}</p>
-                                                        @if ($isPurple)
+                                                        <p class="font-black leading-5 text-slate-950"><?php echo e($item->item_name); ?></p>
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurple): ?>
                                                             <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800">Package check</span>
-                                                        @endif
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                     </div>
-                                                    <p class="mt-1 text-xs font-semibold text-slate-500">{{ $item->product_code ?: 'No product code' }}</p>
-                                                    @if ($isPurple && $item->inspection_note)
-                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900">{{ $item->inspection_note }}</p>
-                                                    @endif
+                                                    <p class="mt-1 text-xs font-semibold text-slate-500"><?php echo e($item->product_code ?: 'No product code'); ?></p>
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurple && $item->inspection_note): ?>
+                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900"><?php echo e($item->inspection_note); ?></p>
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
                                                     <details class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                                                         <summary class="cursor-pointer text-xs font-black text-amber-800">Record purchasing issue</summary>
-                                                        <form method="POST" action="{{ route('purchasing.problems.store') }}" class="mt-3 grid gap-2 sm:grid-cols-[1fr_110px]" data-issue-form>
-                                                            @csrf
-                                                            <input type="hidden" name="order_item_id" value="{{ $item->item_id }}">
+                                                        <form method="POST" action="<?php echo e(route('purchasing.problems.store')); ?>" class="mt-3 grid gap-2 sm:grid-cols-[1fr_110px]" data-issue-form>
+                                                            <?php echo csrf_field(); ?>
+                                                            <input type="hidden" name="order_item_id" value="<?php echo e($item->item_id); ?>">
                                                             <div>
                                                                 <label class="text-[10px] font-black uppercase tracking-wide text-amber-700">Issue type *</label>
                                                                 <select name="problem_code" required class="mt-1 h-10 w-full rounded-xl border-amber-200 bg-white px-3 text-xs font-black text-slate-900 focus:border-amber-400 focus:ring-amber-200">
@@ -175,7 +186,7 @@
                                                             </div>
                                                             <div>
                                                                 <label class="text-[10px] font-black uppercase tracking-wide text-amber-700">Qty *</label>
-                                                                <input name="qty" required type="number" min="1" max="{{ $remaining }}" value="{{ $remaining }}" class="mt-1 h-10 w-full rounded-xl border-amber-200 bg-white px-3 text-xs font-black text-slate-900 focus:border-amber-400 focus:ring-amber-200">
+                                                                <input name="qty" required type="number" min="1" max="<?php echo e($remaining); ?>" value="<?php echo e($remaining); ?>" class="mt-1 h-10 w-full rounded-xl border-amber-200 bg-white px-3 text-xs font-black text-slate-900 focus:border-amber-400 focus:ring-amber-200">
                                                             </div>
                                                             <div class="sm:col-span-2">
                                                                 <label class="text-[10px] font-black uppercase tracking-wide text-amber-700">Notes</label>
@@ -188,29 +199,29 @@
                                                         </form>
                                                     </details>
                                                 </div>
-                                                <div><span class="text-xs font-black uppercase tracking-wide text-slate-400 md:hidden">Remaining</span><p class="font-black text-slate-900">{{ $remaining }}</p></div>
+                                                <div><span class="text-xs font-black uppercase tracking-wide text-slate-400 md:hidden">Remaining</span><p class="font-black text-slate-900"><?php echo e($remaining); ?></p></div>
                                                 <div>
                                                     <label class="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Editable qty <span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] text-indigo-700 ring-1 ring-indigo-100">EDIT</span></label>
-                                                    <input form="{{ $purchaseFormId }}" name="qty[{{ $item->item_id }}]" type="number" min="0" max="{{ $remaining }}" value="{{ $remaining }}" data-line-qty class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
+                                                    <input form="<?php echo e($purchaseFormId); ?>" name="qty[<?php echo e($item->item_id); ?>]" type="number" min="0" max="<?php echo e($remaining); ?>" value="<?php echo e($remaining); ?>" data-line-qty class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
                                                 </div>
                                                 <div>
                                                     <label class="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Editable price <span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] text-indigo-700 ring-1 ring-indigo-100">EDIT</span></label>
-                                                    <input form="{{ $purchaseFormId }}" name="purchase_unit_price[{{ $item->item_id }}]" type="number" min="0" step="0.01" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
+                                                    <input form="<?php echo e($purchaseFormId); ?>" name="purchase_unit_price[<?php echo e($item->item_id); ?>]" type="number" min="0" step="0.01" value="<?php echo e(number_format((float) $item->unit_price, 2, '.', '')); ?>" class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
                                                 </div>
                                                 <div>
-                                                    @if ($item->product_url)
-                                                        <a href="{{ $item->product_url }}" target="_blank" class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-sm font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100" title="Open product link">↗</a>
-                                                    @else
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->product_url): ?>
+                                                        <a href="<?php echo e($item->product_url); ?>" target="_blank" class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-sm font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100" title="Open product link">↗</a>
+                                                    <?php else: ?>
                                                         <span class="text-sm font-bold text-slate-300">—</span>
-                                                    @endif
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </div>
                                             </div>
-                                        @endforeach
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                     </div>
                                 </div>
 
-                                <form id="{{ $purchaseFormId }}" method="POST" action="{{ route('purchasing.purchases.bulk') }}" class="sticky bottom-4 z-20 mt-4 rounded-2xl border border-indigo-200 bg-white/95 p-4 shadow-2xl shadow-indigo-950/10 backdrop-blur" data-purchase-form>
-                                    @csrf
+                                <form id="<?php echo e($purchaseFormId); ?>" method="POST" action="<?php echo e(route('purchasing.purchases.bulk')); ?>" class="sticky bottom-4 z-20 mt-4 rounded-2xl border border-indigo-200 bg-white/95 p-4 shadow-2xl shadow-indigo-950/10 backdrop-blur" data-purchase-form>
+                                    <?php echo csrf_field(); ?>
                                     <div class="grid gap-3 lg:grid-cols-[1fr_180px_170px_auto] lg:items-end">
                                         <div>
                                             <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Retailer order reference *</label>
@@ -222,7 +233,7 @@
                                         </div>
                                         <div>
                                             <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordered date</label>
-                                            <input name="ordered_at" type="date" value="{{ now()->format('Y-m-d') }}" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
+                                            <input name="ordered_at" type="date" value="<?php echo e(now()->format('Y-m-d')); ?>" class="mt-1 h-11 w-full rounded-2xl border-slate-200 bg-white px-4 text-sm font-black text-slate-900 focus:border-indigo-300 focus:ring-indigo-200">
                                         </div>
                                         <button class="h-11 rounded-2xl bg-indigo-600 px-6 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Record Purchase</button>
                                     </div>
@@ -231,13 +242,13 @@
                                         <p class="text-xs font-black text-indigo-950"><span data-selected-lines-footer>0</span> selected</p>
                                     </div>
                                 </form>
-                            @else
+                            <?php else: ?>
                                 <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-black text-emerald-800">Nothing left to buy for this retailer.</div>
-                            @endif
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </section>
 
                         <section>
-                            @php
+                            <?php
                                 $retailerPurchaseEvents = collect();
                                 foreach ($retailerItems as $item) {
                                     $history = collect($purchasesByRoot[$item->lineage_root_id] ?? []);
@@ -248,7 +259,7 @@
                                     $activeArrivalQty = (int) collect($arrivals)->where('order_item_purchase_id', $purchase->id)->sum('qty');
                                     return empty($purchase->cancelled_at) && $activeArrivalQty === 0;
                                 })->count();
-                            @endphp
+                            ?>
                             <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
                                     <h3 class="text-sm font-black uppercase tracking-wide text-emerald-700">Purchased</h3>
@@ -256,59 +267,59 @@
                                 </div>
                             </div>
 
-                            @if ($retailerPurchaseEvents->isNotEmpty())
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($retailerPurchaseEvents->isNotEmpty()): ?>
                                 <div class="space-y-3">
-                                    @foreach ($retailerPurchaseEvents as $purchase)
-                                        @php
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $retailerPurchaseEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $purchase): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                        <?php
                                             $activeArrivalQty = (int) collect($arrivals)->where('order_item_purchase_id', $purchase->id)->sum('qty');
                                             $wasUndone = ! empty($purchase->cancelled_at);
                                             $canEditPurchase = ! $wasUndone && $activeArrivalQty === 0;
-                                        @endphp
-                                        <div class="rounded-2xl border {{ $wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60') }} p-4 text-sm">
+                                        ?>
+                                        <div class="rounded-2xl border <?php echo e($wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60')); ?> p-4 text-sm">
                                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        @if ($canEditPurchase)
-                                                            <input form="{{ $bulkEditFormId }}" type="checkbox" name="purchase_ids[]" value="{{ $purchase->id }}" data-purchase-edit-checkbox class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
-                                                        @endif
-                                                        <p class="font-black text-slate-950">{{ $purchase->item_name }} · Qty {{ (int) $purchase->qty }} · {{ $money($purchase->purchase_unit_price ?? 0) }}</p>
-                                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide {{ $wasUndone ? 'bg-slate-100 text-slate-500' : ($canEditPurchase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') }}">{{ $wasUndone ? 'Undone' : ($canEditPurchase ? 'Editable' : 'Arrival exists') }}</span>
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canEditPurchase): ?>
+                                                            <input form="<?php echo e($bulkEditFormId); ?>" type="checkbox" name="purchase_ids[]" value="<?php echo e($purchase->id); ?>" data-purchase-edit-checkbox class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        <p class="font-black text-slate-950"><?php echo e($purchase->item_name); ?> · Qty <?php echo e((int) $purchase->qty); ?> · <?php echo e($money($purchase->purchase_unit_price ?? 0)); ?></p>
+                                                        <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide <?php echo e($wasUndone ? 'bg-slate-100 text-slate-500' : ($canEditPurchase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')); ?>"><?php echo e($wasUndone ? 'Undone' : ($canEditPurchase ? 'Editable' : 'Arrival exists')); ?></span>
                                                     </div>
-                                                    <p class="mt-1 text-xs font-bold text-slate-500">Ref {{ $purchase->retailer_order_reference ?: '—' }} · ETA {{ $purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M Y') : '—' }} · Tracking —</p>
-                                                    @if ($purchase->note)
-                                                        <p class="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-100">{{ $purchase->note }}</p>
-                                                    @endif
+                                                    <p class="mt-1 text-xs font-bold text-slate-500">Ref <?php echo e($purchase->retailer_order_reference ?: '—'); ?> · ETA <?php echo e($purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M Y') : '—'); ?> · Tracking —</p>
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($purchase->note): ?>
+                                                        <p class="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-100"><?php echo e($purchase->note); ?></p>
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
-                                                    @if ($canEditPurchase)
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canEditPurchase): ?>
                                                         <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-emerald-100">
                                                             <summary class="cursor-pointer text-xs font-black text-emerald-700">Edit</summary>
-                                                            <form method="POST" action="{{ route('purchasing.purchases.update', $purchase->id) }}" class="mt-3 grid min-w-[280px] gap-2 md:min-w-[520px] md:grid-cols-2" data-edit-purchase-form>
-                                                                @csrf
-                                                                @method('PATCH')
+                                                            <form method="POST" action="<?php echo e(route('purchasing.purchases.update', $purchase->id)); ?>" class="mt-3 grid min-w-[280px] gap-2 md:min-w-[520px] md:grid-cols-2" data-edit-purchase-form>
+                                                                <?php echo csrf_field(); ?>
+                                                                <?php echo method_field('PATCH'); ?>
                                                                 <div>
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Qty *</label>
-                                                                    <input name="qty" required type="number" min="1" max="999" value="{{ (int) $purchase->qty }}" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
+                                                                    <input name="qty" required type="number" min="1" max="999" value="<?php echo e((int) $purchase->qty); ?>" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
                                                                 </div>
                                                                 <div>
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Purchase price *</label>
-                                                                    <input name="purchase_unit_price" required type="number" min="0" step="0.01" value="{{ number_format((float) ($purchase->purchase_unit_price ?? 0), 2, '.', '') }}" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
+                                                                    <input name="purchase_unit_price" required type="number" min="0" step="0.01" value="<?php echo e(number_format((float) ($purchase->purchase_unit_price ?? 0), 2, '.', '')); ?>" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
                                                                 </div>
                                                                 <div class="md:col-span-2">
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Retailer reference *</label>
-                                                                    <input name="retailer_order_reference" required maxlength="255" value="{{ $purchase->retailer_order_reference }}" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
+                                                                    <input name="retailer_order_reference" required maxlength="255" value="<?php echo e($purchase->retailer_order_reference); ?>" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
                                                                 </div>
                                                                 <div>
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">ETA *</label>
-                                                                    <input name="expected_uk_hub_at" required type="date" value="{{ $purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('Y-m-d') : '' }}" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
+                                                                    <input name="expected_uk_hub_at" required type="date" value="<?php echo e($purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('Y-m-d') : ''); ?>" class="mt-1 h-10 w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 px-3 text-xs font-black text-slate-950 focus:border-emerald-600 focus:bg-white focus:ring-emerald-200">
                                                                 </div>
                                                                 <div>
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Ordered date</label>
-                                                                    <input name="ordered_at" type="date" value="{{ $purchase->ordered_at ? \Carbon\Carbon::parse($purchase->ordered_at)->format('Y-m-d') : now()->format('Y-m-d') }}" class="mt-1 h-10 w-full rounded-xl border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 focus:border-emerald-300 focus:ring-emerald-200">
+                                                                    <input name="ordered_at" type="date" value="<?php echo e($purchase->ordered_at ? \Carbon\Carbon::parse($purchase->ordered_at)->format('Y-m-d') : now()->format('Y-m-d')); ?>" class="mt-1 h-10 w-full rounded-xl border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 focus:border-emerald-300 focus:ring-emerald-200">
                                                                 </div>
                                                                 <div class="md:col-span-2">
                                                                     <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Optional note</label>
-                                                                    <input name="note" maxlength="2000" value="{{ $purchase->note }}" class="mt-1 h-10 w-full rounded-xl border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 focus:border-emerald-300 focus:ring-emerald-200">
+                                                                    <input name="note" maxlength="2000" value="<?php echo e($purchase->note); ?>" class="mt-1 h-10 w-full rounded-xl border-slate-200 bg-white px-3 text-xs font-bold text-slate-950 focus:border-emerald-300 focus:ring-emerald-200">
                                                                 </div>
                                                                 <div class="md:col-span-2 flex flex-wrap items-center gap-2">
                                                                     <button class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700">Save purchase changes</button>
@@ -317,25 +328,25 @@
                                                             </form>
                                                         </details>
 
-                                                        <form method="POST" action="{{ route('purchasing.purchases.undo', $purchase->id) }}" class="flex gap-2" data-confirm-undo>
-                                                            @csrf
+                                                        <form method="POST" action="<?php echo e(route('purchasing.purchases.undo', $purchase->id)); ?>" class="flex gap-2" data-confirm-undo>
+                                                            <?php echo csrf_field(); ?>
                                                             <input name="reason" required placeholder="Undo reason" class="h-9 w-36 rounded-xl border-slate-200 bg-white px-3 text-xs font-bold focus:border-rose-300 focus:ring-rose-200">
                                                             <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700">Undo</button>
                                                         </form>
-                                                    @else
+                                                    <?php else: ?>
                                                         <span class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-500 ring-1 ring-slate-200">Locked</span>
-                                                    @endif
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </div>
                                             </div>
                                         </div>
-                                    @endforeach
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 </div>
 
-                                @if ($editablePurchaseCount > 0)
-                                    <form id="{{ $bulkEditFormId }}" method="POST" action="{{ route('purchasing.purchases.bulk-update') }}" class="sticky bottom-4 z-20 mt-4 rounded-2xl border border-emerald-200 bg-white/95 p-4 shadow-2xl shadow-emerald-950/10 backdrop-blur" data-bulk-edit-purchases>
-                                        @csrf
-                                        @method('PATCH')
-                                        <input type="hidden" name="order_id" value="{{ $order->id }}">
+                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($editablePurchaseCount > 0): ?>
+                                    <form id="<?php echo e($bulkEditFormId); ?>" method="POST" action="<?php echo e(route('purchasing.purchases.bulk-update')); ?>" class="sticky bottom-4 z-20 mt-4 rounded-2xl border border-emerald-200 bg-white/95 p-4 shadow-2xl shadow-emerald-950/10 backdrop-blur" data-bulk-edit-purchases>
+                                        <?php echo csrf_field(); ?>
+                                        <?php echo method_field('PATCH'); ?>
+                                        <input type="hidden" name="order_id" value="<?php echo e($order->id); ?>">
                                         <div class="grid gap-3 lg:grid-cols-[1fr_180px_170px_1fr_auto] lg:items-end">
                                             <div>
                                                 <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Retailer reference</label>
@@ -357,52 +368,52 @@
                                         </div>
                                         <p class="mt-2 text-xs font-black text-emerald-950"><span data-selected-purchases-footer>0</span> selected purchases</p>
                                     </form>
-                                @endif
-                            @else
+                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <?php else: ?>
                                 <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">No purchases recorded for this retailer yet.</div>
-                            @endif
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </section>
 
                         <section>
-                            @php
+                            <?php
                                 $problemEvents = collect();
                                 foreach ($retailerItems as $item) {
                                     $history = collect($purchasesByRoot[$item->lineage_root_id] ?? []);
                                     $problemEvents = $problemEvents->merge($history->filter(fn ($purchase) => ! in_array($purchase->status, $purchaseStatuses, true)));
                                 }
                                 $problemEvents = $problemEvents->unique('id')->values();
-                            @endphp
+                            ?>
                             <div class="mb-3">
                                 <h3 class="text-sm font-black uppercase tracking-wide text-rose-700">Problems</h3>
                                 <p class="mt-1 text-xs font-bold text-slate-500">Operational purchasing issues. No financial change is made here.</p>
                             </div>
 
-                            @if ($problemEvents->isNotEmpty())
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($problemEvents->isNotEmpty()): ?>
                                 <div class="space-y-2">
-                                    @foreach ($problemEvents as $problem)
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $problemEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $problem): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                                         <div class="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm">
                                             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                                                 <div>
-                                                    <p class="font-black text-rose-950">{{ $problem->item_name }} · {{ $problemCodes[$problem->problem_code] ?? 'Purchasing Issue' }}</p>
-                                                    <p class="mt-1 text-xs font-bold text-rose-700">Qty {{ (int) $problem->qty }} · {{ $problem->problem_notes ?: 'No note recorded' }}</p>
+                                                    <p class="font-black text-rose-950"><?php echo e($problem->item_name); ?> · <?php echo e($problemCodes[$problem->problem_code] ?? 'Purchasing Issue'); ?></p>
+                                                    <p class="mt-1 text-xs font-bold text-rose-700">Qty <?php echo e((int) $problem->qty); ?> · <?php echo e($problem->problem_notes ?: 'No note recorded'); ?></p>
                                                 </div>
-                                                <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">{{ $problem->resolution_status ?: 'pending' }}</span>
+                                                <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-rose-700 ring-1 ring-rose-100"><?php echo e($problem->resolution_status ?: 'pending'); ?></span>
                                             </div>
                                         </div>
-                                    @endforeach
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                 </div>
-                            @else
+                            <?php else: ?>
                                 <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">No purchasing problems for this retailer.</div>
-                            @endif
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </section>
                     </div>
                 </article>
-            @empty
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                 <div class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
                     <p class="text-lg font-black text-slate-900">No purchasing data found for this order.</p>
                     <p class="mt-2 text-sm font-semibold text-slate-500">This may be completed, cancelled, superseded, or customer self-purchase.</p>
                 </div>
-            @endforelse
+            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
         </section>
     </div>
 
@@ -541,4 +552,14 @@
             });
         });
     </script>
-</x-app-layout>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $attributes = $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $component = $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php /**PATH /var/www/dabba-test/dabbadesk-v2/resources/views/purchasing/show.blade.php ENDPATH**/ ?>
