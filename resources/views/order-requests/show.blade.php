@@ -131,41 +131,38 @@
                     </div>
                 </section>
 
-                <section class="grid gap-4 lg:grid-cols-3">
-                    <div class="rounded-3xl border {{ $hasUnresolvedRetailers ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }} p-5 shadow-sm lg:col-span-2">
+                <section class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+                    <div class="rounded-3xl border {{ $hasUnresolvedRetailers ? 'border-amber-300 bg-amber-50' : 'border-emerald-200 bg-emerald-50' }} p-5 shadow-sm">
                         <div class="flex flex-wrap items-start justify-between gap-4">
-                            <div>
-                                <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasUnresolvedRetailers ? 'text-amber-700' : 'text-emerald-700' }}">Request health</p>
-                                <h3 class="mt-1 text-xl font-black text-slate-950">{{ $hasUnresolvedRetailers ? 'Review required before draft' : 'Ready for draft conversion' }}</h3>
-                                <p class="mt-1 text-sm font-semibold {{ $hasUnresolvedRetailers ? 'text-amber-900' : 'text-emerald-900' }}">
-                                    {{ $hasUnresolvedRetailers ? 'Order Requests are the correction stage. Resolve every retailer before this request can move forward.' : 'All request retailers are resolved. The draft can inherit clean intake data.' }}
+                            <div class="min-w-0">
+                                <p class="text-xs font-black uppercase tracking-[0.2em] {{ $hasUnresolvedRetailers ? 'text-amber-700' : 'text-emerald-700' }}">Order request status</p>
+                                <h3 class="mt-1 text-xl font-black text-slate-950">{{ $hasUnresolvedRetailers ? 'Retailer review needed' : 'Ready for draft conversion' }}</h3>
+                                <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 {{ $hasUnresolvedRetailers ? 'text-amber-900' : 'text-emerald-900' }}">
+                                    {{ $hasUnresolvedRetailers ? 'One or more items need the retailer corrected or linked before conversion.' : 'All request items have resolved retailers.' }}
                                 </p>
                             </div>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $hasUnresolvedRetailers ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white' }}">{{ $hasUnresolvedRetailers ? 'Locked' : 'Clean' }}</span>
+                            <div class="flex shrink-0 flex-wrap items-center gap-2">
+                                <span class="rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide {{ $hasUnresolvedRetailers ? 'bg-amber-600 text-white' : 'bg-emerald-600 text-white' }}">{{ $hasUnresolvedRetailers ? $unresolvedItemCount . ' needs attention' : 'Clean' }}</span>
                                 @if ($canEdit && $hasUnresolvedRetailers)
-                                    <a href="#retailer-review-queue" class="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-slate-800">Review / add retailer</a>
+                                    <a href="#retailer-review-queue" class="rounded-full bg-slate-950 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm hover:bg-slate-800">Review retailer</a>
                                 @endif
                             </div>
                         </div>
-                        <div class="mt-5 grid gap-3 sm:grid-cols-4">
-                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                                <p class="text-2xl font-black text-slate-950">{{ $items->count() }}</p>
-                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Items</p>
+
+                        @if ($hasUnresolvedRetailers)
+                            <div class="mt-4 grid gap-2">
+                                @foreach ($unresolvedRetailers as $retailer)
+                                    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3 ring-1 ring-amber-200">
+                                        <div class="min-w-0">
+                                            <p class="text-[11px] font-black uppercase tracking-wide text-amber-700">Needs retailer review</p>
+                                            <p class="mt-1 break-words text-sm font-black text-slate-950">{{ $retailer['base_url'] ?: $retailer['name'] }}</p>
+                                            <p class="mt-0.5 text-xs font-semibold text-slate-500">Found on {{ $retailer['items_count'] ?? 1 }} item{{ ($retailer['items_count'] ?? 1) === 1 ? '' : 's' }}</p>
+                                        </div>
+                                        <a href="#retailer-review-queue" class="rounded-xl bg-amber-600 px-3 py-2 text-xs font-black text-white hover:bg-amber-700">Fix</a>
+                                    </div>
+                                @endforeach
                             </div>
-                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                                <p class="text-2xl font-black text-slate-950">{{ $resolvedRetailerCount }}/{{ $items->count() }}</p>
-                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Retailers resolved</p>
-                            </div>
-                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                                <p class="text-2xl font-black {{ $unresolvedItemCount > 0 ? 'text-amber-700' : 'text-emerald-700' }}">{{ $unresolvedItemCount }}</p>
-                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Needs attention</p>
-                            </div>
-                            <div class="rounded-2xl bg-white p-4 text-center ring-1 ring-black/5">
-                                <p class="text-2xl font-black text-slate-950">{{ $attachments->count() }}</p>
-                                <p class="mt-1 text-[11px] font-black uppercase tracking-wide text-slate-400">Attachments</p>
-                            </div>
-                        </div>
+                        @endif
                     </div>
 
                     <div class="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -199,9 +196,9 @@
                         <div class="border-b border-amber-200 bg-amber-50 p-5">
                             <div class="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Action needed</p>
-                                    <h3 class="mt-1 text-xl font-black text-slate-950">Review / add unknown retailers</h3>
-                                    <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900">This is where unresolved retailers are fixed. If the link is wrong, correct it on the item first. If the retailer is genuinely new, review it here and add/link it to the affected items.</p>
+                                    <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Retailer review</p>
+                                    <h3 class="mt-1 text-xl font-black text-slate-950">Fix unresolved retailers</h3>
+                                    <p class="mt-1 max-w-3xl text-sm font-semibold leading-6 text-amber-900">First check the item fields below. If the customer pasted the product URL into Product Code, open the item editor and save the corrected fields.</p>
                                 </div>
                                 <span class="rounded-full bg-amber-600 px-4 py-2 text-xs font-black uppercase tracking-wide text-white">{{ $unresolvedRetailers->count() }} unresolved</span>
                             </div>
@@ -285,6 +282,10 @@
                             @php
                                 $itemRetailerResolved = ! empty($item->retailer_id) && ! empty($item->matched_retailer_name);
                                 $itemTotal = (float) ($item->line_total ?? ((float) $item->unit_price * (int) $item->quantity));
+                                $productCodeValue = trim((string) ($item->product_code ?? ''));
+                                $productCodeLooksLikeUrl = $productCodeValue !== '' && preg_match('/^(https?:\/\/|www\.)/i', $productCodeValue) === 1;
+                                $suggestedRetailerUrl = $item->retailer_url ?: ($productCodeLooksLikeUrl ? $productCodeValue : '');
+                                $suggestedProductCode = $productCodeLooksLikeUrl ? '' : $item->product_code;
                             @endphp
                             <article class="rounded-3xl border {{ $itemRetailerResolved ? 'border-slate-200 bg-white' : 'border-amber-300 bg-amber-50' }} p-4 shadow-sm">
                                 <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
@@ -311,17 +312,20 @@
                                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100 md:col-span-2">
                                                 <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Customer/product link</p>
                                                 @if ($item->retailer_url)
-                                                    <div class="mt-1 flex items-center gap-2">
+                                                    <div class="mt-1 flex items-start gap-2">
                                                         <a href="{{ $item->retailer_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-indigo-200 bg-white text-base font-black text-indigo-600 hover:bg-indigo-50" title="Open product link" aria-label="Open product link">↗</a>
-                                                        <p class="min-w-0 truncate text-sm font-semibold text-slate-700">{{ $item->retailer_url }}</p>
+                                                        <p class="min-w-0 select-text break-all text-sm font-semibold text-slate-700">{{ $item->retailer_url }}</p>
                                                     </div>
                                                 @else
                                                     <p class="mt-1 text-sm font-semibold text-slate-400">No link supplied</p>
                                                 @endif
                                             </div>
-                                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
-                                                <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Product code</p>
-                                                <p class="mt-1 text-sm font-black text-slate-900">{{ $item->product_code ?: '—' }}</p>
+                                            <div class="rounded-2xl {{ $productCodeLooksLikeUrl ? 'bg-amber-50 ring-1 ring-amber-200' : 'bg-slate-50 ring-1 ring-slate-100' }} p-3">
+                                                <p class="text-[11px] font-black uppercase tracking-wide {{ $productCodeLooksLikeUrl ? 'text-amber-700' : 'text-slate-400' }}">Product code</p>
+                                                <p class="mt-1 select-text break-all text-sm font-black text-slate-900">{{ $item->product_code ?: '—' }}</p>
+                                                @if ($productCodeLooksLikeUrl)
+                                                    <p class="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-amber-900 ring-1 ring-amber-200">Looks like a URL. Open the item editor below and save to move it into the link field.</p>
+                                                @endif
                                             </div>
                                             <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                                                 <p class="text-[11px] font-black uppercase tracking-wide text-slate-400">Quantity</p>
@@ -351,8 +355,12 @@
                                                     @csrf
                                                     <div>
                                                         <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Product / retailer link</label>
-                                                        <input name="retailer_url" value="{{ old('retailer_url', $item->retailer_url) }}" placeholder="https://www.argos.co.uk/..." class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
-                                                        <p class="mt-1 text-[11px] font-semibold text-indigo-700">Example correction: change <span class="font-black">https://argos</span> to <span class="font-black">https://www.argos.co.uk</span>, then save.</p>
+                                                        <input name="retailer_url" value="{{ old('retailer_url', $suggestedRetailerUrl) }}" placeholder="https://www.argos.co.uk/..." class="mt-1 w-full rounded-xl border-2 border-indigo-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                                                        @if ($productCodeLooksLikeUrl && ! $item->retailer_url)
+                                                            <p class="mt-1 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold text-amber-900">URL detected in Product Code. The form has placed it in this link field and cleared Product Code below. Press Save & re-detect.</p>
+                                                        @else
+                                                            <p class="mt-1 text-[11px] font-semibold text-indigo-700">Correct bad or missing links here, then save.</p>
+                                                        @endif
                                                     </div>
                                                     <div class="grid gap-3 md:grid-cols-2">
                                                         <div>
@@ -361,7 +369,7 @@
                                                         </div>
                                                         <div>
                                                             <label class="text-[11px] font-black uppercase tracking-wide text-indigo-800">Product code / SKU</label>
-                                                            <input name="product_code" value="{{ old('product_code', $item->product_code) }}" class="mt-1 w-full rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:ring-indigo-500">
+                                                            <input name="product_code" value="{{ old('product_code', $suggestedProductCode) }}" class="mt-1 w-full rounded-xl border-2 border-indigo-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
                                                         </div>
                                                     </div>
                                                     <div>

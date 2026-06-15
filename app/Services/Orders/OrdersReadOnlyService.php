@@ -88,6 +88,7 @@ class OrdersReadOnlyService
             ->join('customers', 'customers.id', '=', 'draft_orders.customer_id')
             ->leftJoin('users as created_user', 'created_user.id', '=', 'orders.created_by_user_id')
             ->leftJoin('users as updated_user', 'updated_user.id', '=', 'orders.updated_by_user_id')
+            ->leftJoin('order_requests', 'order_requests.id', '=', 'draft_orders.order_request_id')
             ->leftJoinSub($settlementSubquery, 'settlement_totals', function ($join) {
                 $join->on('settlement_totals.order_id', '=', 'orders.id');
             })
@@ -103,6 +104,8 @@ class OrdersReadOnlyService
             ->select([
                 'orders.id',
                 'orders.draft_order_id',
+                'draft_orders.order_request_id',
+                'order_requests.request_ref as order_request_ref',
                 'orders.order_number',
                 'orders.status',
                 'orders.purchase_mode',
@@ -187,6 +190,7 @@ class OrdersReadOnlyService
                         ->orWhere('orders.bill_to_name', 'like', $like)
                         ->orWhere('orders.bill_to_email', 'like', $like)
                         ->orWhere('orders.bill_to_phone', 'like', $like)
+                        ->orWhere('order_requests.request_ref', 'like', $like)
                         ->orWhere('customers.first_name', 'like', $like)
                         ->orWhere('customers.last_name', 'like', $like)
                         ->orWhere('customers.company_name', 'like', $like)
@@ -414,9 +418,13 @@ class OrdersReadOnlyService
     public function revisionHistory(object $order): Collection
     {
         return DB::table('orders')
+            ->leftJoin('draft_orders', 'draft_orders.id', '=', 'orders.draft_order_id')
+            ->leftJoin('order_requests', 'order_requests.id', '=', 'draft_orders.order_request_id')
             ->select([
                 'orders.id',
                 'orders.draft_order_id',
+                'draft_orders.order_request_id',
+                'order_requests.request_ref as order_request_ref',
                 'orders.order_number',
                 'orders.status',
                 'orders.purchase_mode',

@@ -167,7 +167,7 @@
                                                         Purple / requires package check
                                                     </label>
                                                     <div class="flex flex-col gap-2 sm:flex-row">
-                                                        <input name="inspection_note" value="{{ $item->inspection_note }}" maxlength="2000" placeholder="Reason, e.g. check invoice inside parcel" class="h-10 flex-1 rounded-xl border-purple-200 bg-purple-50/50 px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:ring-purple-200">
+                                                        <input name="inspection_note" value="{{ $item->inspection_note }}" maxlength="2000" placeholder="Optional reason, e.g. check invoice inside parcel" class="h-10 flex-1 rounded-xl border-purple-200 bg-purple-50/50 px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:ring-purple-200">
                                                         <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800">Save flag</button>
                                                     </div>
                                                 </form>
@@ -189,7 +189,7 @@
                                                                 </div>
                                                                 <p class="mt-1 font-semibold text-slate-500">ETA {{ $purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M Y') : '—' }} · Arrived qty {{ $activeArrivalQty }}</p>
                                                                 @if (! $wasUndone && $activeArrivalQty === 0)
-                                                                    <form method="POST" action="{{ route('purchasing.purchases.undo', $purchase->id) }}" class="mt-2 flex flex-col gap-2 sm:flex-row" onsubmit="return confirm('Undo this purchase and return the quantity to Awaiting Purchase?')">
+                                                                    <form method="POST" action="{{ route('purchasing.purchases.undo', $purchase->id) }}" class="mt-2 flex flex-col gap-2 sm:flex-row" data-confirm-undo>
                                                                         @csrf
                                                                         <input name="reason" required placeholder="Undo reason" class="h-9 flex-1 rounded-xl border-slate-200 bg-white px-3 text-xs font-bold focus:border-rose-300 focus:ring-rose-200">
                                                                         <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700">Undo purchase</button>
@@ -209,7 +209,7 @@
                                         <div>
                                             <label class="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Editable qty <span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] text-indigo-700 ring-1 ring-indigo-100">EDIT</span></label>
                                             @if ($canBuy)
-                                                <input form="{{ $purchaseFormId }}" name="qty[{{ $item->item_id }}]" type="number" min="0" max="{{ $remaining }}" value="{{ $remaining }}" data-line-qty class="h-12 w-full rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3 text-sm font-black text-slate-950 shadow-inner focus:border-indigo-500 focus:bg-white focus:ring-indigo-200">
+                                                <input form="{{ $purchaseFormId }}" name="qty[{{ $item->item_id }}]" type="number" min="0" max="{{ $remaining }}" value="{{ $remaining }}" data-line-qty class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
                                                 <p class="mt-1 text-[11px] font-bold text-slate-500">{{ $remaining }} left</p>
                                             @else
                                                 <p class="font-black text-emerald-700">0 left</p>
@@ -219,7 +219,7 @@
                                         <div>
                                             <label class="mb-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Editable price <span class="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] text-indigo-700 ring-1 ring-indigo-100">EDIT</span></label>
                                             @if ($canBuy)
-                                                <input form="{{ $purchaseFormId }}" name="purchase_unit_price[{{ $item->item_id }}]" type="number" min="0" step="0.01" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="h-12 w-full rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3 text-sm font-black text-slate-950 shadow-inner focus:border-indigo-500 focus:bg-white focus:ring-indigo-200">
+                                                <input form="{{ $purchaseFormId }}" name="purchase_unit_price[{{ $item->item_id }}]" type="number" min="0" step="0.01" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
                                             @else
                                                 <span class="text-sm font-bold text-slate-400">—</span>
                                             @endif
@@ -274,7 +274,54 @@
         </section>
     </div>
 
+    <div id="purchase-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" aria-hidden="true">
+        <div class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <p id="purchase-modal-title" class="text-lg font-black text-slate-950">Check this purchase</p>
+            <p id="purchase-modal-message" class="mt-2 text-sm font-semibold leading-6 text-slate-600"></p>
+            <div class="mt-5 flex justify-end gap-2">
+                <button type="button" id="purchase-modal-cancel" class="hidden rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+                <button type="button" id="purchase-modal-ok" class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-black text-white hover:bg-indigo-700">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        const purchaseModal = document.getElementById('purchase-modal');
+        const purchaseModalTitle = document.getElementById('purchase-modal-title');
+        const purchaseModalMessage = document.getElementById('purchase-modal-message');
+        const purchaseModalOk = document.getElementById('purchase-modal-ok');
+        const purchaseModalCancel = document.getElementById('purchase-modal-cancel');
+        let purchaseModalConfirmCallback = null;
+
+        const showPurchaseModal = ({ title, message, confirm = false, onConfirm = null }) => {
+            purchaseModalTitle.textContent = title || 'Check this purchase';
+            purchaseModalMessage.textContent = message || '';
+            purchaseModalConfirmCallback = onConfirm;
+            purchaseModalCancel.classList.toggle('hidden', !confirm);
+            purchaseModalOk.textContent = confirm ? 'Confirm' : 'OK';
+            purchaseModal.classList.remove('hidden');
+            purchaseModal.classList.add('flex');
+            purchaseModal.setAttribute('aria-hidden', 'false');
+            purchaseModalOk.focus();
+        };
+
+        const closePurchaseModal = () => {
+            purchaseModal.classList.add('hidden');
+            purchaseModal.classList.remove('flex');
+            purchaseModal.setAttribute('aria-hidden', 'true');
+            purchaseModalConfirmCallback = null;
+        };
+
+        purchaseModalCancel?.addEventListener('click', closePurchaseModal);
+        purchaseModal?.addEventListener('click', (event) => {
+            if (event.target === purchaseModal) closePurchaseModal();
+        });
+        purchaseModalOk?.addEventListener('click', () => {
+            const callback = purchaseModalConfirmCallback;
+            closePurchaseModal();
+            if (callback) callback();
+        });
+
         document.querySelectorAll('[data-retailer-card]').forEach((card) => {
             const checkboxes = Array.from(card.querySelectorAll('[data-line-checkbox]'));
             const selected = card.querySelector('[data-selected-lines]');
@@ -305,26 +352,47 @@
 
                 if (selectedCount === 0) {
                     event.preventDefault();
-                    alert('Please select at least one item to purchase.');
+                    showPurchaseModal({
+                        title: 'No items selected',
+                        message: 'Please select at least one item before recording a purchase.'
+                    });
                     return;
                 }
 
                 if (! reference?.value.trim()) {
                     event.preventDefault();
                     reference?.focus();
-                    alert('Retailer order reference is required before saving a purchase.');
+                    showPurchaseModal({
+                        title: 'Retailer reference required',
+                        message: 'Enter the retailer order reference before saving this purchase.'
+                    });
                     return;
                 }
 
                 if (! eta?.value) {
                     event.preventDefault();
                     eta?.focus();
-                    alert('ETA / expected UK hub date is required before saving a purchase.');
+                    showPurchaseModal({
+                        title: 'ETA required',
+                        message: 'Enter the ETA / expected UK hub date before saving this purchase.'
+                    });
                     return;
                 }
             });
 
             update();
+        });
+
+        document.querySelectorAll('form[data-confirm-undo]').forEach((form) => {
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                showPurchaseModal({
+                    title: 'Undo this purchase?',
+                    message: 'This will return the quantity to Awaiting Purchase. This is only allowed when the purchase has not arrived.',
+                    confirm: true,
+                    onConfirm: () => form.submit()
+                });
+            });
         });
     </script>
 </x-app-layout>

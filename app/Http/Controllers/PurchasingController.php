@@ -545,12 +545,6 @@ class PurchasingController extends Controller
         $requiresInspection = (bool) ($validated['requires_inspection'] ?? false);
         $note = trim((string) ($validated['inspection_note'] ?? ''));
 
-        if ($requiresInspection && $note === '') {
-            throw ValidationException::withMessages([
-                'inspection_note' => 'Please add a package check note when marking an item purple.',
-            ]);
-        }
-
         $userId = Auth::id();
 
         DB::transaction(function () use ($row, $requiresInspection, $note, $userId) {
@@ -558,7 +552,7 @@ class PurchasingController extends Controller
                 ->where('id', (int) $row->id)
                 ->update([
                     'requires_inspection' => $requiresInspection ? 1 : 0,
-                    'inspection_note' => $requiresInspection ? $note : null,
+                    'inspection_note' => $requiresInspection ? ($note !== '' ? $note : null) : null,
                     'updated_by_user_id' => $userId,
                     'updated_at' => now(),
                 ]);

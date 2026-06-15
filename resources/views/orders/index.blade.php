@@ -33,7 +33,7 @@
                             value="{{ $filters['q'] }}"
                             type="text"
                             autocomplete="off"
-                            placeholder="Search orders..."
+                            placeholder="Search order, request ref, customer, email, phone or item..."
                             data-live-search-input
                             class="h-[48px] w-full rounded-2xl border-slate-300 pl-12 pr-4 text-sm font-semibold shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                         >
@@ -165,7 +165,7 @@
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-3 gap-2 border-slate-200 xl:border-l xl:pl-5">
+                        <div class="grid grid-cols-2 gap-2 border-slate-200 sm:grid-cols-4 xl:border-l xl:pl-5">
                             <a href="{{ route('orders.show', $order->id) }}" class="group rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50">
                                 <span class="mx-auto inline-flex h-8 w-8 items-center justify-center text-indigo-600">
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-7 w-7"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
@@ -188,6 +188,23 @@
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-7 w-7"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></svg>
                                     </span>
                                     <span class="mt-1 block text-sm font-black text-slate-500">Draft</span>
+                                    <span class="mt-0.5 block text-[11px] font-bold text-slate-400">Unavailable</span>
+                                </span>
+                            @endif
+
+
+                            @if (! empty($order->order_request_id))
+                                <a href="{{ route('order-requests.show', $order->order_request_id) }}" class="group rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center shadow-sm transition hover:border-amber-200 hover:bg-amber-50">
+                                    <span class="mx-auto inline-flex h-8 w-8 items-center justify-center text-amber-700">
+                                        ↗
+                                    </span>
+                                    <span class="mt-1 block text-sm font-black text-amber-700">Request</span>
+                                    <span class="mt-0.5 block truncate text-[11px] font-bold text-slate-500">{{ $order->order_request_ref ?: 'View request' }} ↗</span>
+                                </a>
+                            @else
+                                <span class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-center opacity-60">
+                                    <span class="mx-auto inline-flex h-8 w-8 items-center justify-center text-slate-400">↗</span>
+                                    <span class="mt-1 block text-sm font-black text-slate-500">Request</span>
                                     <span class="mt-0.5 block text-[11px] font-bold text-slate-400">Unavailable</span>
                                 </span>
                             @endif

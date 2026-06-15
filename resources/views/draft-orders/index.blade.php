@@ -97,8 +97,14 @@
                                 <p class="mt-1 text-sm font-bold text-slate-900">£{{ number_format($draft->grand_total ?? 0, 2) }}</p>
                             </div>
 
-                            <div class="xl:col-span-2 flex justify-start xl:justify-end">
+                            <div class="xl:col-span-2 flex flex-wrap justify-start gap-2 xl:justify-end">
                                 <a href="{{ route('draft-orders.show', $draft->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-700">Open Draft</a>
+                                @if (! empty($draft->order_request_id))
+                                    <a href="{{ route('order-requests.show', $draft->order_request_id) }}" class="rounded-2xl bg-amber-50 px-4 py-3 text-sm font-black text-amber-700 ring-1 ring-amber-100 hover:bg-amber-100">Request ↗</a>
+                                @endif
+                                @if (! empty($draft->finalized_order_id))
+                                    <a href="{{ route('orders.show', $draft->finalized_order_id) }}" class="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">Order ↗</a>
+                                @endif
                             </div>
                         </div>
                     </div>

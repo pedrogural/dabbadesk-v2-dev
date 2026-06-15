@@ -26,7 +26,7 @@ class DraftOrderWorkspaceService
             ->select([
                 'd.id', 'd.draft_number', 'd.state', 'd.status', 'd.kind', 'd.purchase_mode', 'd.grand_total', 'd.items_subtotal',
                 'd.retailer_delivery_total', 'd.dabba_fee_total', 'd.created_at', 'd.updated_at', 'd.finalized_order_id',
-                'd.created_by_user_id', 'd.updated_by_user_id',
+                'd.created_by_user_id', 'd.updated_by_user_id', 'd.order_request_id',
                 'c.id as customer_id', 'c.first_name', 'c.last_name', 'c.company_name', 'r.request_ref',
                 'created_user.name as created_by_name', 'updated_user.name as updated_by_name',
             ])
