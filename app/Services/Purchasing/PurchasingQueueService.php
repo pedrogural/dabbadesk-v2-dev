@@ -105,8 +105,6 @@ class PurchasingQueueService
                 'oip.*',
                 'oi.item_name',
                 'oi.product_code',
-                'oi.requires_inspection',
-                'oi.inspection_note',
                 'r.name as master_retailer_name',
             ])
             ->whereIn('oip.root_item_id', $items->pluck('lineage_root_id')->filter()->unique()->values())
@@ -147,11 +145,13 @@ class PurchasingQueueService
 
     private function itemRows(string $search = '', ?int $orderId = null, ?int $mineUserId = null): Collection
     {
+        $problemStatuses = "'unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable'";
+
         $purchaseTotals = DB::table('order_item_purchases')
             ->selectRaw('root_item_id')
             ->selectRaw("SUM(CASE WHEN status IN ('purchased','ordered','received') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') THEN qty ELSE 0 END) as terminal_problem_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND COALESCE(resolution_status, 'pending') = 'pending' THEN qty ELSE 0 END) as pending_problem_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ({$problemStatuses}) AND COALESCE(resolution_status, 'pending') IN ('pending','closed') THEN qty ELSE 0 END) as terminal_problem_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ({$problemStatuses}) AND COALESCE(resolution_status, 'pending') = 'pending' THEN qty ELSE 0 END) as pending_problem_qty")
             ->selectRaw('MAX(created_at) as latest_purchase_event_at')
             ->selectRaw('COUNT(*) as purchase_event_count')
             ->groupBy('root_item_id');

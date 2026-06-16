@@ -485,7 +485,9 @@ class PurchasingController extends Controller
         $reason = trim((string) $validated['reason']);
         $noteAppend = "\nPurchase undone " . now()->format('Y-m-d H:i') . ' by user #' . ($userId ?: 'unknown') . ': ' . $reason;
 
-        DB::transaction(function () use ($row, $purchase, $userId, $reason, $noteAppend) {
+        $rootItemId = (int) ($row->root_item_id ?: $row->order_item_id);
+
+        DB::transaction(function () use ($row, $purchase, $rootItemId, $userId, $reason, $noteAppend) {
             DB::table('order_item_purchases')
                 ->where('id', $purchase)
                 ->update([
@@ -765,6 +767,212 @@ class PurchasingController extends Controller
             ->with('success', 'Selected purchases updated.');
     }
 
+    public function updateProblem(Request $request, int $problem)
+    {
+        $validated = $request->validate([
+            'qty' => ['required', 'integer', 'min:1', 'max:999'],
+            'problem_code' => ['required', 'string', 'max:50'],
+            'resolution_action' => ['nullable', 'string', 'max:50'],
+            'problem_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $allowedProblemCodes = [
+            'out_of_stock',
+            'price_increased',
+            'discontinued',
+            'retailer_restriction',
+            'supplier_cancelled',
+            'wrong_listing',
+            'unavailable',
+            'lost',
+            'damaged',
+            'wrong_item',
+            'retailer_refunded',
+            'other',
+        ];
+
+        $allowedResolutionActions = [
+            'customer_decision_required',
+            'repurchase',
+            'replacement',
+            'refund_required',
+            'remove_or_credit',
+            'wait_for_retailer',
+            'other',
+        ];
+
+        $row = DB::table('order_item_purchases as oip')
+            ->join('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
+            ->leftJoin('orders as o', 'o.id', '=', 'oip.order_id')
+            ->select(['oip.*', 'oi.quantity as item_quantity', 'o.order_number'])
+            ->where('oip.id', $problem)
+            ->first();
+
+        abort_if(! $row, 404);
+
+        $problemStatuses = ['unfulfilled', 'failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable'];
+        if (! in_array($row->status, $problemStatuses, true)) {
+            throw ValidationException::withMessages([
+                'problem' => 'Only purchasing issue events can be edited here.',
+            ]);
+        }
+
+        if (! in_array(($row->resolution_status ?: 'pending'), ['pending', null], true)) {
+            throw ValidationException::withMessages([
+                'problem' => 'This issue has already been resolved or closed. Re-open it by recording a new issue if needed.',
+            ]);
+        }
+
+        $problemCode = in_array($validated['problem_code'], $allowedProblemCodes, true) ? $validated['problem_code'] : 'other';
+        $resolutionAction = trim((string) ($validated['resolution_action'] ?? 'customer_decision_required'));
+        $resolutionAction = in_array($resolutionAction, $allowedResolutionActions, true) ? $resolutionAction : 'customer_decision_required';
+        $qty = (int) $validated['qty'];
+        $notes = trim((string) ($validated['problem_notes'] ?? '')) ?: null;
+
+        if ($qty > (int) $row->item_quantity) {
+            throw ValidationException::withMessages([
+                'qty' => 'Issue quantity cannot be greater than the original item quantity.',
+            ]);
+        }
+
+        $status = match ($problemCode) {
+            'supplier_cancelled' => 'unfulfilled',
+            'retailer_refunded' => 'retailer_refunded',
+            'lost' => 'lost',
+            'damaged' => 'damaged',
+            'wrong_item' => 'wrong_item',
+            'out_of_stock', 'discontinued', 'retailer_restriction', 'unavailable' => 'unavailable',
+            'price_increased', 'wrong_listing' => 'problem',
+            default => 'problem',
+        };
+
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($row, $problem, $qty, $problemCode, $status, $resolutionAction, $notes, $userId) {
+            DB::table('order_item_purchases')
+                ->where('id', $problem)
+                ->update([
+                    'qty' => $qty,
+                    'status' => $status,
+                    'problem_code' => $problemCode,
+                    'resolution_action' => $resolutionAction,
+                    'problem_notes' => $notes,
+                    'note' => $notes,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            DB::table('order_items')
+                ->where('id', (int) $row->order_item_id)
+                ->update([
+                    'purchase_problem_reason' => $problemCode,
+                    'purchase_problem_note' => $notes,
+                    'last_status_changed_at' => now(),
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => (int) $row->order_id,
+                'type' => 'purchasing',
+                'is_pinned' => 0,
+                'title' => 'Purchasing problem edited',
+                'body' => 'Purchasing problem #' . $problem . ' was edited for Order #' . ($row->order_number ?? $row->order_id) . '. Problem: ' . $problemCode . '. Qty ' . $qty . '.',
+                'occurred_at' => now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return redirect()
+            ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => 'problems'])
+            ->with('success', 'Purchasing problem updated.');
+    }
+
+    public function resolveProblem(Request $request, int $problem)
+    {
+        $validated = $request->validate([
+            'resolution' => ['required', 'string', 'in:return_to_purchase,closed'],
+            'resolution_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $row = DB::table('order_item_purchases as oip')
+            ->leftJoin('orders as o', 'o.id', '=', 'oip.order_id')
+            ->select(['oip.*', 'o.order_number'])
+            ->where('oip.id', $problem)
+            ->first();
+
+        abort_if(! $row, 404);
+
+        $problemStatuses = ['unfulfilled', 'failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable'];
+        if (! in_array($row->status, $problemStatuses, true)) {
+            throw ValidationException::withMessages([
+                'problem' => 'Only purchasing issue events can be resolved here.',
+            ]);
+        }
+
+        if (($row->resolution_status ?: 'pending') !== 'pending') {
+            return redirect()
+                ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => 'problems'])
+                ->with('success', 'Purchasing problem was already resolved.');
+        }
+
+        $resolution = $validated['resolution'];
+        $newStatus = $resolution === 'return_to_purchase' ? 'returned_to_purchase' : 'closed';
+        $note = trim((string) ($validated['resolution_note'] ?? ''));
+        $append = "\nResolved " . now()->format('Y-m-d H:i') . ' by user #' . (Auth::id() ?: 'unknown') . ': ' . ($resolution === 'return_to_purchase' ? 'Returned to purchase' : 'Closed') . ($note !== '' ? ' — ' . $note : '');
+        $userId = Auth::id();
+
+        DB::transaction(function () use ($row, $problem, $newStatus, $append, $resolution, $note, $userId) {
+            DB::table('order_item_purchases')
+                ->where('id', $problem)
+                ->update([
+                    'resolution_status' => $newStatus,
+                    'internal_notes' => trim((string) ($row->internal_notes ?? '') . $append),
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            if ($newStatus === 'returned_to_purchase') {
+                $rootItemId = (int) ($row->root_item_id ?: $row->order_item_id);
+                $item = DB::table('order_items')->where('id', (int) $row->order_item_id)->first();
+                $remaining = $item ? $this->remainingToBuyQty($rootItemId, (int) $item->quantity) : 0;
+
+                DB::table('order_items')
+                    ->where('id', (int) $row->order_item_id)
+                    ->update([
+                        'status' => $remaining > 0 ? 'requested' : ($item->status ?? 'requested'),
+                        'purchase_problem_reason' => null,
+                        'purchase_problem_note' => null,
+                        'last_status_changed_at' => now(),
+                        'updated_by_user_id' => $userId,
+                        'updated_at' => now(),
+                    ]);
+            }
+
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => (int) $row->order_id,
+                'type' => 'purchasing',
+                'is_pinned' => 0,
+                'title' => $newStatus === 'returned_to_purchase' ? 'Purchasing problem returned to purchase' : 'Purchasing problem closed',
+                'body' => 'Purchasing problem #' . $problem . ' on Order #' . ($row->order_number ?? $row->order_id) . ' was ' . ($newStatus === 'returned_to_purchase' ? 'returned to purchase' : 'closed') . '. ' . ($note !== '' ? 'Note: ' . $note : ''),
+                'occurred_at' => now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        return redirect()
+            ->route('purchasing.orders.show', ['order' => (int) $row->order_id, 'tab' => $newStatus === 'returned_to_purchase' ? 'buy' : 'problems'])
+            ->with('success', $newStatus === 'returned_to_purchase' ? 'Problem resolved and item returned to purchase.' : 'Problem closed.');
+    }
+
     public function updateInspectionFlag(Request $request, int $item)
     {
         $validated = $request->validate([
@@ -828,6 +1036,7 @@ class PurchasingController extends Controller
         $terminalProblem = (int) DB::table('order_item_purchases')
             ->where('root_item_id', $rootItemId)
             ->whereIn('status', ['unfulfilled', 'failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable'])
+            ->whereIn(DB::raw("COALESCE(resolution_status, 'pending')"), ['pending', 'closed'])
             ->sum('qty');
 
         return max(0, $itemQty - $purchased - $terminalProblem);

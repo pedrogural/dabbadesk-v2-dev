@@ -91,7 +91,7 @@
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h2 class="text-2xl font-black text-slate-950">{{ $retailer['retailer_name'] }}</h2>
                                     @if ($inspectionForRetailer > 0)
-                                        <span class="rounded-full bg-purple-100 px-3 py-1.5 text-xs font-black text-purple-800 ring-1 ring-purple-200">{{ $inspectionForRetailer }} 🟪 Package check</span>
+                                        <span class="rounded-full bg-purple-100 px-3 py-1.5 text-xs font-black text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
                                     @endif
                                 </div>
                                 <div class="mt-3 flex flex-wrap gap-2 text-xs font-black">
@@ -135,7 +135,7 @@
                                                 $remaining = (int) $item->remaining_to_buy_qty;
                                                 $isPurple = (int)($item->requires_inspection ?? 0) === 1;
                                             @endphp
-                                            <div class="grid gap-3 border-l-4 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start {{ $isPurple ? 'border-purple-400 bg-purple-50/90 ring-1 ring-inset ring-purple-200' : 'border-transparent bg-white' }}">
+                                            <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start {{ $isPurple ? 'bg-purple-50/80 ring-1 ring-inset ring-purple-100' : 'bg-white' }}">
                                                 <div>
                                                     <label class="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
                                                         <input form="{{ $purchaseFormId }}" type="checkbox" name="order_item_ids[]" value="{{ $item->item_id }}" data-line-checkbox class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
@@ -146,33 +146,13 @@
                                                     <div class="flex flex-wrap items-center gap-2">
                                                         <p class="font-black leading-5 text-slate-950">{{ $item->item_name }}</p>
                                                         @if ($isPurple)
-                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800">Package check</span>
                                                         @endif
                                                     </div>
                                                     <p class="mt-1 text-xs font-semibold text-slate-500">{{ $item->product_code ?: 'No product code' }}</p>
                                                     @if ($isPurple && $item->inspection_note)
                                                         <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900">{{ $item->inspection_note }}</p>
                                                     @endif
-
-                                                    <details class="mt-3 rounded-xl border border-purple-200 bg-purple-50/70 p-3">
-                                                        <summary class="cursor-pointer text-xs font-black text-purple-800">{{ $isPurple ? 'Edit Purple Flag' : 'Mark Purple' }}</summary>
-                                                        <div class="mt-3 space-y-2">
-                                                            <form method="POST" action="{{ route('purchasing.items.inspection.update', $item->item_id) }}" class="space-y-2">
-                                                                @csrf
-                                                                <input type="hidden" name="requires_inspection" value="1">
-                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
-                                                                <input name="inspection_note" maxlength="2000" value="{{ $item->inspection_note }}" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-white px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:ring-purple-200">
-                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800">{{ $isPurple ? 'Save Purple Flag' : 'Mark Purple' }}</button>
-                                                            </form>
-                                                            @if ($isPurple)
-                                                                <form method="POST" action="{{ route('purchasing.items.inspection.update', $item->item_id) }}">
-                                                                    @csrf
-                                                                    <input type="hidden" name="requires_inspection" value="0">
-                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
-                                                                </form>
-                                                            @endif
-                                                        </div>
-                                                    </details>
 
                                                     <details class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                                                         <summary class="cursor-pointer text-xs font-black text-amber-800">Record purchasing issue</summary>
@@ -281,9 +261,8 @@
                                             $activeArrivalQty = (int) collect($arrivals)->where('order_item_purchase_id', $purchase->id)->sum('qty');
                                             $wasUndone = ! empty($purchase->cancelled_at);
                                             $canEditPurchase = ! $wasUndone && $activeArrivalQty === 0;
-                                            $purchaseIsPurple = (int)($purchase->requires_inspection ?? 0) === 1;
                                         @endphp
-                                        <div class="rounded-2xl border {{ $purchaseIsPurple ? 'border-purple-300 bg-purple-50/90 ring-1 ring-purple-200' : ($wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60')) }} p-4 text-sm">
+                                        <div class="rounded-2xl border {{ $wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60') }} p-4 text-sm">
                                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
@@ -292,7 +271,7 @@
                                                         @endif
                                                         <p class="font-black text-slate-950">{{ $purchase->item_name }} · Qty {{ (int) $purchase->qty }} · {{ $money($purchase->purchase_unit_price ?? 0) }}</p>
                                                         @if ((int)($purchase->requires_inspection ?? 0) === 1)
-                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800">🟪 Package check</span>
                                                         @endif
                                                         <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide {{ $wasUndone ? 'bg-slate-100 text-slate-500' : ($canEditPurchase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') }}">{{ $wasUndone ? 'Undone' : ($canEditPurchase ? 'Editable' : 'Arrival exists') }}</span>
                                                     </div>
@@ -305,25 +284,6 @@
                                                     @endif
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
-                                                    <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-purple-100">
-                                                        <summary class="cursor-pointer text-xs font-black text-purple-700">{{ $purchaseIsPurple ? 'Edit Purple Flag' : 'Mark Purple' }}</summary>
-                                                        <div class="mt-3 min-w-[260px] space-y-2 md:min-w-[420px]">
-                                                            <form method="POST" action="{{ route('purchasing.items.inspection.update', $purchase->order_item_id) }}" class="space-y-2">
-                                                                @csrf
-                                                                <input type="hidden" name="requires_inspection" value="1">
-                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
-                                                                <input name="inspection_note" maxlength="2000" value="{{ $purchase->inspection_note }}" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-purple-50/60 px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:bg-white focus:ring-purple-200">
-                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800">{{ $purchaseIsPurple ? 'Save Purple Flag' : 'Mark Purple' }}</button>
-                                                            </form>
-                                                            @if ($purchaseIsPurple)
-                                                                <form method="POST" action="{{ route('purchasing.items.inspection.update', $purchase->order_item_id) }}">
-                                                                    @csrf
-                                                                    <input type="hidden" name="requires_inspection" value="0">
-                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
-                                                                </form>
-                                                            @endif
-                                                        </div>
-                                                    </details>
                                                     @if ($canEditPurchase)
                                                         <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-emerald-100">
                                                             <summary class="cursor-pointer text-xs font-black text-emerald-700">Edit</summary>
@@ -415,28 +375,101 @@
                                     $problemEvents = $problemEvents->merge($history->filter(fn ($purchase) => ! in_array($purchase->status, $purchaseStatuses, true)));
                                 }
                                 $problemEvents = $problemEvents->unique('id')->values();
+                                $activeProblemEvents = $problemEvents->filter(fn ($problem) => ($problem->resolution_status ?: 'pending') === 'pending')->values();
+                                $problemHistoryEvents = $problemEvents->filter(fn ($problem) => ($problem->resolution_status ?: 'pending') !== 'pending')->values();
                             @endphp
                             <div class="mb-3">
                                 <h3 class="text-sm font-black uppercase tracking-wide text-rose-700">Problems</h3>
-                                <p class="mt-1 text-xs font-bold text-slate-500">Operational purchasing issues. No financial change is made here.</p>
+                                <p class="mt-1 text-xs font-bold text-slate-500">Edit active issues, resolve them back to purchase, or close them permanently.</p>
                             </div>
 
-                            @if ($problemEvents->isNotEmpty())
-                                <div class="space-y-2">
-                                    @foreach ($problemEvents as $problem)
+                            @if ($activeProblemEvents->isNotEmpty())
+                                <div class="space-y-3">
+                                    @foreach ($activeProblemEvents as $problem)
                                         <div class="rounded-2xl border border-rose-100 bg-rose-50/70 p-4 text-sm">
                                             <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                                                <div>
+                                                <div class="min-w-0">
                                                     <p class="font-black text-rose-950">{{ $problem->item_name }} · {{ $problemCodes[$problem->problem_code] ?? 'Purchasing Issue' }}</p>
                                                     <p class="mt-1 text-xs font-bold text-rose-700">Qty {{ (int) $problem->qty }} · {{ $problem->problem_notes ?: 'No note recorded' }}</p>
                                                 </div>
-                                                <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">{{ $problem->resolution_status ?: 'pending' }}</span>
+                                                <span class="w-fit rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-rose-700 ring-1 ring-rose-100">Active</span>
+                                            </div>
+
+                                            <div class="mt-3 grid gap-3 lg:grid-cols-2">
+                                                <details class="rounded-2xl border border-rose-100 bg-white p-3">
+                                                    <summary class="cursor-pointer text-xs font-black text-rose-800">Edit problem</summary>
+                                                    <form method="POST" action="{{ route('purchasing.problems.update', $problem->id) }}" class="mt-3 grid gap-2 sm:grid-cols-[1fr_110px]">
+                                                        @csrf
+                                                        @method('PATCH')
+                                                        <div>
+                                                            <label class="text-[10px] font-black uppercase tracking-wide text-rose-700">Issue type</label>
+                                                            <select name="problem_code" required class="mt-1 h-10 w-full rounded-xl border-rose-200 bg-white px-3 text-xs font-black text-slate-900 focus:border-rose-400 focus:ring-rose-200">
+                                                                @foreach ($problemCodes as $code => $label)
+                                                                    <option value="{{ $code }}" @selected($problem->problem_code === $code)>{{ $label }}</option>
+                                                                @endforeach
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label class="text-[10px] font-black uppercase tracking-wide text-rose-700">Qty</label>
+                                                            <input name="qty" required type="number" min="1" max="999" value="{{ (int) $problem->qty }}" class="mt-1 h-10 w-full rounded-xl border-rose-200 bg-white px-3 text-xs font-black text-slate-900 focus:border-rose-400 focus:ring-rose-200">
+                                                        </div>
+                                                        <div class="sm:col-span-2">
+                                                            <label class="text-[10px] font-black uppercase tracking-wide text-rose-700">Notes</label>
+                                                            <input name="problem_notes" maxlength="2000" value="{{ $problem->problem_notes }}" placeholder="Optional details" class="mt-1 h-10 w-full rounded-xl border-rose-200 bg-white px-3 text-xs font-bold text-slate-900 focus:border-rose-400 focus:ring-rose-200">
+                                                            <input type="hidden" name="resolution_action" value="{{ $problem->resolution_action ?: 'customer_decision_required' }}">
+                                                        </div>
+                                                        <div class="sm:col-span-2 flex justify-end">
+                                                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-black text-white hover:bg-rose-700">Save problem</button>
+                                                        </div>
+                                                    </form>
+                                                </details>
+
+                                                <details class="rounded-2xl border border-emerald-100 bg-white p-3">
+                                                    <summary class="cursor-pointer text-xs font-black text-emerald-800">Resolve problem</summary>
+                                                    <form method="POST" action="{{ route('purchasing.problems.resolve', $problem->id) }}" class="mt-3 space-y-3">
+                                                        @csrf
+                                                        <div class="grid gap-2 sm:grid-cols-2">
+                                                            <label class="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs font-black text-emerald-900">
+                                                                <input type="radio" name="resolution" value="return_to_purchase" checked class="mr-2 border-emerald-300 text-emerald-600 focus:ring-emerald-500">
+                                                                Return to purchase
+                                                            </label>
+                                                            <label class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-black text-slate-700">
+                                                                <input type="radio" name="resolution" value="closed" class="mr-2 border-slate-300 text-slate-700 focus:ring-slate-500">
+                                                                Close permanently
+                                                            </label>
+                                                        </div>
+                                                        <div>
+                                                            <label class="text-[10px] font-black uppercase tracking-wide text-slate-500">Resolution note</label>
+                                                            <input name="resolution_note" maxlength="2000" placeholder="Optional, e.g. stock now available" class="mt-1 h-10 w-full rounded-xl border-slate-200 bg-white px-3 text-xs font-bold text-slate-900 focus:border-emerald-400 focus:ring-emerald-200">
+                                                        </div>
+                                                        <div class="flex justify-end">
+                                                            <button class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700">Resolve</button>
+                                                        </div>
+                                                    </form>
+                                                </details>
                                             </div>
                                         </div>
                                     @endforeach
                                 </div>
                             @else
-                                <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">No purchasing problems for this retailer.</div>
+                                <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">No active purchasing problems for this retailer.</div>
+                            @endif
+
+                            @if ($problemHistoryEvents->isNotEmpty())
+                                <details class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <summary class="cursor-pointer text-xs font-black uppercase tracking-wide text-slate-600">Problem history ({{ $problemHistoryEvents->count() }})</summary>
+                                    <div class="mt-3 space-y-2">
+                                        @foreach ($problemHistoryEvents as $problem)
+                                            <div class="rounded-xl bg-white p-3 text-xs ring-1 ring-slate-100">
+                                                <p class="font-black text-slate-900">{{ $problem->item_name }} · {{ $problemCodes[$problem->problem_code] ?? 'Purchasing Issue' }}</p>
+                                                <p class="mt-1 font-bold text-slate-500">Qty {{ (int) $problem->qty }} · {{ $problem->resolution_status === 'returned_to_purchase' ? 'Returned to purchase' : 'Closed' }}</p>
+                                                @if ($problem->internal_notes)
+                                                    <p class="mt-2 whitespace-pre-line rounded-lg bg-slate-50 p-2 font-semibold text-slate-500">{{ trim($problem->internal_notes) }}</p>
+                                                @endif
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </details>
                             @endif
                         </section>
                     </div>
