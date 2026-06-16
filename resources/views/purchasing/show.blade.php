@@ -1,5 +1,5 @@
 <x-app-layout>
-    <x-slot name="header">Purchasing Workspace</x-slot>
+    <x-slot name="header">Purchasing Order #{{ $order->order_number ?? $order->id }}</x-slot>
 
     @php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
@@ -42,31 +42,27 @@
             </div>
         @endif
 
-        <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div>
-                    <a href="{{ route('purchasing.index') }}" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Workspace</h1>
-                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $paymentClass }}">{{ $paymentLabel }}</span>
-                        @if ($inspectionQty > 0)
-                            <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">{{ $inspectionQty }} package check</span>
+        <section class="overflow-hidden rounded-[1.75rem] border border-indigo-100 bg-white shadow-sm">
+            <div class="bg-indigo-50/70 px-5 py-5 sm:px-6">
+                <a href="{{ route('purchasing.index') }}" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
+                <div class="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Order #{{ $orderNumber }}</h1>
+                            <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $paymentClass }}">{{ $paymentLabel }}</span>
+                            @if ($inspectionQty > 0)
+                                <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">{{ $inspectionQty }} package check</span>
+                            @endif
+                        </div>
+                        <p class="mt-1 text-sm font-bold text-slate-700">{{ $customer }}</p>
+                        @if ($order->bill_to_email)
+                            <p class="mt-1 text-xs font-semibold text-slate-500">{{ $order->bill_to_email }}</p>
                         @endif
                     </div>
-                    <p class="mt-1 text-sm font-bold text-slate-700">Order #{{ $orderNumber }} · {{ $customer }}</p>
-                    @if ($order->bill_to_email)
-                        <p class="mt-1 text-xs font-semibold text-slate-400">{{ $order->bill_to_email }}</p>
-                    @endif
-                </div>
-
-                <div class="grid grid-cols-3 gap-2 xl:min-w-[520px]">
-                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 text-2xl font-black text-indigo-950">{{ $remainingQty }}</p></div>
-                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 text-2xl font-black text-emerald-950">{{ $purchasedQty }}</p></div>
-                    <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 text-2xl font-black text-rose-950">{{ $problemQty }}</p></div>
                 </div>
             </div>
 
-            <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs font-black">
+            <div class="flex flex-wrap items-center gap-2 border-t border-indigo-100 bg-white px-5 py-4 text-xs font-black sm:px-6">
                 <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailers: {{ $retailers->count() }}</span>
                 <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Order total: {{ $money($order->grand_total ?? 0) }}</span>
                 <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
@@ -89,23 +85,34 @@
                 @endphp
 
                 <article class="overflow-visible rounded-[1.75rem] border {{ $cardRing }} bg-white shadow-sm" data-retailer-card>
-                    <div class="border-b border-slate-100 p-5 sm:p-6">
-                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="border-b border-indigo-100 bg-indigo-50/60 p-5 sm:p-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h2 class="text-2xl font-black text-slate-950">{{ $retailer['retailer_name'] }}</h2>
                                     @if ($inspectionForRetailer > 0)
-                                        <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">Package check</span>
+                                        <span class="rounded-full bg-purple-100 px-3 py-1.5 text-xs font-black text-purple-800 ring-1 ring-purple-200">{{ $inspectionForRetailer }} 🟪 Package check</span>
                                     @endif
                                 </div>
-                                <p class="mt-2 text-sm font-bold text-slate-500">{{ $remainingItems->count() }} item line{{ $remainingItems->count() === 1 ? '' : 's' }} waiting · {{ $waitingQty }} qty to buy</p>
+                                <div class="mt-3 flex flex-wrap gap-2 text-xs font-black">
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Items: {{ $remainingItems->count() }}</span>
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Qty: {{ $waitingQty }}</span>
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Value: {{ $money($waitingValue) }}</span>
+                                    @if ($purchasedQtyForRetailer > 0)
+                                        <span class="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-100">Purchased: {{ $purchasedQtyForRetailer }}</span>
+                                    @endif
+                                    @if ($problemQtyForRetailer > 0)
+                                        <span class="rounded-full bg-rose-50 px-3 py-1.5 text-rose-700 ring-1 ring-rose-100">Problems: {{ $problemQtyForRetailer }}</span>
+                                    @endif
+                                </div>
                             </div>
 
-                            <div class="grid grid-cols-3 gap-2 text-sm lg:min-w-[520px]">
-                                <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 font-black text-indigo-950">{{ $waitingQty }}</p></div>
-                                <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 font-black text-emerald-950">{{ $purchasedQtyForRetailer }}</p></div>
-                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 font-black text-rose-950">{{ $problemQtyForRetailer }}</p></div>
-                            </div>
+                            @if ($remainingItems->isNotEmpty())
+                                <div class="flex flex-wrap gap-2 lg:justify-end">
+                                    <button type="button" data-select-all class="rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">Select all</button>
+                                    <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
+                                </div>
+                            @endif
                         </div>
                     </div>
 
@@ -113,17 +120,8 @@
                         <input form="{{ $purchaseFormId }}" type="hidden" name="order_id" value="{{ $order->id }}">
 
                         <section>
-                            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <h3 class="text-sm font-black uppercase tracking-wide text-indigo-700">To Purchase</h3>
-                                    <p class="mt-1 text-xs font-bold text-slate-500">Waiting value {{ $money($waitingValue) }}. Select only items being bought now.</p>
-                                </div>
-                                @if ($remainingItems->isNotEmpty())
-                                    <div class="flex flex-wrap gap-2">
-                                        <button type="button" data-select-all class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">Select all</button>
-                                        <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
-                                    </div>
-                                @endif
+                            <div class="mb-3">
+                                <h3 class="text-sm font-black uppercase tracking-wide text-indigo-700">To Purchase</h3>
                             </div>
 
                             @if ($remainingItems->isNotEmpty())
@@ -137,7 +135,7 @@
                                                 $remaining = (int) $item->remaining_to_buy_qty;
                                                 $isPurple = (int)($item->requires_inspection ?? 0) === 1;
                                             @endphp
-                                            <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start {{ $isPurple ? 'bg-purple-50/80 ring-1 ring-inset ring-purple-100' : 'bg-white' }}">
+                                            <div class="grid gap-3 border-l-4 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start {{ $isPurple ? 'border-purple-400 bg-purple-50/90 ring-1 ring-inset ring-purple-200' : 'border-transparent bg-white' }}">
                                                 <div>
                                                     <label class="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
                                                         <input form="{{ $purchaseFormId }}" type="checkbox" name="order_item_ids[]" value="{{ $item->item_id }}" data-line-checkbox class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
@@ -148,13 +146,33 @@
                                                     <div class="flex flex-wrap items-center gap-2">
                                                         <p class="font-black leading-5 text-slate-950">{{ $item->item_name }}</p>
                                                         @if ($isPurple)
-                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800">Package check</span>
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
                                                         @endif
                                                     </div>
                                                     <p class="mt-1 text-xs font-semibold text-slate-500">{{ $item->product_code ?: 'No product code' }}</p>
                                                     @if ($isPurple && $item->inspection_note)
                                                         <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900">{{ $item->inspection_note }}</p>
                                                     @endif
+
+                                                    <details class="mt-3 rounded-xl border border-purple-200 bg-purple-50/70 p-3">
+                                                        <summary class="cursor-pointer text-xs font-black text-purple-800">{{ $isPurple ? 'Edit Purple Flag' : 'Mark Purple' }}</summary>
+                                                        <div class="mt-3 space-y-2">
+                                                            <form method="POST" action="{{ route('purchasing.items.inspection.update', $item->item_id) }}" class="space-y-2">
+                                                                @csrf
+                                                                <input type="hidden" name="requires_inspection" value="1">
+                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
+                                                                <input name="inspection_note" maxlength="2000" value="{{ $item->inspection_note }}" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-white px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:ring-purple-200">
+                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800">{{ $isPurple ? 'Save Purple Flag' : 'Mark Purple' }}</button>
+                                                            </form>
+                                                            @if ($isPurple)
+                                                                <form method="POST" action="{{ route('purchasing.items.inspection.update', $item->item_id) }}">
+                                                                    @csrf
+                                                                    <input type="hidden" name="requires_inspection" value="0">
+                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
+                                                                </form>
+                                                            @endif
+                                                        </div>
+                                                    </details>
 
                                                     <details class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                                                         <summary class="cursor-pointer text-xs font-black text-amber-800">Record purchasing issue</summary>
@@ -263,8 +281,9 @@
                                             $activeArrivalQty = (int) collect($arrivals)->where('order_item_purchase_id', $purchase->id)->sum('qty');
                                             $wasUndone = ! empty($purchase->cancelled_at);
                                             $canEditPurchase = ! $wasUndone && $activeArrivalQty === 0;
+                                            $purchaseIsPurple = (int)($purchase->requires_inspection ?? 0) === 1;
                                         @endphp
-                                        <div class="rounded-2xl border {{ $wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60') }} p-4 text-sm">
+                                        <div class="rounded-2xl border {{ $purchaseIsPurple ? 'border-purple-300 bg-purple-50/90 ring-1 ring-purple-200' : ($wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60')) }} p-4 text-sm">
                                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
@@ -272,14 +291,39 @@
                                                             <input form="{{ $bulkEditFormId }}" type="checkbox" name="purchase_ids[]" value="{{ $purchase->id }}" data-purchase-edit-checkbox class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
                                                         @endif
                                                         <p class="font-black text-slate-950">{{ $purchase->item_name }} · Qty {{ (int) $purchase->qty }} · {{ $money($purchase->purchase_unit_price ?? 0) }}</p>
+                                                        @if ((int)($purchase->requires_inspection ?? 0) === 1)
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
+                                                        @endif
                                                         <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide {{ $wasUndone ? 'bg-slate-100 text-slate-500' : ($canEditPurchase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700') }}">{{ $wasUndone ? 'Undone' : ($canEditPurchase ? 'Editable' : 'Arrival exists') }}</span>
                                                     </div>
                                                     <p class="mt-1 text-xs font-bold text-slate-500">Ref {{ $purchase->retailer_order_reference ?: '—' }} · ETA {{ $purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M Y') : '—' }} · Tracking —</p>
+                                                    @if ((int)($purchase->requires_inspection ?? 0) === 1 && ! empty($purchase->inspection_note))
+                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900 ring-1 ring-purple-200">{{ $purchase->inspection_note }}</p>
+                                                    @endif
                                                     @if ($purchase->note)
                                                         <p class="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-100">{{ $purchase->note }}</p>
                                                     @endif
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
+                                                    <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-purple-100">
+                                                        <summary class="cursor-pointer text-xs font-black text-purple-700">{{ $purchaseIsPurple ? 'Edit Purple Flag' : 'Mark Purple' }}</summary>
+                                                        <div class="mt-3 min-w-[260px] space-y-2 md:min-w-[420px]">
+                                                            <form method="POST" action="{{ route('purchasing.items.inspection.update', $purchase->order_item_id) }}" class="space-y-2">
+                                                                @csrf
+                                                                <input type="hidden" name="requires_inspection" value="1">
+                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
+                                                                <input name="inspection_note" maxlength="2000" value="{{ $purchase->inspection_note }}" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-purple-50/60 px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:bg-white focus:ring-purple-200">
+                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800">{{ $purchaseIsPurple ? 'Save Purple Flag' : 'Mark Purple' }}</button>
+                                                            </form>
+                                                            @if ($purchaseIsPurple)
+                                                                <form method="POST" action="{{ route('purchasing.items.inspection.update', $purchase->order_item_id) }}">
+                                                                    @csrf
+                                                                    <input type="hidden" name="requires_inspection" value="0">
+                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
+                                                                </form>
+                                                            @endif
+                                                        </div>
+                                                    </details>
                                                     @if ($canEditPurchase)
                                                         <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-emerald-100">
                                                             <summary class="cursor-pointer text-xs font-black text-emerald-700">Edit</summary>

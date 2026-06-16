@@ -95,6 +95,8 @@ class PurchaseWorkbenchQuery
                 'order_item_purchases.root_item_id',
                 'order_item_purchases.order_id',
                 'order_items.item_name',
+                'order_items.requires_inspection',
+                'order_items.inspection_note',
                 'order_item_purchases.qty',
                 'order_item_purchases.status',
                 'order_item_purchases.purchase_unit_price',

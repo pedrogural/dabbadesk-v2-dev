@@ -10,7 +10,7 @@
 <?php $component->withAttributes([]); ?>
 <?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-     <?php $__env->slot('header', null, []); ?> Purchasing Workspace <?php $__env->endSlot(); ?>
+     <?php $__env->slot('header', null, []); ?> Purchasing Order #<?php echo e($order->order_number ?? $order->id); ?> <?php $__env->endSlot(); ?>
 
     <?php
         $money = fn ($amount) => '£' . number_format((float) $amount, 2);
@@ -53,31 +53,27 @@
             </div>
         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
 
-        <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div>
-                    <a href="<?php echo e(route('purchasing.index')); ?>" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
-                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                        <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Workspace</h1>
-                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($paymentClass); ?>"><?php echo e($paymentLabel); ?></span>
-                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($inspectionQty > 0): ?>
-                            <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200"><?php echo e($inspectionQty); ?> package check</span>
+        <section class="overflow-hidden rounded-[1.75rem] border border-indigo-100 bg-white shadow-sm">
+            <div class="bg-indigo-50/70 px-5 py-5 sm:px-6">
+                <a href="<?php echo e(route('purchasing.index')); ?>" class="text-xs font-black uppercase tracking-[0.18em] text-indigo-600 hover:text-indigo-800">← Back to Purchasing Desk</a>
+                <div class="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Order #<?php echo e($orderNumber); ?></h1>
+                            <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 <?php echo e($paymentClass); ?>"><?php echo e($paymentLabel); ?></span>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($inspectionQty > 0): ?>
+                                <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200"><?php echo e($inspectionQty); ?> package check</span>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                        </div>
+                        <p class="mt-1 text-sm font-bold text-slate-700"><?php echo e($customer); ?></p>
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($order->bill_to_email): ?>
+                            <p class="mt-1 text-xs font-semibold text-slate-500"><?php echo e($order->bill_to_email); ?></p>
                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
-                    <p class="mt-1 text-sm font-bold text-slate-700">Order #<?php echo e($orderNumber); ?> · <?php echo e($customer); ?></p>
-                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($order->bill_to_email): ?>
-                        <p class="mt-1 text-xs font-semibold text-slate-400"><?php echo e($order->bill_to_email); ?></p>
-                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2 xl:min-w-[520px]">
-                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 text-2xl font-black text-indigo-950"><?php echo e($remainingQty); ?></p></div>
-                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 text-2xl font-black text-emerald-950"><?php echo e($purchasedQty); ?></p></div>
-                    <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 text-2xl font-black text-rose-950"><?php echo e($problemQty); ?></p></div>
                 </div>
             </div>
 
-            <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs font-black">
+            <div class="flex flex-wrap items-center gap-2 border-t border-indigo-100 bg-white px-5 py-4 text-xs font-black sm:px-6">
                 <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Retailers: <?php echo e($retailers->count()); ?></span>
                 <span class="rounded-full bg-slate-50 px-3 py-1.5 text-slate-700 ring-1 ring-slate-200">Order total: <?php echo e($money($order->grand_total ?? 0)); ?></span>
                 <a href="<?php echo e(route('orders.show', $order->id)); ?>" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
@@ -100,23 +96,34 @@
                 ?>
 
                 <article class="overflow-visible rounded-[1.75rem] border <?php echo e($cardRing); ?> bg-white shadow-sm" data-retailer-card>
-                    <div class="border-b border-slate-100 p-5 sm:p-6">
-                        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div class="border-b border-indigo-100 bg-indigo-50/60 p-5 sm:p-6">
+                        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                             <div class="min-w-0">
                                 <div class="flex flex-wrap items-center gap-2">
                                     <h2 class="text-2xl font-black text-slate-950"><?php echo e($retailer['retailer_name']); ?></h2>
                                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($inspectionForRetailer > 0): ?>
-                                        <span class="rounded-full bg-purple-50 px-3 py-1.5 text-xs font-black text-purple-700 ring-1 ring-purple-200">Package check</span>
+                                        <span class="rounded-full bg-purple-100 px-3 py-1.5 text-xs font-black text-purple-800 ring-1 ring-purple-200"><?php echo e($inspectionForRetailer); ?> 🟪 Package check</span>
                                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
-                                <p class="mt-2 text-sm font-bold text-slate-500"><?php echo e($remainingItems->count()); ?> item line<?php echo e($remainingItems->count() === 1 ? '' : 's'); ?> waiting · <?php echo e($waitingQty); ?> qty to buy</p>
+                                <div class="mt-3 flex flex-wrap gap-2 text-xs font-black">
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Items: <?php echo e($remainingItems->count()); ?></span>
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Qty: <?php echo e($waitingQty); ?></span>
+                                    <span class="rounded-full bg-white px-3 py-1.5 text-indigo-800 ring-1 ring-indigo-100">Value: <?php echo e($money($waitingValue)); ?></span>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($purchasedQtyForRetailer > 0): ?>
+                                        <span class="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-700 ring-1 ring-emerald-100">Purchased: <?php echo e($purchasedQtyForRetailer); ?></span>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($problemQtyForRetailer > 0): ?>
+                                        <span class="rounded-full bg-rose-50 px-3 py-1.5 text-rose-700 ring-1 ring-rose-100">Problems: <?php echo e($problemQtyForRetailer); ?></span>
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                </div>
                             </div>
 
-                            <div class="grid grid-cols-3 gap-2 text-sm lg:min-w-[520px]">
-                                <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p><p class="mt-1 font-black text-indigo-950"><?php echo e($waitingQty); ?></p></div>
-                                <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 font-black text-emerald-950"><?php echo e($purchasedQtyForRetailer); ?></p></div>
-                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p><p class="mt-1 font-black text-rose-950"><?php echo e($problemQtyForRetailer); ?></p></div>
-                            </div>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
+                                <div class="flex flex-wrap gap-2 lg:justify-end">
+                                    <button type="button" data-select-all class="rounded-xl bg-white px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">Select all</button>
+                                    <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
+                                </div>
+                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                         </div>
                     </div>
 
@@ -124,17 +131,8 @@
                         <input form="<?php echo e($purchaseFormId); ?>" type="hidden" name="order_id" value="<?php echo e($order->id); ?>">
 
                         <section>
-                            <div class="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <h3 class="text-sm font-black uppercase tracking-wide text-indigo-700">To Purchase</h3>
-                                    <p class="mt-1 text-xs font-bold text-slate-500">Waiting value <?php echo e($money($waitingValue)); ?>. Select only items being bought now.</p>
-                                </div>
-                                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
-                                    <div class="flex flex-wrap gap-2">
-                                        <button type="button" data-select-all class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">Select all</button>
-                                        <button type="button" data-select-none class="rounded-xl bg-white px-3 py-2 text-xs font-black text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50">Clear selection</button>
-                                    </div>
-                                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                            <div class="mb-3">
+                                <h3 class="text-sm font-black uppercase tracking-wide text-indigo-700">To Purchase</h3>
                             </div>
 
                             <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($remainingItems->isNotEmpty()): ?>
@@ -148,7 +146,7 @@
                                                 $remaining = (int) $item->remaining_to_buy_qty;
                                                 $isPurple = (int)($item->requires_inspection ?? 0) === 1;
                                             ?>
-                                            <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start <?php echo e($isPurple ? 'bg-purple-50/80 ring-1 ring-inset ring-purple-100' : 'bg-white'); ?>">
+                                            <div class="grid gap-3 border-l-4 px-4 py-4 md:grid-cols-[56px_1fr_110px_150px_160px_88px] md:items-start <?php echo e($isPurple ? 'border-purple-400 bg-purple-50/90 ring-1 ring-inset ring-purple-200' : 'border-transparent bg-white'); ?>">
                                                 <div>
                                                     <label class="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
                                                         <input form="<?php echo e($purchaseFormId); ?>" type="checkbox" name="order_item_ids[]" value="<?php echo e($item->item_id); ?>" data-line-checkbox class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
@@ -159,13 +157,33 @@
                                                     <div class="flex flex-wrap items-center gap-2">
                                                         <p class="font-black leading-5 text-slate-950"><?php echo e($item->item_name); ?></p>
                                                         <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurple): ?>
-                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800">Package check</span>
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
                                                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                     </div>
                                                     <p class="mt-1 text-xs font-semibold text-slate-500"><?php echo e($item->product_code ?: 'No product code'); ?></p>
                                                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurple && $item->inspection_note): ?>
                                                         <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900"><?php echo e($item->inspection_note); ?></p>
                                                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+                                                    <details class="mt-3 rounded-xl border border-purple-200 bg-purple-50/70 p-3">
+                                                        <summary class="cursor-pointer text-xs font-black text-purple-800"><?php echo e($isPurple ? 'Edit Purple Flag' : 'Mark Purple'); ?></summary>
+                                                        <div class="mt-3 space-y-2">
+                                                            <form method="POST" action="<?php echo e(route('purchasing.items.inspection.update', $item->item_id)); ?>" class="space-y-2">
+                                                                <?php echo csrf_field(); ?>
+                                                                <input type="hidden" name="requires_inspection" value="1">
+                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
+                                                                <input name="inspection_note" maxlength="2000" value="<?php echo e($item->inspection_note); ?>" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-white px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:ring-purple-200">
+                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800"><?php echo e($isPurple ? 'Save Purple Flag' : 'Mark Purple'); ?></button>
+                                                            </form>
+                                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isPurple): ?>
+                                                                <form method="POST" action="<?php echo e(route('purchasing.items.inspection.update', $item->item_id)); ?>">
+                                                                    <?php echo csrf_field(); ?>
+                                                                    <input type="hidden" name="requires_inspection" value="0">
+                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
+                                                                </form>
+                                                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        </div>
+                                                    </details>
 
                                                     <details class="mt-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                                                         <summary class="cursor-pointer text-xs font-black text-amber-800">Record purchasing issue</summary>
@@ -274,8 +292,9 @@
                                             $activeArrivalQty = (int) collect($arrivals)->where('order_item_purchase_id', $purchase->id)->sum('qty');
                                             $wasUndone = ! empty($purchase->cancelled_at);
                                             $canEditPurchase = ! $wasUndone && $activeArrivalQty === 0;
+                                            $purchaseIsPurple = (int)($purchase->requires_inspection ?? 0) === 1;
                                         ?>
-                                        <div class="rounded-2xl border <?php echo e($wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60')); ?> p-4 text-sm">
+                                        <div class="rounded-2xl border <?php echo e($purchaseIsPurple ? 'border-purple-300 bg-purple-50/90 ring-1 ring-purple-200' : ($wasUndone ? 'border-slate-200 bg-slate-50' : ($canEditPurchase ? 'border-emerald-200 bg-emerald-50/60' : 'border-amber-200 bg-amber-50/60'))); ?> p-4 text-sm">
                                             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
@@ -283,14 +302,39 @@
                                                             <input form="<?php echo e($bulkEditFormId); ?>" type="checkbox" name="purchase_ids[]" value="<?php echo e($purchase->id); ?>" data-purchase-edit-checkbox class="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500">
                                                         <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                         <p class="font-black text-slate-950"><?php echo e($purchase->item_name); ?> · Qty <?php echo e((int) $purchase->qty); ?> · <?php echo e($money($purchase->purchase_unit_price ?? 0)); ?></p>
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if((int)($purchase->requires_inspection ?? 0) === 1): ?>
+                                                            <span class="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-purple-800 ring-1 ring-purple-200">🟪 Package check</span>
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                         <span class="rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide <?php echo e($wasUndone ? 'bg-slate-100 text-slate-500' : ($canEditPurchase ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')); ?>"><?php echo e($wasUndone ? 'Undone' : ($canEditPurchase ? 'Editable' : 'Arrival exists')); ?></span>
                                                     </div>
                                                     <p class="mt-1 text-xs font-bold text-slate-500">Ref <?php echo e($purchase->retailer_order_reference ?: '—'); ?> · ETA <?php echo e($purchase->expected_uk_hub_at ? \Carbon\Carbon::parse($purchase->expected_uk_hub_at)->format('d M Y') : '—'); ?> · Tracking —</p>
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if((int)($purchase->requires_inspection ?? 0) === 1 && ! empty($purchase->inspection_note)): ?>
+                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-bold text-purple-900 ring-1 ring-purple-200"><?php echo e($purchase->inspection_note); ?></p>
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($purchase->note): ?>
                                                         <p class="mt-2 rounded-xl bg-white/80 px-3 py-2 text-xs font-bold text-slate-600 ring-1 ring-slate-100"><?php echo e($purchase->note); ?></p>
                                                     <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </div>
                                                 <div class="flex flex-wrap gap-2">
+                                                    <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-purple-100">
+                                                        <summary class="cursor-pointer text-xs font-black text-purple-700"><?php echo e($purchaseIsPurple ? 'Edit Purple Flag' : 'Mark Purple'); ?></summary>
+                                                        <div class="mt-3 min-w-[260px] space-y-2 md:min-w-[420px]">
+                                                            <form method="POST" action="<?php echo e(route('purchasing.items.inspection.update', $purchase->order_item_id)); ?>" class="space-y-2">
+                                                                <?php echo csrf_field(); ?>
+                                                                <input type="hidden" name="requires_inspection" value="1">
+                                                                <label class="text-[10px] font-black uppercase tracking-wide text-purple-700">Optional note</label>
+                                                                <input name="inspection_note" maxlength="2000" value="<?php echo e($purchase->inspection_note); ?>" placeholder="Usually: open package for documentation" class="mt-1 h-10 w-full rounded-xl border-purple-200 bg-purple-50/60 px-3 text-xs font-bold text-purple-950 placeholder:text-purple-300 focus:border-purple-400 focus:bg-white focus:ring-purple-200">
+                                                                <button class="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800"><?php echo e($purchaseIsPurple ? 'Save Purple Flag' : 'Mark Purple'); ?></button>
+                                                            </form>
+                                                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($purchaseIsPurple): ?>
+                                                                <form method="POST" action="<?php echo e(route('purchasing.items.inspection.update', $purchase->order_item_id)); ?>">
+                                                                    <?php echo csrf_field(); ?>
+                                                                    <input type="hidden" name="requires_inspection" value="0">
+                                                                    <button class="rounded-xl bg-white px-3 py-2 text-xs font-black text-purple-700 ring-1 ring-purple-200 hover:bg-purple-100">Remove Purple Flag</button>
+                                                                </form>
+                                                            <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        </div>
+                                                    </details>
                                                     <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canEditPurchase): ?>
                                                         <details class="rounded-xl bg-white px-3 py-2 ring-1 ring-emerald-100">
                                                             <summary class="cursor-pointer text-xs font-black text-emerald-700">Edit</summary>

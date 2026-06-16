@@ -41,26 +41,9 @@
         @endif
 
         <section class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                    <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Desk</h1>
-                    <p class="mt-1 text-sm font-semibold text-slate-500">Find what needs buying, review purchases, and deal with purchasing problems.</p>
-                </div>
-
-                <div class="grid grid-cols-3 gap-2 sm:min-w-[440px]">
-                    <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To Purchase</p>
-                        <p class="mt-1 text-2xl font-black text-indigo-950">{{ $summary['to_buy'] ?? 0 }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p>
-                        <p class="mt-1 text-2xl font-black text-emerald-950">{{ $summary['purchases'] ?? 0 }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100">
-                        <p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Problems</p>
-                        <p class="mt-1 text-2xl font-black text-rose-950">{{ $summary['problems'] ?? 0 }}</p>
-                    </div>
-                </div>
+            <div>
+                <h1 class="text-2xl font-black tracking-tight text-slate-950">Purchasing Desk</h1>
+                <p class="mt-1 text-sm font-semibold text-slate-500">Find what needs buying, review purchases, and deal with purchasing problems.</p>
             </div>
 
             <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">

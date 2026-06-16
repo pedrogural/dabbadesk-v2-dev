@@ -105,6 +105,8 @@ class PurchasingQueueService
                 'oip.*',
                 'oi.item_name',
                 'oi.product_code',
+                'oi.requires_inspection',
+                'oi.inspection_note',
                 'r.name as master_retailer_name',
             ])
             ->whereIn('oip.root_item_id', $items->pluck('lineage_root_id')->filter()->unique()->values())
