@@ -60,7 +60,7 @@
                         <textarea name="body" rows="3" required minlength="2" class="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-purple-500 focus:ring-4 focus:ring-purple-100" placeholder="Example: prefers WhatsApp, call after 4pm, delivery preference, special fee context..."></textarea>
                         @error('body')<p class="mt-1 text-xs font-bold text-rose-600">{{ $message }}</p>@enderror
                         <div class="mt-3 flex justify-end">
-                            <button class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white hover:bg-slate-800">Save note</button>
+                            <button class="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white hover:bg-indigo-700">Save note</button>
                         </div>
                     </form>
 

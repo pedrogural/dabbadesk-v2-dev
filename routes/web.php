@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\GlobalFeesController;
+use App\Http\Controllers\Admin\LegacyTextCleanupController;
 use App\Http\Controllers\CustomersController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DraftOrdersController;
@@ -25,8 +26,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/purchasing/order/{order}', [PurchasingController::class, 'show'])->name('purchasing.show');
     Route::post('/purchasing/purchases', [PurchasingController::class, 'storePurchase'])->name('purchasing.purchases.store');
     Route::post('/purchasing/purchases/bulk', [PurchasingController::class, 'storeBulkPurchase'])->name('purchasing.purchases.bulk');
+    Route::post('/purchasing/retailers/quick-store', [PurchasingController::class, 'quickStoreRetailer'])->name('purchasing.retailers.quick-store');
     Route::post('/purchasing/problems', [PurchasingController::class, 'storeProblem'])->name('purchasing.problems.store');
     Route::patch('/purchasing/problems/{problem}', [PurchasingController::class, 'updateProblem'])->name('purchasing.problems.update');
+    Route::post('/purchasing/problems/{problem}/contacted', [PurchasingController::class, 'markCustomerContacted'])->name('purchasing.problems.contacted');
+    Route::post('/purchasing/problems/{problem}/cancel', [PurchasingController::class, 'cancelProblem'])->name('purchasing.problems.cancel');
     Route::post('/purchasing/problems/{problem}/resolve', [PurchasingController::class, 'resolveProblem'])->name('purchasing.problems.resolve');
     Route::post('/purchasing/purchases/{purchase}/undo', [PurchasingController::class, 'undoPurchase'])->name('purchasing.purchases.undo');
     Route::patch('/purchasing/purchases/bulk', [PurchasingController::class, 'bulkUpdatePurchases'])->name('purchasing.purchases.bulk-update');
@@ -45,6 +49,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/admin/fees', [GlobalFeesController::class, 'index'])->name('admin.fees.index');
     Route::post('/admin/fees', [GlobalFeesController::class, 'store'])->name('admin.fees.store');
+    Route::get('/admin/text-cleanup', [LegacyTextCleanupController::class, 'index'])->name('admin.text-cleanup.index');
+    Route::patch('/admin/text-cleanup', [LegacyTextCleanupController::class, 'update'])->name('admin.text-cleanup.update');
     Route::post('/orders/{order}/notes', [OrdersController::class, 'storeNote'])->name('orders.notes.store');
     Route::post('/orders/{order}/payments', [OrdersController::class, 'storePayment'])->name('orders.payments.store');
     Route::post('/orders/{order}/invoices', [OrdersController::class, 'createInvoice'])->name('orders.invoices.store');

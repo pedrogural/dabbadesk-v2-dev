@@ -307,14 +307,14 @@ class PurchaseWorkbenchQuery
                 // All problem events, including cancelled/refund-required ones,
                 // reduce expected arrival. A supplier-cancelled item should not
                 // remain on Arrival/Marking just because it was once purchased.
-                DB::raw("SUM(CASE WHEN status IN ($problems) THEN qty ELSE 0 END) as problem_qty"),
+                DB::raw("SUM(CASE WHEN status IN ($problems) AND cancelled_at IS NULL THEN qty ELSE 0 END) as problem_qty"),
                 // Hard problem qty blocks To Buy. Resourcing problems only stay
                 // buyable while they are open and not terminally resolved.
                 DB::raw("SUM(CASE
                     WHEN status IN ($problems)
+                     AND cancelled_at IS NULL
                      AND (
                         status NOT IN ($resourcingProblems)
-                        OR cancelled_at IS NOT NULL
                         OR COALESCE(resolution_action, '') IN ($terminalResolutionActions)
                         OR COALESCE(resolution_status, '') IN ($terminalResolutionStatuses)
                      )
@@ -450,6 +450,16 @@ class PurchaseWorkbenchQuery
         $item->retailer_display_name = $retailerName ?: ($seller ?: ($item->retailer_host ?: 'Unknown retailer'));
         $item->retailer_group_key = $item->retailer_id ? 'retailer-' . (int) $item->retailer_id : Str::slug($item->retailer_display_name ?: 'unknown-retailer');
         $item->quantity = max(0, (int) $item->quantity);
+
+        // Some legacy/order-version rows have a frozen line_total of 0.00 even though
+        // quantity and unit_price are valid. For display and retailer subtotals, keep
+        // any non-zero frozen/snapshot total, but fall back to qty × unit price where
+        // the stored line total is missing or zero. This avoids showing £0.00 without
+        // overwriting unusual historical totals that were intentionally snapshotted.
+        $storedLineTotal = round((float) ($item->line_total ?? 0), 2);
+        $calculatedLineTotal = round($item->quantity * (float) ($item->unit_price ?? 0), 2);
+        $item->line_total = $storedLineTotal > 0 ? $storedLineTotal : $calculatedLineTotal;
+
         $item->purchased_qty = max(0, (int) $item->purchased_qty);
         $item->problem_qty = max(0, (int) ($item->problem_qty ?? 0));
         $item->hard_problem_qty = max(0, (int) ($item->hard_problem_qty ?? 0));

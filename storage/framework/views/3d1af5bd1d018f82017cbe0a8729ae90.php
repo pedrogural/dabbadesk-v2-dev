@@ -1,9 +1,20 @@
-<x-app-layout>
-    <x-slot name="header">
-        Orders
-    </x-slot>
+<?php if (isset($component)) { $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54 = $attributes; } ?>
+<?php $component = App\View\Components\AppLayout::resolve([] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('app-layout'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\App\View\Components\AppLayout::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component); ?>
 
-    @php
+     <?php $__env->slot('header', null, []); ?> 
+        Orders
+     <?php $__env->endSlot(); ?>
+
+    <?php
         $orderType = $order->order_type ?? $order->purchase_mode ?? 'standard';
         $isCustomerSelfPurchase = $orderType === 'customer_self_purchase';
         $customerRequestNotes = collect($notes ?? [])->filter(function ($note) {
@@ -105,24 +116,34 @@
             return str_contains($status, 'problem') || str_contains($status, 'issue') || str_contains($status, 'missing') || str_contains($status, 'damaged');
         })->count();
         $hasAlerts = $walletAttentionTotal > 0.004 || $needsAttentionItems > 0 || $arrivalIssueItems > 0 || $isCustomerSelfPurchase || $walletCreditFromRevisions > 0.004;
-    @endphp
+    ?>
     <div class="space-y-5" data-order-copy-scope x-data="{ tab: 'overview' }">
-        @include('orders.show._page_header')
+        <?php echo $__env->make('orders.show._page_header', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-        @include('orders.show.tabs._overview')
+        <?php echo $__env->make('orders.show.tabs._overview', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-        @include('orders.show.tabs._finance')
+        <?php echo $__env->make('orders.show.tabs._finance', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-        @include('orders.show.tabs._items')
+        <?php echo $__env->make('orders.show.tabs._items', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-        @include('orders.show.tabs._purchasing')
+        <?php echo $__env->make('orders.show.tabs._purchasing', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-        @include('orders.show.tabs._notes')
+        <?php echo $__env->make('orders.show.tabs._notes', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
     </div>
 
-    @include('orders.show._modals')
+    <?php echo $__env->make('orders.show._modals', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-    @include('orders.show._copy_script')
+    <?php echo $__env->make('orders.show._copy_script', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
 
-</x-app-layout>
+ <?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $attributes = $__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__attributesOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54)): ?>
+<?php $component = $__componentOriginal9ac128a9029c0e4701924bd2d73d7f54; ?>
+<?php unset($__componentOriginal9ac128a9029c0e4701924bd2d73d7f54); ?>
+<?php endif; ?>
+<?php /**PATH /var/www/dabba-test/dabbadesk-v2/resources/views/orders/show.blade.php ENDPATH**/ ?>

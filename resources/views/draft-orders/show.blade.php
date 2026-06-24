@@ -2018,7 +2018,7 @@
                             > Home delivery requested</label>
                         <button
                             type="submit"
-                            class="w-full rounded-2xl bg-slate-950 px-3 py-2.5 text-xs font-black text-white hover:bg-slate-800"
+                            class="w-full rounded-2xl bg-indigo-600 px-3 py-2.5 text-xs font-black text-white hover:bg-indigo-700"
                         >Save draft</button>
                     </form>
                 </section>

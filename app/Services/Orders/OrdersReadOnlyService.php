@@ -651,12 +651,265 @@ class OrdersReadOnlyService
 
     public function itemsGroupedByRetailer(int $orderId): Collection
     {
+        if ($this->isHistoricalSnapshot($orderId)) {
+            return $this->historicalItemsGroupedByRetailer($orderId);
+        }
+
         return $this->purchaseWorkbenchQuery->retailerGroupsForOrder($orderId);
     }
 
     public function items(int $orderId): Collection
     {
+        if ($this->isHistoricalSnapshot($orderId)) {
+            return $this->historicalItemsForOrder($orderId);
+        }
+
         return $this->purchaseWorkbenchQuery->itemsForOrder($orderId);
+    }
+
+
+    private function isHistoricalSnapshot(int $orderId): bool
+    {
+        $order = DB::table('orders')
+            ->select(['id', 'order_number', 'status', 'cancel_reason'])
+            ->where('id', $orderId)
+            ->first();
+
+        if (! $order) {
+            return false;
+        }
+
+        if (($order->status ?? '') === 'superseded' || ($order->cancel_reason ?? '') === 'superseded') {
+            return true;
+        }
+
+        return DB::table('orders as newer_orders')
+            ->where('newer_orders.order_number', $order->order_number)
+            ->where('newer_orders.id', '>', $orderId)
+            ->where(function ($query) {
+                $query->whereNull('newer_orders.status')
+                    ->orWhere('newer_orders.status', '!=', 'superseded');
+            })
+            ->where(function ($query) {
+                $query->whereNull('newer_orders.cancel_reason')
+                    ->orWhere('newer_orders.cancel_reason', '!=', 'superseded');
+            })
+            ->exists();
+    }
+
+    private function historicalItemsGroupedByRetailer(int $orderId): Collection
+    {
+        return $this->historicalItemsForOrder($orderId)
+            ->groupBy(fn ($item) => $item->retailer_group_key)
+            ->map(function (Collection $items) {
+                $first = $items->first();
+
+                return (object) [
+                    'key' => $first->retailer_group_key,
+                    'name' => $first->retailer_display_name,
+                    'host' => $first->retailer_host,
+                    'item_count' => $items->count(),
+                    'total_qty' => (int) $items->sum('quantity'),
+                    'purchased_qty' => (int) $items->sum('purchased_qty'),
+                    'problem_qty' => (int) $items->sum('problem_qty'),
+                    'remaining_qty' => (int) $items->sum('purchase_remaining_qty'),
+                    'arrived_qty' => (int) $items->sum('arrived_qty'),
+                    'line_total' => (float) $items->sum('line_total'),
+                    'items' => $items->values(),
+                ];
+            })
+            ->sortBy('name')
+            ->values();
+    }
+
+    private function historicalItemsForOrder(int $orderId): Collection
+    {
+        $purchaseTotals = DB::table('order_item_purchases')
+            ->select([
+                DB::raw('COALESCE(root_item_id, order_item_id) as root_item_id'),
+                DB::raw("SUM(CASE WHEN status IN ('purchased','ordered','received') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty"),
+                DB::raw("SUM(CASE WHEN status IN ('problem','unavailable','unfulfilled','cancelled') AND cancelled_at IS NULL THEN qty ELSE 0 END) as problem_qty"),
+                DB::raw('MAX(retailer_order_reference) as latest_retailer_order_reference'),
+                DB::raw('MAX(expected_uk_hub_at) as latest_expected_uk_hub_at'),
+                DB::raw('MAX(marketplace_seller) as latest_marketplace_seller'),
+                DB::raw('MAX(created_at) as latest_purchase_event_at'),
+                DB::raw('COUNT(*) as purchase_event_count'),
+            ])
+            ->where('order_id', $orderId)
+            ->groupBy(DB::raw('COALESCE(root_item_id, order_item_id)'));
+
+        $arrivalTotals = DB::table('purchase_arrival_assignments')
+            ->select([
+                DB::raw('COALESCE(root_item_id, order_item_id) as root_item_id'),
+                DB::raw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as arrived_qty'),
+                DB::raw("SUM(CASE WHEN undone_at IS NULL AND status = 'delivered' THEN qty ELSE 0 END) as delivered_qty"),
+                DB::raw("SUM(CASE WHEN undone_at IS NULL AND status = 'collected' THEN qty ELSE 0 END) as collected_qty"),
+                DB::raw("SUM(CASE WHEN undone_at IS NULL AND status = 'ready_for_collection' THEN qty ELSE 0 END) as ready_for_collection_qty"),
+                DB::raw('MAX(status) as latest_arrival_status'),
+                DB::raw('MAX(matched_at) as latest_matched_at'),
+            ])
+            ->where('order_id', $orderId)
+            ->groupBy(DB::raw('COALESCE(root_item_id, order_item_id)'));
+
+        $customerInformedTotals = DB::table('purchase_arrival_assignments as paa')
+            ->join('customer_release_notification_items as crni', 'crni.purchase_arrival_assignment_id', '=', 'paa.id')
+            ->join('customer_release_notifications as crn', function ($join) {
+                $join->on('crn.id', '=', 'crni.customer_release_notification_id')
+                    ->whereNotNull('crn.sent_at');
+            })
+            ->select([
+                DB::raw('COALESCE(paa.root_item_id, paa.order_item_id) as root_item_id'),
+                DB::raw('COUNT(DISTINCT crni.id) as customer_informed_count'),
+                DB::raw('MAX(crn.sent_at) as latest_customer_informed_at'),
+            ])
+            ->where('paa.order_id', $orderId)
+            ->whereNull('paa.undone_at')
+            ->groupBy(DB::raw('COALESCE(paa.root_item_id, paa.order_item_id)'));
+
+        return DB::table('order_items')
+            ->leftJoin('order_retailers', 'order_retailers.id', '=', 'order_items.order_retailer_id')
+            ->leftJoin('retailers', 'retailers.id', '=', 'order_retailers.retailer_id')
+            ->leftJoinSub($purchaseTotals, 'purchase_totals', function ($join) {
+                $join->on('purchase_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->leftJoinSub($arrivalTotals, 'arrival_totals', function ($join) {
+                $join->on('arrival_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->leftJoinSub($customerInformedTotals, 'customer_informed_totals', function ($join) {
+                $join->on('customer_informed_totals.root_item_id', '=', DB::raw('COALESCE(order_items.root_item_id, order_items.id)'));
+            })
+            ->select([
+                'order_items.id',
+                'order_items.order_id as item_order_id',
+                DB::raw('COALESCE(order_items.root_item_id, order_items.id) as root_item_id'),
+                'order_items.item_name',
+                'order_items.description',
+                'order_items.product_code',
+                'order_items.product_url',
+                'order_items.marketplace_seller',
+                'order_items.quantity as quantity',
+                'order_items.quantity as order_item_quantity',
+                'order_items.unit_price',
+                'order_items.line_total',
+                'order_items.item_retailer_delivery_fee',
+                'order_items.retailer_delivery_allocated',
+                'order_items.dabba_fee_allocated',
+                'order_items.status',
+                'order_items.requires_inspection',
+                'order_items.inspection_note',
+                'order_items.retailer_order_reference',
+                'order_items.tracking_reference',
+                'order_items.ordered_at',
+                'order_items.arrived_at',
+                'order_retailers.retailer_id',
+                'order_retailers.retailer_name as order_retailer_name',
+                'order_retailers.retailer_base_url as order_retailer_base_url',
+                'retailers.name as master_retailer_name',
+                'retailers.base_url as master_retailer_base_url',
+                DB::raw('COALESCE(purchase_totals.purchased_qty, 0) as purchased_qty'),
+                DB::raw('COALESCE(purchase_totals.problem_qty, 0) as problem_qty'),
+                DB::raw('0 as hard_problem_qty'),
+                DB::raw('0 as resourcing_qty'),
+                DB::raw('COALESCE(arrival_totals.arrived_qty, 0) as arrived_qty'),
+                DB::raw('COALESCE(arrival_totals.delivered_qty, 0) as delivered_qty'),
+                DB::raw('COALESCE(arrival_totals.collected_qty, 0) as collected_qty'),
+                DB::raw('COALESCE(arrival_totals.ready_for_collection_qty, 0) as ready_for_collection_qty'),
+                DB::raw('COALESCE(customer_informed_totals.customer_informed_count, 0) as customer_informed_count'),
+                'customer_informed_totals.latest_customer_informed_at',
+                'purchase_totals.latest_retailer_order_reference',
+                'purchase_totals.latest_expected_uk_hub_at',
+                'purchase_totals.latest_marketplace_seller',
+                'purchase_totals.latest_purchase_event_at',
+                'purchase_totals.purchase_event_count',
+                'arrival_totals.latest_arrival_status',
+                'arrival_totals.latest_matched_at',
+            ])
+            ->where('order_items.order_id', $orderId)
+            ->orderBy('order_items.sort_order')
+            ->orderBy('order_items.id')
+            ->get()
+            ->map(fn ($item) => $this->decorateHistoricalItem($item));
+    }
+
+    private function decorateHistoricalItem(object $item): object
+    {
+        $host = $this->hostFromUrl((string) ($item->master_retailer_base_url ?: $item->order_retailer_base_url ?: $item->product_url));
+        $retailerName = trim((string) ($item->master_retailer_name ?: $item->order_retailer_name));
+        $seller = trim((string) ($item->latest_marketplace_seller ?: $item->marketplace_seller));
+
+        $item->retailer_host = $host ?: $this->hostFromUrl((string) $item->product_url);
+        $item->retailer_display_name = $retailerName ?: ($seller ?: ($item->retailer_host ?: 'Unknown retailer'));
+        $item->retailer_group_key = $item->retailer_id ? 'retailer-' . (int) $item->retailer_id : Str::slug($item->retailer_display_name ?: 'unknown-retailer');
+        $item->quantity = max(0, (int) $item->quantity);
+        $item->purchased_qty = min($item->quantity, max(0, (int) ($item->purchased_qty ?? 0)));
+        $item->problem_qty = max(0, (int) ($item->problem_qty ?? 0));
+        $item->hard_problem_qty = 0;
+        $item->resourcing_qty = 0;
+        $item->arrived_qty = min($item->quantity, max(0, (int) ($item->arrived_qty ?? 0)));
+        $item->delivered_qty = min($item->quantity, max(0, (int) ($item->delivered_qty ?? 0)));
+        $item->collected_qty = min($item->quantity, max(0, (int) ($item->collected_qty ?? 0)));
+        $item->ready_for_collection_qty = min($item->quantity, max(0, (int) ($item->ready_for_collection_qty ?? 0)));
+        $item->customer_informed_count = max(0, (int) ($item->customer_informed_count ?? 0));
+        $item->purchase_remaining_qty = max(0, $item->quantity - $item->purchased_qty - $item->hard_problem_qty);
+        $item->expected_arrival_qty = max(0, $item->purchased_qty - $item->problem_qty);
+        $item->arrival_remaining_qty = max(0, $item->purchased_qty - $item->problem_qty - $item->arrived_qty);
+
+        $this->applyDerivedDisplayStatus($item);
+
+        return $item;
+    }
+
+
+    private function applyDerivedDisplayStatus(object $item): void
+    {
+        $qty = max(0, (int) ($item->quantity ?? 0));
+        $problemQty = max(0, (int) ($item->problem_qty ?? 0));
+        $purchasedQty = max(0, (int) ($item->purchased_qty ?? 0));
+        $arrivedQty = max(0, (int) ($item->arrived_qty ?? 0));
+        $deliveredQty = max(0, (int) ($item->delivered_qty ?? 0));
+        $collectedQty = max(0, (int) ($item->collected_qty ?? 0));
+        $readyQty = max(0, (int) ($item->ready_for_collection_qty ?? 0));
+        $informedCount = max(0, (int) ($item->customer_informed_count ?? 0));
+        $remainingPurchaseQty = max(0, (int) ($item->purchase_remaining_qty ?? 0));
+        $rawArrivalStatus = (string) ($item->latest_arrival_status ?? '');
+        $rawItemStatus = (string) ($item->status ?? 'requested');
+
+        $label = 'Requested';
+        $classes = 'bg-slate-100 text-slate-700 ring-slate-200';
+
+        if ($problemQty > 0) {
+            $label = 'Problem';
+            $classes = 'bg-amber-50 text-amber-700 ring-amber-100';
+        } elseif ($deliveredQty > 0 || $rawArrivalStatus === 'delivered') {
+            $label = ($qty > 0 && $deliveredQty > 0 && $deliveredQty < $qty) ? 'Partially delivered' : 'Delivered';
+            $classes = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+        } elseif ($collectedQty > 0 || $rawArrivalStatus === 'collected') {
+            $label = ($qty > 0 && $collectedQty > 0 && $collectedQty < $qty) ? 'Partially collected' : 'Collected';
+            $classes = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+        } elseif ($informedCount > 0 || ! empty($item->latest_customer_informed_at)) {
+            $label = 'Customer informed';
+            $classes = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+        } elseif ($readyQty > 0 || $rawArrivalStatus === 'ready_for_collection') {
+            $label = 'Ready for collection';
+            $classes = 'bg-sky-50 text-sky-700 ring-sky-100';
+        } elseif ($arrivedQty > 0 || in_array($rawArrivalStatus, ['arrived', 'pending_customs_clearance'], true)) {
+            $label = ($qty > 0 && $arrivedQty > 0 && $arrivedQty < $qty) ? 'Partially arrived' : 'Arrived';
+            $classes = 'bg-sky-50 text-sky-700 ring-sky-100';
+        } elseif (($item->purchase_mode ?? null) === 'customer_self_purchase') {
+            $label = 'Customer purchased';
+            $classes = 'bg-sky-50 text-sky-700 ring-sky-100';
+        } elseif ($purchasedQty > 0 || in_array($rawItemStatus, ['purchased', 'partially_purchased'], true)) {
+            $label = ($qty > 0 && $purchasedQty > 0 && $purchasedQty < $qty) ? 'Partially purchased' : 'Purchased';
+            $classes = 'bg-indigo-50 text-indigo-700 ring-indigo-100';
+        } elseif ($remainingPurchaseQty > 0 || in_array($rawItemStatus, ['requested', 'pending_purchase'], true)) {
+            $label = 'Pending purchase';
+            $classes = 'bg-slate-100 text-slate-700 ring-slate-200';
+        } else {
+            $label = ucwords(str_replace('_', ' ', $rawItemStatus ?: 'requested'));
+        }
+
+        $item->derived_status_label = $label;
+        $item->derived_status_classes = $classes;
     }
 
     public function purchases(int $orderId): Collection

@@ -1,48 +1,48 @@
-        @if (! $isHistoricalRevision)
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(! $isHistoricalRevision): ?>
         <div x-data="{ invoiceOpen: false }" @open-invoice-modal.window="invoiceOpen = true" x-cloak x-show="invoiceOpen" x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/45 p-4">
             <div @click.away="invoiceOpen = false" class="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl ring-1 ring-slate-200">
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Invoice workspace</p>
-                        <h3 class="mt-1 text-xl font-black text-slate-950">{{ $hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice' }}</h3>
+                        <h3 class="mt-1 text-xl font-black text-slate-950"><?php echo e($hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice'); ?></h3>
                         <p class="mt-1 text-sm font-semibold text-slate-500">This creates an issued invoice snapshot from the current order totals. PDF/email sending comes next.</p>
                     </div>
                     <button type="button" @click="invoiceOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
                 </div>
 
-                <form method="POST" action="{{ route('orders.invoices.store', $order->id) }}" class="mt-5 space-y-4">
-                    @csrf
+                <form method="POST" action="<?php echo e(route('orders.invoices.store', $order->id)); ?>" class="mt-5 space-y-4">
+                    <?php echo csrf_field(); ?>
                     <div class="grid gap-3 sm:grid-cols-3">
                         <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                             <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Invoice no.</p>
-                            <p class="mt-1 text-sm font-black text-slate-950">{{ $invoiceNumber }}</p>
+                            <p class="mt-1 text-sm font-black text-slate-950"><?php echo e($invoiceNumber); ?></p>
                         </div>
                         <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                             <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Next version</p>
-                            <p class="mt-1 text-sm font-black text-slate-950">v{{ ($invoiceVersions->max('version') ?? 0) + 1 }}</p>
+                            <p class="mt-1 text-sm font-black text-slate-950">v<?php echo e(($invoiceVersions->max('version') ?? 0) + 1); ?></p>
                         </div>
                         <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100">
                             <p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Total</p>
-                            <p class="mt-1 text-sm font-black text-slate-950">£{{ number_format($orderTotal, 2) }}</p>
+                            <p class="mt-1 text-sm font-black text-slate-950">£<?php echo e(number_format($orderTotal, 2)); ?></p>
                         </div>
                     </div>
 
                     <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">
-                        @if ($hasInvoiceWorkspace)
+                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($hasInvoiceWorkspace): ?>
                             A previous invoice version already exists. Creating a new version preserves the older snapshot for history.
-                        @else
+                        <?php else: ?>
                             This will mark the order as invoiced and create the first invoice version. It will not generate or send a PDF yet.
-                        @endif
+                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                     </div>
 
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Customer note for invoice snapshot</label>
-                        <textarea name="customer_note" rows="3" maxlength="2000" placeholder="Optional note to carry on the invoice snapshot…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-amber-500 focus:ring-amber-500">{{ old('customer_note') }}</textarea>
+                        <textarea name="customer_note" rows="3" maxlength="2000" placeholder="Optional note to carry on the invoice snapshot…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-amber-500 focus:ring-amber-500"><?php echo e(old('customer_note')); ?></textarea>
                     </div>
 
                     <div class="flex flex-wrap justify-end gap-3">
                         <button type="button" @click="invoiceOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
-                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700">{{ $hasInvoiceWorkspace ? 'Create new version' : 'Create invoice' }}</button>
+                        <button type="submit" class="rounded-2xl bg-amber-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-700"><?php echo e($hasInvoiceWorkspace ? 'Create new version' : 'Create invoice'); ?></button>
                     </div>
                 </form>
             </div>
@@ -54,14 +54,14 @@
                 <div class="flex items-start justify-between gap-4">
                     <div>
                         <p class="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">Record payment</p>
-                        <h3 class="mt-1 text-xl font-black text-slate-950">Order #{{ $order->order_number }}</h3>
-                        <p class="mt-1 text-sm font-semibold text-slate-500">Outstanding balance: £{{ number_format($balanceDue, 2) }}</p>
+                        <h3 class="mt-1 text-xl font-black text-slate-950">Order #<?php echo e($order->order_number); ?></h3>
+                        <p class="mt-1 text-sm font-semibold text-slate-500">Outstanding balance: £<?php echo e(number_format($balanceDue, 2)); ?></p>
                     </div>
                     <button type="button" @click="paymentOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
                 </div>
 
-                <form method="POST" action="{{ route('orders.payments.store', $order->id) }}" class="mt-5 space-y-4" x-data="{ amount: '{{ old('amount', $balanceDue > 0 ? number_format($balanceDue, 2, '.', '') : '') }}', balanceDue: {{ json_encode($balanceDue) }}, overpaymentConfirm: false, overpaymentConfirmed: false, get numericAmount() { const value = parseFloat(this.amount || '0'); return Number.isFinite(value) ? value : 0; }, get appliedAmount() { return Math.min(this.numericAmount, this.balanceDue); }, get overpaymentAmount() { return Math.max(0, this.numericAmount - this.balanceDue); }, money(value) { return '£' + Number(value || 0).toFixed(2); }, submitPayment(form) { if (this.overpaymentAmount > 0 && ! this.overpaymentConfirmed) { this.overpaymentConfirm = true; return; } form.submit(); } }" @submit.prevent="submitPayment($el)">
-                    @csrf
+                <form method="POST" action="<?php echo e(route('orders.payments.store', $order->id)); ?>" class="mt-5 space-y-4" x-data="{ amount: '<?php echo e(old('amount', $balanceDue > 0 ? number_format($balanceDue, 2, '.', '') : '')); ?>', balanceDue: <?php echo e(json_encode($balanceDue)); ?>, overpaymentConfirm: false, overpaymentConfirmed: false, get numericAmount() { const value = parseFloat(this.amount || '0'); return Number.isFinite(value) ? value : 0; }, get appliedAmount() { return Math.min(this.numericAmount, this.balanceDue); }, get overpaymentAmount() { return Math.max(0, this.numericAmount - this.balanceDue); }, money(value) { return '£' + Number(value || 0).toFixed(2); }, submitPayment(form) { if (this.overpaymentAmount > 0 && ! this.overpaymentConfirmed) { this.overpaymentConfirm = true; return; } form.submit(); } }" @submit.prevent="submitPayment($el)">
+                    <?php echo csrf_field(); ?>
                     <input type="hidden" name="confirmed_overpayment" :value="overpaymentConfirmed ? 1 : 0">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div>
@@ -70,27 +70,27 @@
                         </div>
                         <div>
                             <label class="text-xs font-black uppercase tracking-wide text-slate-500">Received date</label>
-                            <input name="received_at" type="datetime-local" value="{{ old('received_at', now()->format('Y-m-d\\TH:i')) }}" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">
+                            <input name="received_at" type="datetime-local" value="<?php echo e(old('received_at', now()->format('Y-m-d\\TH:i'))); ?>" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">
                         </div>
                     </div>
 
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Payment type</label>
                         <select name="payment_type" required class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">
-                            @foreach ($paymentTypeOptions as $paymentTypeOption)
-                                <option value="{{ $paymentTypeOption }}" @selected(old('payment_type', 'Online Payment Link (Card)') === $paymentTypeOption)>{{ $paymentTypeOption }}{{ $loop->first ? ' · most common' : '' }}</option>
-                            @endforeach
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $paymentTypeOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $paymentTypeOption): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                <option value="<?php echo e($paymentTypeOption); ?>" <?php if(old('payment_type', 'Online Payment Link (Card)') === $paymentTypeOption): echo 'selected'; endif; ?>><?php echo e($paymentTypeOption); ?><?php echo e($loop->first ? ' · most common' : ''); ?></option>
+                            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                         </select>
                     </div>
 
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Reference</label>
-                        <input name="reference" value="{{ old('reference') }}" placeholder="Gateway transaction ID, BACS ref, receipt number…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">
+                        <input name="reference" value="<?php echo e(old('reference')); ?>" placeholder="Gateway transaction ID, BACS ref, receipt number…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">
                     </div>
 
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Notes</label>
-                        <textarea name="note" rows="3" maxlength="255" placeholder="Optional internal note…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:ring-emerald-500">{{ old('note') }}</textarea>
+                        <textarea name="note" rows="3" maxlength="255" placeholder="Optional internal note…" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-emerald-500 focus:ring-emerald-500"><?php echo e(old('note')); ?></textarea>
                     </div>
 
                     <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold leading-5 text-slate-600">
@@ -153,8 +153,8 @@
                     </div>
                     <button type="button" @click="refundOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
                 </div>
-                <form method="POST" action="{{ route('orders.refunds.store', $order->id) }}" class="mt-5 space-y-4">
-                    @csrf
+                <form method="POST" action="<?php echo e(route('orders.refunds.store', $order->id)); ?>" class="mt-5 space-y-4">
+                    <?php echo csrf_field(); ?>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
                             <label class="text-xs font-black uppercase tracking-wide text-slate-500">Amount</label>
@@ -198,8 +198,8 @@
                     </div>
                     <button type="button" @click="creditOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
                 </div>
-                <form method="POST" action="{{ route('orders.credits.store', $order->id) }}" class="mt-5 space-y-4">
-                    @csrf
+                <form method="POST" action="<?php echo e(route('orders.credits.store', $order->id)); ?>" class="mt-5 space-y-4">
+                    <?php echo csrf_field(); ?>
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Amount</label>
                         <input name="amount" type="number" min="0.01" max="999999.99" step="0.01" required placeholder="0.00" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-sky-500 focus:ring-sky-500">
@@ -231,7 +231,7 @@
                 </div>
 
                 <form method="POST" :action="voidPaymentAction" class="mt-5 space-y-4">
-                    @csrf
+                    <?php echo csrf_field(); ?>
                     <div class="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-900" x-show="reversePaymentLabel">
                         Reversing: <span x-text="reversePaymentLabel"></span>
                     </div>
@@ -258,4 +258,5 @@
             </div>
         </div>
 
-        @endif
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH /var/www/dabba-test/dabbadesk-v2/resources/views/orders/show/_modals.blade.php ENDPATH**/ ?>

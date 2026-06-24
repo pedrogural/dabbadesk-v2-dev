@@ -37,7 +37,7 @@
                             <span x-show="loading" x-cloak class="animate-pulse">…</span>
                         </div>
                     </div>
-                    <a :href="q.trim() ? '{{ route('customers.index') }}' + '?q=' + encodeURIComponent(q.trim()) : '{{ route('customers.index') }}'" class="inline-flex h-14 items-center justify-center rounded-2xl bg-slate-950 px-6 text-sm font-black text-white hover:bg-slate-800">Full search</a>
+                    <a :href="q.trim() ? '{{ route('customers.index') }}' + '?q=' + encodeURIComponent(q.trim()) : '{{ route('customers.index') }}'" class="inline-flex h-14 items-center justify-center rounded-2xl bg-indigo-600 px-6 text-sm font-black text-white hover:bg-indigo-700">Full search</a>
                 </div>
                 <p class="mt-2 text-xs font-semibold text-slate-500">Results update while typing. Press “Full search” only if you want a paginated server result.</p>
             </div>

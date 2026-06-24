@@ -74,7 +74,7 @@
                                 class="w-full rounded-2xl border border-slate-300 bg-white py-3 pl-11 pr-4 text-sm font-semibold text-slate-800 shadow-sm placeholder:text-slate-400 focus:border-purple-500 focus:outline-none focus:ring-4 focus:ring-purple-100"
                             >
                         </div>
-                        <button type="submit" class="rounded-2xl bg-slate-950 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-slate-800">Search</button>
+                        <button type="submit" class="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Search</button>
                         <a href="{{ route('order-requests.create-manual') }}" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-center text-sm font-black text-slate-600 hover:bg-slate-50">Clear</a>
                     </div>
                     <p class="mt-2 text-xs font-semibold text-slate-500">Examples: <span class="font-black text-slate-700">Jasmin Smith</span>, <span class="font-black text-slate-700">Smith J</span>, <span class="font-black text-slate-700">GX11</span>, <span class="font-black text-slate-700">Main Street</span>.</p>

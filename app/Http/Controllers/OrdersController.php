@@ -8,6 +8,7 @@ use App\Support\Purchasing\PurchaseWorkbenchQuery;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 class OrdersController extends Controller
@@ -98,6 +99,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
@@ -274,6 +276,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'reversal_reason' => ['required', 'string', 'max:80'],
@@ -438,6 +441,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'reversal_reason' => ['required', 'string', 'max:80'],
@@ -575,6 +579,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
@@ -659,6 +664,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01', 'max:999999.99'],
@@ -752,6 +758,7 @@ class OrdersController extends Controller
             ->first();
 
         abort_if(! $orderRow, 404);
+        $this->assertOrderIsMutable($order);
 
         $validated = $request->validate([
             'customer_note' => ['nullable', 'string', 'max:2000'],
@@ -890,6 +897,34 @@ class OrdersController extends Controller
         return redirect()
             ->route('orders.show', $order)
             ->with('success', 'Invoice workspace created / updated.');
+    }
+
+
+    private function assertOrderIsMutable(int $orderId): void
+    {
+        $order = DB::table('orders')->where('id', $orderId)->first(['id', 'order_number', 'status', 'cancel_reason']);
+
+        abort_if(! $order, 404);
+
+        $hasNewerActiveRevision = DB::table('orders')
+            ->where('order_number', $order->order_number)
+            ->where('id', '>', $orderId)
+            ->where('status', '!=', 'superseded')
+            ->where(function ($query) {
+                $query->whereNull('cancel_reason')
+                    ->orWhere('cancel_reason', '!=', 'superseded');
+            })
+            ->exists();
+
+        $isHistoricalRevision = ($order->status === 'superseded')
+            || ($order->cancel_reason === 'superseded')
+            || $hasNewerActiveRevision;
+
+        if ($isHistoricalRevision) {
+            throw ValidationException::withMessages([
+                'order' => 'This is a historical order revision. Financial and operational actions are disabled. Open the active revision to make changes.',
+            ]);
+        }
     }
 
     private function ensurePaymentType(string $name): ?int

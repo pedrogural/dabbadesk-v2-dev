@@ -30,7 +30,7 @@
                     <label class="mb-1 block text-xs font-black uppercase tracking-widest text-slate-500">Minimum £</label>
                     <input name="dabba_fee_min" type="number" step="0.01" min="0" value="{{ old('dabba_fee_min', $activeFee ? number_format((float) $activeFee->dabba_fee_min, 2, '.', '') : '10.00') }}" class="w-full rounded-2xl border-slate-300 text-sm focus:border-purple-500 focus:ring-purple-500">
                 </div>
-                <button type="submit" class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white hover:bg-slate-800">Create new active fee</button>
+                <button type="submit" class="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white hover:bg-indigo-700">Create new active fee</button>
             </form>
 
             @error('dabba_fee_rate')<p class="mt-3 text-sm font-semibold text-rose-600">{{ $message }}</p>@enderror

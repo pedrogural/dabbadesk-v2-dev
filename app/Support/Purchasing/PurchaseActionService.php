@@ -93,9 +93,19 @@ class PurchaseActionService
                 ->where('id', $purchase->id)
                 ->update([
                     'cancelled_at' => now(),
+                    'requires_marking_attention' => 0,
                     'updated_by_user_id' => $userId,
                     'updated_at' => now(),
                     'internal_notes' => trim((string) $purchase->internal_notes . "\nUndo: " . ($reason ?: 'No reason recorded.')),
+                ]);
+
+            DB::table('order_items')
+                ->where('id', $purchase->order_item_id)
+                ->update([
+                    'requires_inspection' => 0,
+                    'inspection_note' => null,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
                 ]);
 
             DB::table('order_item_purchases')->insert([
@@ -115,7 +125,7 @@ class PurchaseActionService
                 'updated_at' => now(),
             ]);
 
-            $this->writeActivityLog('order_item_purchase', $purchase->id, 'Purchase undone', $reason ?: 'Purchase event was undone.', $userId);
+            $this->writeActivityLog('order_item_purchase', $purchase->id, 'Purchase undone', trim(($reason ?: 'Purchase event was undone.') . ' Package check marker was cleared automatically.'), $userId);
         });
     }
 

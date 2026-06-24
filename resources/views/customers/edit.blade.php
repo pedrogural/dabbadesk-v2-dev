@@ -29,7 +29,7 @@
             ></textarea>
             @error('body')<p class="mt-1 text-xs font-bold text-rose-600">{{ $message }}</p>@enderror
             <div class="mt-3 flex justify-end">
-                <button class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white hover:bg-slate-800">Save note</button>
+                <button class="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white hover:bg-indigo-700">Save note</button>
             </div>
         </form>
 

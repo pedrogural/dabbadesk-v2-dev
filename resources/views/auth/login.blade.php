@@ -129,7 +129,7 @@
 
                         <button
                             type="submit"
-                            class="flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-slate-950/15 transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                            class="flex min-h-[52px] w-full items-center justify-center rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white shadow-lg shadow-slate-950/15 transition hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
                         >
                             {{ __('Log in') }}
                         </button>

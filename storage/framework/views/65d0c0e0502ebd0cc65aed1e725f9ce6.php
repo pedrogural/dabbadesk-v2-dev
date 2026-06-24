@@ -9,39 +9,45 @@
                     </div>
 
                     <span class="text-sm text-slate-400">
-                        {{ $retailerGroups->count() }} retailer group(s)
+                        <?php echo e($retailerGroups->count()); ?> retailer group(s)
                     </span>
                 </div>
 
                 <div class="mt-6 space-y-6">
-                    @forelse ($retailerGroups as $group)
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $retailerGroups; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $group): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
                         <div class="overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-sm">
                             <div class="flex flex-col gap-3 border-b border-indigo-200 bg-indigo-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="min-w-0">
-                                    <h3 class="truncate text-base font-black text-indigo-950">{{ $group->name }}</h3>
+                                    <h3 class="truncate text-base font-black text-indigo-950"><?php echo e($group->name); ?></h3>
                                     <p class="mt-1 text-xs font-semibold text-indigo-700/80">
-                                        {{ $group->item_count }} line(s) · Qty {{ $group->total_qty }}
-                                        @if ($group->host && $group->host !== $group->name)
-                                            · {{ $group->host }}
-                                        @endif
+                                        <?php echo e($group->item_count); ?> line(s) · Qty <?php echo e($group->total_qty); ?>
+
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($group->host && $group->host !== $group->name): ?>
+                                            · <?php echo e($group->host); ?>
+
+                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                     </p>
                                 </div>
 
                                 <div class="flex flex-wrap gap-2 text-xs font-black">
                                     <span class="rounded-full bg-white/85 px-3 py-2 text-indigo-900 ring-1 ring-indigo-100">
-                                        Total £{{ number_format($group->line_total ?? 0, 2) }}
+                                        Total £<?php echo e(number_format($group->line_total ?? 0, 2)); ?>
+
                                     </span>
                                     <span class="rounded-full bg-white/70 px-3 py-2 text-indigo-800 ring-1 ring-indigo-100">
-                                        Purchased {{ $group->purchased_qty }}/{{ $group->total_qty }}
+                                        Purchased <?php echo e($group->purchased_qty); ?>/<?php echo e($group->total_qty); ?>
+
                                     </span>
                                     <span class="rounded-full bg-white/70 px-3 py-2 text-indigo-800 ring-1 ring-indigo-100">
-                                        Arrived {{ $group->arrived_qty }}/{{ $group->total_qty }}
+                                        Arrived <?php echo e($group->arrived_qty); ?>/<?php echo e($group->total_qty); ?>
+
                                     </span>
-                                    @if ($group->remaining_qty > 0)
+                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($group->remaining_qty > 0): ?>
                                         <span class="rounded-full bg-rose-100 px-3 py-2 text-rose-700 ring-1 ring-rose-200">
-                                            Remaining {{ $group->remaining_qty }}
+                                            Remaining <?php echo e($group->remaining_qty); ?>
+
                                         </span>
-                                    @endif
+                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                 </div>
                             </div>
 
@@ -58,8 +64,8 @@
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-100 bg-white">
-                                        @foreach ($group->items as $item)
-                                            @php
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop(); ?><?php endif; ?><?php $__currentLoopData = $group->items; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoopIteration(); ?><?php endif; ?>
+                                            <?php
                                                 $itemQty = max(0, (int) ($item->quantity ?? 0));
                                                 $purchasedQty = max(0, (int) ($item->purchased_qty ?? 0));
                                                 $arrivedQty = max(0, (int) ($item->arrived_qty ?? 0));
@@ -93,55 +99,56 @@
                                                     $statusLabel = ucwords(str_replace('_', ' ', (string) ($item->status ?? 'Requested')));
                                                     $statusClasses = 'bg-slate-100 text-slate-700 ring-slate-200';
                                                 }
-                                            @endphp
-                                            <tr class="align-top {{ $item->requires_inspection ? 'bg-purple-50/50' : '' }}">
+                                            ?>
+                                            <tr class="align-top <?php echo e($item->requires_inspection ? 'bg-purple-50/50' : ''); ?>">
                                                 <td class="px-5 py-4">
-                                                    <div class="font-bold leading-5 text-slate-950">{{ $item->item_name }}</div>
+                                                    <div class="font-bold leading-5 text-slate-950"><?php echo e($item->item_name); ?></div>
                                                     <div class="mt-1 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-                                                        @if ($item->product_code)
-                                                            <span>{{ $item->product_code }}</span>
-                                                        @endif
-                                                        @if ($item->latest_retailer_order_reference || $item->retailer_order_reference)
-                                                            <span>Ref: {{ $item->latest_retailer_order_reference ?: $item->retailer_order_reference }}</span>
-                                                        @endif
-                                                        @if ($item->requires_inspection)
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->product_code): ?>
+                                                            <span><?php echo e($item->product_code); ?></span>
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->latest_retailer_order_reference || $item->retailer_order_reference): ?>
+                                                            <span>Ref: <?php echo e($item->latest_retailer_order_reference ?: $item->retailer_order_reference); ?></span>
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->requires_inspection): ?>
                                                             <span class="rounded-full bg-purple-100 px-2 py-0.5 text-purple-700">Purple check</span>
-                                                        @endif
+                                                        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                     </div>
-                                                    @if ($item->inspection_note)
-                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-semibold text-purple-800">{{ $item->inspection_note }}</p>
-                                                    @endif
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->inspection_note): ?>
+                                                        <p class="mt-2 rounded-xl bg-purple-100 px-3 py-2 text-xs font-semibold text-purple-800"><?php echo e($item->inspection_note); ?></p>
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </td>
-                                                <td class="whitespace-nowrap px-3 py-4 text-right font-semibold text-slate-700">{{ $itemQty }}</td>
-                                                <td class="whitespace-nowrap px-3 py-4 text-right font-semibold text-slate-700">£{{ number_format($item->unit_price ?? 0, 2) }}</td>
-                                                <td class="whitespace-nowrap px-3 py-4 text-right font-black text-slate-950">£{{ number_format($goodsLineTotal, 2) }}</td>
+                                                <td class="whitespace-nowrap px-3 py-4 text-right font-semibold text-slate-700"><?php echo e($itemQty); ?></td>
+                                                <td class="whitespace-nowrap px-3 py-4 text-right font-semibold text-slate-700">£<?php echo e(number_format($item->unit_price ?? 0, 2)); ?></td>
+                                                <td class="whitespace-nowrap px-3 py-4 text-right font-black text-slate-950">£<?php echo e(number_format($goodsLineTotal, 2)); ?></td>
                                                 <td class="whitespace-nowrap px-3 py-4">
-                                                    <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $statusClasses }}">{{ $statusLabel }}</span>
+                                                    <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 <?php echo e($statusClasses); ?>"><?php echo e($statusLabel); ?></span>
                                                 </td>
                                                 <td class="px-5 py-4 text-right">
-                                                    @if ($item->product_url)
+                                                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item->product_url): ?>
                                                         <a
-                                                            href="{{ $item->product_url }}"
+                                                            href="<?php echo e($item->product_url); ?>"
                                                             target="_blank"
                                                             rel="noopener noreferrer"
                                                             title="Open product page"
                                                             class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 text-lg font-black text-indigo-700 hover:bg-indigo-100"
                                                         >↗</a>
-                                                    @else
+                                                    <?php else: ?>
                                                         <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-300">—</span>
-                                                    @endif
+                                                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                                                 </td>
                                             </tr>
-                                        @endforeach
+                                        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
-                    @empty
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop(); ?><?php endif; ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><?php \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop(); ?><?php endif; ?>
                         <div class="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                             No items found for this order.
                         </div>
-                    @endforelse
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
                 </div>
             </section>
         </div>
+<?php /**PATH /var/www/dabba-test/dabbadesk-v2/resources/views/orders/show/tabs/_items.blade.php ENDPATH**/ ?>

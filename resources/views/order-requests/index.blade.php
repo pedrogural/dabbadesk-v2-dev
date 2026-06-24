@@ -200,7 +200,7 @@
                                 <td class="whitespace-nowrap px-6 py-7 align-middle text-right text-sm">
                                     <a
                                         href="{{ route('order-requests.show', $request->id) }}"
-                                        class="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-4 focus:ring-slate-200"
+                                        class="inline-flex h-11 items-center justify-center rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-slate-200"
                                     >
                                         Open
                                     </a>

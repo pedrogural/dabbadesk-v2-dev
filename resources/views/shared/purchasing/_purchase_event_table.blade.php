@@ -48,11 +48,13 @@
                         {{ \Illuminate\Support\Str::limit($purchase->problem_notes ?: ($purchase->internal_notes ?: ($purchase->note ?: '—')), 110) }}
                     </td>
                     <td class="px-4 py-3 text-right">
-                        @if (empty($purchase->cancelled_at))
-                            <form method="POST" action="{{ route('purchasing.events.undo', $purchase->id) }}" onsubmit="return confirm('Undo this purchasing event?');">
+                        @if (\Illuminate\Support\Facades\Route::has('purchasing.events.undo') && empty($purchase->cancelled_at))
+                            <form method="POST" action="{{ route('purchasing.events.undo', $purchase->id) }}" data-confirm data-confirm-danger="1" data-confirm-title="Undo this purchasing event?" data-confirm-message="This will reverse the purchasing event if it has not been arrived or otherwise locked." data-confirm-button="Undo Purchase" data-confirm-cancel="Keep Purchase">
                                 @csrf
                                 <button class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 hover:bg-slate-50">Undo</button>
                             </form>
+                        @else
+                            <span class="text-xs font-semibold text-slate-400">—</span>
                         @endif
                     </td>
                 </tr>

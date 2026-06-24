@@ -10,51 +10,41 @@
             </div>
         @endif
 
-        <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-                <div class="min-w-0">
-                    <a href="{{ route('orders.index') }}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">← Back to Orders</a>
-                    <div class="mt-2 flex flex-wrap items-center gap-2">
-                        <h1 class="text-2xl font-semibold tracking-tight text-slate-950">Order #{{ $order->order_number }}</h1>
-                        <button type="button" data-copy-value="{{ $copyOrderNumber }}" class="copy-btn rounded-full border border-indigo-200 bg-white px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy</button>
-                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $revisionBadgeClasses }}">{{ $revisionBadgeLabel }}</span>
-                        <span class="rounded-full {{ $isCustomerSelfPurchase ? 'bg-sky-100 text-sky-700' : 'bg-indigo-100 text-indigo-700' }} px-2.5 py-1 text-xs font-semibold">
-                            {{ $isCustomerSelfPurchase ? 'Self-purchase' : 'Dabba purchase' }}
-                        </span>
-                        <span class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1 {{ $paymentStatusClasses }}">{{ $paymentStatusLabel }}</span>
-                        @if ($walletAttentionTotal > 0.004)
-                            <span class="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-200">Wallet credit £{{ number_format($walletAttentionTotal, 2) }}</span>
-                        @endif
-                        @if ($balanceDue > 0.004)
-                            <span class="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-200">Outstanding £{{ number_format($balanceDue, 2) }}</span>
-                        @else
-                            <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">No outstanding balance</span>
-                        @endif
+
+
+        @if ($isHistoricalRevision)
+            <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
+                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <p class="text-xs font-black uppercase tracking-[0.2em] text-amber-700">Viewing historical revision</p>
+                        <h2 class="mt-1 text-lg font-black text-amber-950">Revision {{ $revisionNumber }} is superseded and read-only.</h2>
+                        <p class="mt-1 text-sm font-semibold text-amber-900">Financial and operational actions are disabled for this snapshot. Open the active revision to record payments, refunds, invoices, purchases or other changes.</p>
                     </div>
-                    <p class="mt-1 text-sm text-slate-500">{{ $customerFullName ?: 'Unknown customer' }} · Total £{{ number_format($orderTotal, 2) }} · Settled £{{ number_format($settledTotal, 2) }}</p>
+                    <a href="{{ $activeRevisionUrl }}" class="inline-flex items-center justify-center rounded-2xl bg-amber-700 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-amber-800">View active revision</a>
+                </div>
+            </section>
+        @endif
+
+        <section class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div class="flex flex-col gap-2">
+                <a href="{{ route('orders.index') }}" class="text-sm font-semibold text-indigo-600 hover:text-indigo-700">← Back to Orders</a>
+
+                <div class="mt-1 flex flex-wrap items-center gap-2">
+                    <h1 class="text-2xl font-semibold tracking-tight text-slate-950">Order #{{ $order->order_number }}</h1>
+                    <button type="button" data-copy-value="{{ $copyOrderNumber }}" title="Copy order number" aria-label="Copy order number" class="copy-btn inline-flex h-7 w-7 items-center justify-center rounded-full border border-indigo-200 bg-white text-sm text-indigo-700 hover:bg-indigo-50">📋</button>
                 </div>
 
-                <div class="flex flex-wrap gap-2">
-                    <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">Record payment</button>
-                    <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-semibold text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'New invoice version' : 'Create invoice' }}</button>
-                </div>
-            </div>
+                <p class="text-lg font-semibold text-slate-800">{{ $customerFullName ?: 'Unknown customer' }}</p>
 
-            <div class="mt-4 flex flex-wrap gap-2 rounded-2xl bg-slate-50 p-2 ring-1 ring-slate-100">
-                @if ($whatsappUrl)
-                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">WhatsApp ↗</a>
-                @endif
-                @if ($customerEmail)
-                    <a href="mailto:{{ $customerEmail }}" class="rounded-xl bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">Email ↗</a>
-                @endif
-                @if ($copyFullAddress)
-                    <button type="button" data-copy-value="{{ $copyFullAddress }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy address</button>
-                @endif
-                <button type="button" data-copy-value="{{ $copyOrderNumber }}" class="copy-btn rounded-xl border border-indigo-200 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">Copy order #</button>
-                @if (! empty($order->customer_id))
-                    <a href="{{ route('customers.edit', $order->customer_id) }}" class="rounded-xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-100 hover:text-indigo-700">Customer ↗</a>
-                @endif
-                <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 hover:bg-emerald-100">Finance ↗</a>
+                <p class="text-sm font-semibold {{ $balanceDue > 0.004 ? 'text-rose-700' : 'text-emerald-700' }}">
+                    {{ $paymentStatusLabel }}
+                    <span class="text-slate-300">•</span>
+                    @if ($balanceDue > 0.004)
+                        Outstanding £{{ number_format($balanceDue, 2) }}
+                    @else
+                        No outstanding balance
+                    @endif
+                </p>
             </div>
 
             <div class="mt-5 overflow-x-auto">

@@ -25,7 +25,11 @@
                         <h2 class="mt-1 text-lg font-black text-slate-950">Order-first purchasing for #{{ $order->order_number }}</h2>
                         <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Purchases are recorded inside this customer order. Even if another customer has items from the same retailer, they are never merged into one basket.</p>
                     </div>
-                    <a href="{{ route('purchasing.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Open Purchasing Workspace ↗</a>
+                    @if (! $isHistoricalRevision)
+                        <a href="{{ route('purchasing.show', $order->id) }}" class="rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-indigo-700">Open Purchasing Workspace ↗</a>
+                    @else
+                        <span class="rounded-2xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-800 ring-1 ring-amber-200">Purchasing actions disabled</span>
+                    @endif
                 </div>
 
                 <div class="mt-5 grid gap-3 md:grid-cols-4">

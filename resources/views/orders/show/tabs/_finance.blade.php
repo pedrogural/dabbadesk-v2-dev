@@ -44,9 +44,13 @@
                     </div>
 
                     <div class="mt-4 flex flex-wrap gap-2">
-                        <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Record payment</button>
-                        <button type="button" @click="$dispatch('open-refund-modal')" class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-rose-700">Issue refund</button>
-                        <button type="button" @click="$dispatch('open-credit-modal')" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-sky-700">Issue credit</button>
+                        @if (! $isHistoricalRevision)
+                            <button type="button" @click="$dispatch('open-payment-modal')" class="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-emerald-700">Record payment</button>
+                            <button type="button" @click="$dispatch('open-refund-modal')" class="rounded-2xl bg-rose-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-rose-700">Issue refund</button>
+                            <button type="button" @click="$dispatch('open-credit-modal')" class="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-black text-white shadow-sm hover:bg-sky-700">Issue credit</button>
+                        @else
+                            <span class="rounded-2xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-800 ring-1 ring-amber-200">Financial actions disabled</span>
+                        @endif
                         <button type="button" data-copy-value="{{ e($copyPaymentDetails) }}" class="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-black text-indigo-700 hover:bg-indigo-100">Copy payment details</button>
                         <a href="{{ route('money-desk.orders.show', $order->id) }}" class="rounded-2xl border border-emerald-200 bg-white px-4 py-2 text-sm font-black text-emerald-700 hover:bg-emerald-50">Money Desk ↗</a>
                     </div>
@@ -154,7 +158,7 @@
                                     <p class="mt-0.5 text-[11px] font-black uppercase tracking-wide {{ $paymentCanReverse ? 'text-emerald-600' : 'text-slate-400' }}">{{ $paymentCanReverse ? $paymentStatusText : 'Reversed' }}</p>
                                 </div>
                                 <div class="md:text-right">
-                                    @if ($paymentCanReverse)
+                                    @if ($paymentCanReverse && ! $isHistoricalRevision)
                                         <button type="button" @click="$dispatch('open-reverse-payment-modal', { action: '{{ $paymentReverseRoute }}', label: '{{ addslashes($paymentReverseLabel) }}' })" class="rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-black text-rose-700 hover:bg-rose-50">Reverse</button>
                                     @else
                                         <span class="rounded-xl bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-400">Reversed</span>
@@ -214,7 +218,11 @@
                         @endif
 
                         <div class="mt-3 flex flex-wrap gap-2">
-                            <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-slate-900 hover:bg-slate-800' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-black text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice' }}</button>
+                            @if (! $isHistoricalRevision)
+                                <button type="button" @click="$dispatch('open-invoice-modal')" class="rounded-2xl {{ $hasInvoiceWorkspace ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-amber-600 hover:bg-amber-700' }} px-4 py-2 text-sm font-black text-white shadow-sm">{{ $hasInvoiceWorkspace ? 'Create invoice version' : 'Create invoice' }}</button>
+                            @else
+                                <span class="rounded-2xl bg-amber-100 px-4 py-2 text-sm font-black text-amber-800 ring-1 ring-amber-200">Read-only snapshot</span>
+                            @endif
                             @if ($hasInvoiceWorkspace && ! empty($invoiceRoot->pdf_path))
                                 <a href="{{ asset('storage/' . ltrim($invoiceRoot->pdf_path, '/')) }}" target="_blank" rel="noopener noreferrer" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">View / download ↗</a>
                             @else
@@ -301,7 +309,7 @@
                             <div class="text-right">
                                 <p class="text-sm font-black {{ $eventAmountClasses }}">£{{ number_format($eventAmount, 2) }}</p>
                                 <p class="mt-0.5 text-[11px] font-semibold text-slate-400">{{ ($event->received_at ?: $event->created_at) ? \Carbon\Carbon::parse($event->received_at ?: $event->created_at)->format('d M Y H:i') : 'No date' }}</p>
-                                @if (($event->type ?? '') === 'payment' && ($event->status ?? '') === 'recorded' && empty($event->has_void))
+                                @if (($event->type ?? '') === 'payment' && ($event->status ?? '') === 'recorded' && empty($event->has_void) && ! $isHistoricalRevision)
                                     <button type="button" @click="$dispatch('open-reverse-payment-modal', { action: '{{ route('orders.payments.void', [$order->id, $event->id]) }}', label: '£{{ number_format((float) $event->amount, 2) }} · {{ addslashes($event->payment_type_name ?: 'Payment') }}' })" class="mt-2 rounded-xl border border-rose-200 bg-white px-3 py-1 text-[11px] font-black text-rose-700 hover:bg-rose-50">Reverse</button>
                                 @elseif (($event->type ?? '') === 'payment' && ! empty($event->has_void))
                                     <p class="mt-2 text-[11px] font-black uppercase tracking-wide text-slate-400">Reversed</p>

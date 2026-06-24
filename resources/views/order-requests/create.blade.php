@@ -33,7 +33,7 @@
                         placeholder="Search name, company, email or phone"
                         class="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                     >
-                    <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-black text-white hover:bg-slate-700">Search</button>
+                    <button type="submit" class="rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-black text-white hover:bg-indigo-700">Search</button>
                 </div>
 
                 @if ($customerSearch !== '')
