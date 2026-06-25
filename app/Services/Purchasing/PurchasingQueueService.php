@@ -269,6 +269,9 @@ class PurchasingQueueService
                 'oi.quantity',
                 'oi.unit_price',
                 'oi.line_total',
+                'oi.item_retailer_delivery_fee',
+                'oi.retailer_delivery_allocated',
+                'ore.retailer_delivery_fee_total',
                 'oi.status as item_status',
                 'oi.purchase_problem_reason',
                 'oi.purchase_problem_note',
@@ -376,6 +379,10 @@ class PurchasingQueueService
                 $row->purchase_event_count = (int) $row->purchase_event_count;
                 $row->requires_inspection = (int) ($row->requires_inspection ?? 0);
                 $row->inspection_note = trim((string) ($row->inspection_note ?? ''));
+                $row->item_retailer_delivery_fee = round((float) ($row->item_retailer_delivery_fee ?? 0), 2);
+                $row->retailer_delivery_allocated = round((float) ($row->retailer_delivery_allocated ?? 0), 2);
+                $row->retailer_delivery_fee_total = round((float) ($row->retailer_delivery_fee_total ?? 0), 2);
+                $row->visible_delivery_fee = round($row->item_retailer_delivery_fee + $row->retailer_delivery_allocated, 2);
 
                 return $row;
             });
@@ -474,9 +481,18 @@ class PurchasingQueueService
             END) as settled_amount")
             ->groupBy('order_id');
 
+        $latestPurchaseIds = DB::table('order_item_purchases')
+            ->selectRaw('order_item_id, MAX(id) as latest_purchase_id')
+            ->whereNull('cancelled_at')
+            ->groupBy('order_item_id');
+
         $query = DB::table('purchase_issues as pi')
             ->join('orders as o', 'o.id', '=', 'pi.order_id')
             ->leftJoin('order_items as oi', 'oi.id', '=', 'pi.order_item_id')
+            ->leftJoinSub($latestPurchaseIds, 'latest_problem_purchase', function ($join) {
+                $join->on('latest_problem_purchase.order_item_id', '=', 'pi.order_item_id');
+            })
+            ->leftJoin('order_item_purchases as problem_purchase', 'problem_purchase.id', '=', 'latest_problem_purchase.latest_purchase_id')
             ->leftJoin('retailers as r', 'r.id', '=', 'pi.retailer_id')
             ->leftJoin('users as cu', 'cu.id', '=', 'pi.created_by_user_id')
             ->leftJoin('users as ru', 'ru.id', '=', 'pi.resolved_by_user_id')
@@ -493,6 +509,15 @@ class PurchasingQueueService
                 'oi.item_name',
                 'oi.product_code',
                 'oi.product_url',
+                'problem_purchase.retailer_order_reference as purchase_retailer_order_reference',
+                'problem_purchase.ordered_at as purchase_ordered_at',
+                'problem_purchase.created_at as purchase_created_at',
+                'problem_purchase.purchase_line_total as purchase_line_total',
+                'problem_purchase.purchase_unit_price as purchase_unit_price',
+                'problem_purchase.qty as purchase_qty',
+                DB::raw('COALESCE(oi.line_total, 0) as customer_line_value'),
+                DB::raw('COALESCE(oi.unit_price, 0) as customer_unit_price'),
+                DB::raw('COALESCE(oi.quantity, 0) as customer_qty'),
                 DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
                 'cu.name as created_by_name',
                 'ru.name as resolved_by_name',

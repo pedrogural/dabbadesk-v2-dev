@@ -501,6 +501,8 @@
                     $awaitingQtyForRetailer = (int) $retailerItems->sum('awaiting_arrival_qty');
                     $problemQtyForRetailer = (int) $retailerItems->sum('problem_qty');
                     $inspectionForRetailer = $retailerItems->filter(fn ($item) => (int)($item->requires_inspection ?? 0) === 1)->count();
+                    $retailerDeliveryFees = round((float) $retailerItems->sum(fn ($item) => (float) ($item->visible_delivery_fee ?? 0)), 2);
+                    $waitingDeliveryFees = round((float) $remainingItems->sum(fn ($item) => (float) ($item->visible_delivery_fee ?? 0)), 2);
                     $waitingValue = $remainingItems->sum(fn ($item) => ((float) $item->unit_price) * ((int) $item->remaining_to_buy_qty));
                     $cardRing = $inspectionForRetailer > 0 ? 'border-purple-200' : ($problemQtyForRetailer > 0 ? 'border-rose-200' : ($waitingQty > 0 ? 'border-indigo-200' : 'border-emerald-200'));
                     $statusLabel = $problemQtyForRetailer > 0 ? 'Needs attention' : ($waitingQty > 0 ? 'Awaiting Purchase' : 'Purchased');
@@ -522,8 +524,9 @@
                                 <p class="mt-2 text-sm font-bold text-slate-500">{{ $remainingItems->count() }} item line{{ $remainingItems->count() === 1 ? '' : 's' }} waiting · {{ $waitingQty }} qty to buy</p>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-5 lg:min-w-[680px]">
+                            <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-3 xl:grid-cols-6 lg:min-w-[760px]">
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Waiting value</p><p class="mt-1 font-black text-slate-950">{{ $money($waitingValue) }}</p></div>
+                                <div class="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100"><p class="text-[10px] font-black uppercase tracking-wide text-amber-600">Delivery fees</p><p class="mt-1 font-black text-amber-950">{{ $money($retailerDeliveryFees) }}</p><p class="mt-0.5 text-[10px] font-bold text-amber-700">Waiting {{ $money($waitingDeliveryFees) }}</p></div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Purchased qty</p><p class="mt-1 font-black text-slate-950">{{ $purchasedQtyForRetailer }}</p></div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Awaiting qty</p><p class="mt-1 font-black text-slate-950">{{ $awaitingQtyForRetailer }}</p></div>
                                 <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Problems</p><p class="mt-1 font-black text-slate-950">{{ $problemQtyForRetailer }}</p></div>
@@ -549,8 +552,8 @@
                         @endif
 
                         <div class="overflow-hidden rounded-2xl border border-slate-200">
-                            <div class="hidden grid-cols-[56px_1fr_90px_150px_160px_190px_64px] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-400 md:grid">
-                                <div>Buy</div><div>Item</div><div>Requested</div><div>Qty</div><div>Price (GBP)</div><div>Purple check</div><div>Link</div>
+                            <div class="hidden grid-cols-[56px_1fr_90px_150px_130px_130px_170px_64px] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-400 md:grid">
+                                <div>Buy</div><div>Item</div><div>Requested</div><div>Qty</div><div>Price</div><div>Delivery</div><div>Purple check</div><div>Link</div>
                             </div>
 
                             <div class="divide-y divide-slate-100">
@@ -563,7 +566,7 @@
                                         $history = collect($purchasesByRoot[$item->lineage_root_id] ?? []);
                                     @endphp
 
-                                    <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_90px_150px_160px_190px_64px] md:items-start {{ $rowClass }}">
+                                    <div class="grid gap-3 px-4 py-4 md:grid-cols-[56px_1fr_90px_150px_130px_130px_170px_64px] md:items-start {{ $rowClass }}">
                                         <div>
                                             @if ($canBuy)
                                                 <label class="inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
@@ -580,6 +583,9 @@
                                                 <p class="font-black leading-5 text-slate-950">{{ $item->item_name }}</p>
                                             </div>
                                             <p class="mt-1 text-xs font-semibold text-slate-500">{{ $item->product_code ?: 'No product code' }} · {{ $item->retailer_name }}</p>
+                                            @if ((float) ($item->visible_delivery_fee ?? 0) > 0)
+                                                <p class="mt-1 text-xs font-black text-amber-700">Retailer delivery fee: {{ $money($item->visible_delivery_fee) }}</p>
+                                            @endif
 
                                             @if ($canBuy)
                                                 <button type="button"
@@ -703,11 +709,23 @@
                                         </div>
 
                                         <div>
-                                            <label class="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Price (GBP)</label>
+                                            <label class="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Price</label>
                                             @if ($canBuy)
                                                 <input form="{{ $purchaseFormId }}" name="purchase_unit_price[{{ $item->item_id }}]" type="number" min="0" step="0.01" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="h-12 w-full rounded-xl border-2 border-indigo-400 bg-indigo-50 px-3 text-sm font-black text-slate-950 shadow-inner ring-2 ring-indigo-100 focus:border-indigo-600 focus:bg-white focus:ring-indigo-300">
                                             @else
                                                 <span class="text-sm font-bold text-slate-400">—</span>
+                                            @endif
+                                        </div>
+
+                                        <div>
+                                            <label class="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Delivery</label>
+                                            @if ((float) ($item->visible_delivery_fee ?? 0) > 0)
+                                                <p class="rounded-xl bg-amber-50 px-3 py-3 text-sm font-black text-amber-800 ring-1 ring-amber-100">{{ $money($item->visible_delivery_fee) }}</p>
+                                                @if ((float) ($item->item_retailer_delivery_fee ?? 0) > 0 && (float) ($item->retailer_delivery_allocated ?? 0) > 0)
+                                                    <p class="mt-1 text-[10px] font-bold leading-4 text-amber-700">Item {{ $money($item->item_retailer_delivery_fee) }} · Shared {{ $money($item->retailer_delivery_allocated) }}</p>
+                                                @endif
+                                            @else
+                                                <span class="text-sm font-bold text-slate-300">—</span>
                                             @endif
                                         </div>
 

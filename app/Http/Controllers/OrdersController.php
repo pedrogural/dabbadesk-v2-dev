@@ -586,18 +586,20 @@ class OrdersController extends Controller
             'refund_method' => ['required', 'string', 'max:100'],
             'reference' => ['nullable', 'string', 'max:100'],
             'reason' => ['required', 'string', 'max:255'],
+            'order_outcome' => ['required', 'string', 'in:cancel_order,keep_open'],
         ]);
 
         $amount = round((float) $validated['amount'], 2);
         $methodName = trim((string) $validated['refund_method']);
         $reference = trim((string) ($validated['reference'] ?? ''));
         $reason = trim((string) $validated['reason']);
+        $orderOutcome = (string) $validated['order_outcome'];
         $paymentTypeId = $this->ensurePaymentType($methodName);
         [$method, $channel, $provider] = $this->paymentMetadata($methodName);
         $now = now();
         $userId = Auth::id();
 
-        DB::transaction(function () use ($order, $orderRow, $amount, $paymentTypeId, $method, $channel, $provider, $reference, $reason, $now, $userId) {
+        DB::transaction(function () use ($order, $orderRow, $amount, $paymentTypeId, $method, $channel, $provider, $reference, $reason, $orderOutcome, $now, $userId) {
             DB::table('order_transactions')->insert([
                 'order_id' => $order,
                 'invoice_version_id' => null,
@@ -635,7 +637,11 @@ class OrdersController extends Controller
                 'updated_at' => $now,
             ]);
 
-            $this->refreshOrderPaymentStatus($order, $userId);
+            if ($orderOutcome === 'cancel_order') {
+                $this->markOrderCancelledAfterRefund($order, $reason, $userId);
+            } else {
+                $this->refreshOrderPaymentStatus($order, $userId);
+            }
 
             DB::table('activity_logs')->insert([
                 'subject_type' => 'order',
@@ -1003,6 +1009,22 @@ class OrdersController extends Controller
                 'refund_void',
             ])
             ->sum('amount'), 2);
+    }
+
+    private function markOrderCancelledAfterRefund(int $orderId, string $reason, ?int $userId): void
+    {
+        $now = now();
+
+        DB::table('orders')
+            ->where('id', $orderId)
+            ->update([
+                'status' => 'cancelled',
+                'cancelled_at' => $now,
+                'cancelled_by_user_id' => $userId,
+                'cancel_reason' => 'Refund issued: ' . $reason,
+                'updated_by_user_id' => $userId,
+                'updated_at' => $now,
+            ]);
     }
 
     private function refreshOrderPaymentStatus(int $orderId, ?int $userId): void

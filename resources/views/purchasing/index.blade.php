@@ -193,6 +193,16 @@
                             $problemFinanceActions = collect(json_decode((string) ($problem->finance_actions ?? '[]'), true) ?: [])
                                 ->filter(fn ($action) => array_key_exists($action, $financeActionLabels))
                                 ->values();
+                            $purchaseRef = $problem->purchase_retailer_order_reference ?: '—';
+                            $purchaseDate = $problem->purchase_ordered_at
+                                ? \Carbon\Carbon::parse($problem->purchase_ordered_at)->format('d M Y')
+                                : ($problem->purchase_id && $problem->created_at ? \Carbon\Carbon::parse($problem->created_at)->format('d M Y') : '—');
+                            $purchaseCost = $problem->purchase_line_total ?? null;
+                            $purchaseUnitCost = $problem->purchase_unit_price ?? null;
+                            $customerValue = (float) ($problem->customer_line_total ?? 0) > 0
+                                ? $problem->customer_line_total
+                                : ((float) ($problem->customer_unit_price ?? 0) * max(1, (int) ($problem->affected_qty ?: $problem->qty)));
+                            $productUrl = trim((string) ($problem->product_url ?? ''));
                         @endphp
                         <article class="rounded-[1.5rem] border {{ in_array((string) $problem->status, ['resolved', 'cancelled'], true) ? 'border-slate-200' : 'border-rose-100' }} bg-white p-4 shadow-sm sm:p-5">
                             <div class="grid gap-4 lg:grid-cols-[1fr_170px_180px_180px_170px] lg:items-start">
@@ -207,6 +217,39 @@
                                     <p class="mt-1 text-xs font-semibold text-slate-400">
                                         Recorded {{ $problem->created_at ? \Carbon\Carbon::parse($problem->created_at)->format('d M Y H:i') : '—' }} by {{ $problem->created_by_name ?: 'Unknown user' }}
                                     </p>
+
+                                    <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-3">
+                                        <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
+                                            <span class="block text-[10px] font-black uppercase tracking-wide text-slate-400">Purchase ref</span>
+                                            <span class="mt-0.5 block break-words font-black text-slate-800">{{ $purchaseRef }}</span>
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
+                                            <span class="block text-[10px] font-black uppercase tracking-wide text-slate-400">Purchased</span>
+                                            <span class="mt-0.5 block font-black text-slate-800">{{ $purchaseDate }}</span>
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
+                                            <span class="block text-[10px] font-black uppercase tracking-wide text-slate-400">Purchase cost</span>
+                                            <span class="mt-0.5 block font-black text-slate-800">{{ $purchaseCost !== null ? $money($purchaseCost) : '—' }}</span>
+                                            @if ($purchaseUnitCost !== null)
+                                                <span class="mt-0.5 block text-[11px] font-bold text-slate-400">Unit {{ $money($purchaseUnitCost) }}</span>
+                                            @endif
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
+                                            <span class="block text-[10px] font-black uppercase tracking-wide text-slate-400">Customer value</span>
+                                            <span class="mt-0.5 block font-black text-slate-800">{{ $money($customerValue) }}</span>
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
+                                            <span class="block text-[10px] font-black uppercase tracking-wide text-slate-400">Product code</span>
+                                            <span class="mt-0.5 block break-words font-black text-slate-800">{{ $problem->product_code ?: '—' }}</span>
+                                        </div>
+                                        <div class="flex items-center">
+                                            @if ($productUrl !== '')
+                                                <a href="{{ $productUrl }}" target="_blank" rel="noopener" class="inline-flex w-full items-center justify-center rounded-2xl bg-white px-3 py-2 text-xs font-black text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-50">Product link ↗</a>
+                                            @else
+                                                <span class="inline-flex w-full items-center justify-center rounded-2xl bg-slate-50 px-3 py-2 text-xs font-black text-slate-400 ring-1 ring-slate-100">No product link</span>
+                                            @endif
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100">

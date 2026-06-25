@@ -149,7 +149,7 @@
                     <div>
                         <p class="text-xs font-black uppercase tracking-[0.2em] text-rose-700">Issue refund</p>
                         <h3 class="mt-1 text-xl font-black text-slate-950">Refund money back to the customer</h3>
-                        <p class="mt-2 text-sm font-semibold leading-6 text-slate-600">This records a refund, updates the order balance and keeps a finance audit trail.</p>
+                        <p class="mt-2 text-sm font-semibold leading-6 text-slate-600">This records money paid back to the customer. For a cancelled/unfulfilled order, close the order so it does not return to the awaiting-payment queue.</p>
                     </div>
                     <button type="button" @click="refundOpen = false" class="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xl font-black text-slate-500 hover:bg-slate-50">×</button>
                 </div>
@@ -179,6 +179,14 @@
                     <div>
                         <label class="text-xs font-black uppercase tracking-wide text-slate-500">Reason</label>
                         <textarea name="reason" rows="3" maxlength="255" required placeholder="Why is this refund being issued?" class="mt-1 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 focus:border-rose-500 focus:ring-rose-500"></textarea>
+                    </div>
+                    <div class="rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-100">
+                        <label class="text-xs font-black uppercase tracking-wide text-rose-700">What should happen to the order?</label>
+                        <select name="order_outcome" required class="mt-2 w-full rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm font-semibold text-slate-900 focus:border-rose-500 focus:ring-rose-500">
+                            <option value="cancel_order">Cancel / close this order after refund</option>
+                            <option value="keep_open">Keep order open after refund</option>
+                        </select>
+                        <p class="mt-2 text-xs font-semibold leading-5 text-rose-900">Use cancel/close when the order or item will not be fulfilled. This prevents the refunded order from appearing as awaiting payment.</p>
                     </div>
                     <div class="flex flex-wrap justify-end gap-3">
                         <button type="button" @click="refundOpen = false" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>

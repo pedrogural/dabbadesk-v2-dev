@@ -10,8 +10,6 @@
             </div>
         @endif
 
-
-
         @if ($isHistoricalRevision)
             <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 shadow-sm">
                 <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -48,12 +46,12 @@
             </div>
 
             <div class="mt-5 overflow-x-auto">
-                <div class="inline-flex min-w-full gap-2 rounded-2xl bg-slate-100 p-1">
-                    <button type="button" @click="tab = 'overview'" :class="tab === 'overview' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="rounded-xl px-4 py-2 text-sm font-semibold">Overview</button>
-                    <button type="button" @click="tab = 'items'" :class="tab === 'items' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="rounded-xl px-4 py-2 text-sm font-semibold">Items</button>
-                    <button type="button" @click="tab = 'purchase_status'" :class="tab === 'purchase_status' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="rounded-xl px-4 py-2 text-sm font-semibold">Purchase Status</button>
-                    <button type="button" @click="tab = 'finance'" :class="tab === 'finance' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="rounded-xl px-4 py-2 text-sm font-semibold">Finance</button>
-                    <button type="button" @click="tab = 'notes'" :class="tab === 'notes' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-800'" class="rounded-xl px-4 py-2 text-sm font-semibold">Communication & History</button>
+                <div class="inline-flex min-w-full gap-2 rounded-3xl border border-indigo-100 bg-indigo-50/70 p-1.5 shadow-inner shadow-indigo-100/40">
+                    <button type="button" @click="tab = 'overview'" :class="tab === 'overview' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-1 ring-indigo-700/10' : 'bg-white text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-100 hover:text-indigo-800'" class="rounded-2xl px-4 py-2.5 text-sm font-black transition whitespace-nowrap">Overview</button>
+                    <button type="button" @click="tab = 'items'" :class="tab === 'items' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-1 ring-indigo-700/10' : 'bg-white text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-100 hover:text-indigo-800'" class="rounded-2xl px-4 py-2.5 text-sm font-black transition whitespace-nowrap">Items</button>
+                    <button type="button" @click="tab = 'purchase_status'" :class="tab === 'purchase_status' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-1 ring-indigo-700/10' : 'bg-white text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-100 hover:text-indigo-800'" class="rounded-2xl px-4 py-2.5 text-sm font-black transition whitespace-nowrap">Purchasing</button>
+                    <button type="button" @click="tab = 'finance'" :class="tab === 'finance' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-1 ring-indigo-700/10' : 'bg-white text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-100 hover:text-indigo-800'" class="rounded-2xl px-4 py-2.5 text-sm font-black transition whitespace-nowrap">Finance</button>
+                    <button type="button" @click="tab = 'notes'" :class="tab === 'notes' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-1 ring-indigo-700/10' : 'bg-white text-slate-700 ring-1 ring-indigo-100 hover:bg-indigo-100 hover:text-indigo-800'" class="rounded-2xl px-4 py-2.5 text-sm font-black transition whitespace-nowrap">History</button>
                 </div>
             </div>
         </section>
