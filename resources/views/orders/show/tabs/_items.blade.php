@@ -141,7 +141,9 @@
                                                 <div class="min-w-0">
                                                     <div class="flex flex-wrap items-center gap-2">
                                                         <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $healthClasses }}">{{ $healthLabel }}</span>
-                                                        <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $statusClasses }}">{{ $statusLabel }}</span>
+                                                        @if ($statusLabel !== $healthLabel)
+                                                            <span class="inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 {{ $statusClasses }}">{{ $statusLabel }}</span>
+                                                        @endif
                                                         @if ($item->requires_inspection)
                                                             <span class="inline-flex rounded-full bg-purple-100 px-3 py-1 text-xs font-black text-purple-700 ring-1 ring-purple-200">Purple check</span>
                                                         @endif

@@ -18,7 +18,8 @@ class PurchasingController extends Controller
             'payment' => $request->query('payment', 'paid_or_part'),
             'q' => $request->query('q', ''),
             'mine' => $request->boolean('mine'),
-            'purchased_problem_view' => $request->query('problem_view', 'items'),
+            'problem_view' => $request->query('problem_view', $request->query('purchased_problem_view', 'items')),
+            'purchased_problem_view' => $request->query('problem_view', $request->query('purchased_problem_view', 'items')),
             'user_id' => Auth::id(),
         ]));
     }
@@ -144,7 +145,7 @@ class PurchasingController extends Controller
 
             DB::table('purchase_issues')
                 ->where('root_item_id', $rootItemId)
-                ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
+                ->whereIn('status', ['open', 'awaiting_customer'])
                 ->update([
                     'status' => 'resolved',
                     'resolution_type' => 'purchased_successfully',
@@ -348,7 +349,7 @@ class PurchasingController extends Controller
 
                 DB::table('purchase_issues')
                     ->where('root_item_id', (int) $line['root_item_id'])
-                    ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
+                    ->whereIn('status', ['open', 'awaiting_customer'])
                     ->update([
                         'status' => 'resolved',
                         'resolution_type' => 'purchased_successfully',
@@ -388,11 +389,6 @@ class PurchasingController extends Controller
             'order_item_id' => ['required', 'integer', 'exists:order_items,id'],
             'qty' => ['required', 'integer', 'min:1', 'max:999'],
             'issue_type' => ['required', 'string', 'max:50'],
-            'issue_stage' => ['nullable', 'string', 'max:30'],
-            'arrival_expectation' => ['nullable', 'string', 'max:30'],
-            'next_action' => ['nullable', 'string', 'max:50'],
-            'finance_actions' => ['nullable', 'array'],
-            'finance_actions.*' => ['string', 'max:50'],
             'severity' => ['required', 'string', 'max:20'],
             'requires_customer_action' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:4000'],
@@ -406,13 +402,6 @@ class PurchasingController extends Controller
             'awaiting_customer_decision',
             'supplier_delay',
             'wrong_product_link',
-            'supplier_cancelled_after_purchase',
-            'lost_in_transit',
-            'damaged_after_purchase',
-            'wrong_item_received',
-            'missing_from_parcel',
-            'supplier_refunded_dabba',
-            'replacement_expected',
             'other',
         ];
 
@@ -420,58 +409,12 @@ class PurchasingController extends Controller
             ? $validated['issue_type']
             : 'other';
 
-        $issueStage = in_array(($validated['issue_stage'] ?? 'pre_purchase'), ['pre_purchase', 'post_purchase', 'arrival'], true)
-            ? (string) ($validated['issue_stage'] ?? 'pre_purchase')
-            : 'pre_purchase';
-
-        $arrivalExpectation = in_array(($validated['arrival_expectation'] ?? 'expected'), ['expected', 'replacement_expected', 'not_expected'], true)
-            ? (string) ($validated['arrival_expectation'] ?? 'expected')
-            : 'expected';
-
-        $nextActionLabels = [
-            'keep_in_purchase_issues' => 'Keep in purchase issues',
-            'remove_from_arrivals' => 'Remove from arrivals queue',
-            'return_to_buy' => 'Return to purchasing queue',
-            'replacement_expected' => 'Replacement expected',
-            'awaiting_supplier_response' => 'Awaiting supplier response',
-            'awaiting_customer_decision' => 'Awaiting customer decision',
-            'write_off' => 'Write off / absorb loss',
-            'other' => 'Other / see notes',
-        ];
-
-        $financeActionLabels = [
-            'customer_refund_required' => 'Customer refund required',
-            'wallet_credit_required' => 'Wallet credit required',
-            'supplier_refund_pending' => 'Supplier refund pending',
-            'supplier_refunded' => 'Supplier refunded Dabba',
-            'manual_finance_review' => 'Manual finance review',
-        ];
-
-        $financeActions = collect($validated['finance_actions'] ?? [])
-            ->map(fn ($action) => (string) $action)
-            ->filter(fn ($action) => array_key_exists($action, $financeActionLabels))
-            ->unique()
-            ->values()
-            ->all();
-
-        $nextAction = array_key_exists((string) ($validated['next_action'] ?? ''), $nextActionLabels)
-            ? (string) $validated['next_action']
-            : ($issueStage === 'pre_purchase' ? 'keep_in_purchase_issues' : 'remove_from_arrivals');
-
-        if ($issueStage === 'pre_purchase') {
-            $arrivalExpectation = 'expected';
-        } elseif ($nextAction === 'replacement_expected') {
-            $arrivalExpectation = 'replacement_expected';
-        } elseif (in_array($nextAction, ['remove_from_arrivals', 'return_to_buy', 'write_off'], true)) {
-            $arrivalExpectation = 'not_expected';
-        }
-
         $severity = in_array($validated['severity'], ['low', 'medium', 'high'], true)
             ? $validated['severity']
             : 'medium';
 
         $requiresCustomerAction = (bool) ($validated['requires_customer_action'] ?? false);
-        if ($issueType === 'awaiting_customer_decision' || $nextAction === 'awaiting_customer_decision') {
+        if ($issueType === 'awaiting_customer_decision') {
             $requiresCustomerAction = true;
         }
 
@@ -500,68 +443,35 @@ class PurchasingController extends Controller
 
         $activeIssue = DB::table('purchase_issues')
             ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
+            ->whereIn('status', ['open', 'awaiting_customer'])
             ->first();
 
         if ($activeIssue) {
             throw ValidationException::withMessages([
-                'issue' => 'This item already has an open purchased-item problem. Please use Open Problems to update or cancel the existing problem instead of creating another one.',
+                'issue' => 'This item already has an active purchasing issue. Please update or resolve the existing issue instead of creating another one.',
             ]);
         }
 
         $remaining = $this->remainingToBuyQty($rootItemId, (int) $item->quantity);
-        $purchasedOpen = $this->openPurchasedQtyForException($rootItemId);
         $qty = (int) $validated['qty'];
 
-        if ($issueStage === 'pre_purchase') {
-            if ($remaining <= 0) {
-                throw ValidationException::withMessages([
-                    'qty' => 'There is no remaining quantity available to move into Purchasing Issues.',
-                ]);
-            }
+        if ($remaining <= 0) {
+            throw ValidationException::withMessages([
+                'qty' => 'There is no remaining quantity available to move into Purchasing Issues.',
+            ]);
+        }
 
-            if ($qty > $remaining) {
-                throw ValidationException::withMessages([
-                    'qty' => 'Only ' . $remaining . ' item' . ($remaining === 1 ? '' : 's') . ' remain open for this item.',
-                ]);
-            }
-        } else {
-            if ($purchasedOpen <= 0) {
-                throw ValidationException::withMessages([
-                    'qty' => 'No open purchased quantity is available for this purchased item problem. Use this only for items that were bought and are still expected to arrive.',
-                ]);
-            }
-
-            if ($qty > $purchasedOpen) {
-                throw ValidationException::withMessages([
-                    'qty' => 'Only ' . $purchasedOpen . ' purchased item' . ($purchasedOpen === 1 ? '' : 's') . ' can be marked with this purchased item problem.',
-                ]);
-            }
+        if ($qty > $remaining) {
+            throw ValidationException::withMessages([
+                'qty' => 'Only ' . $remaining . ' item' . ($remaining === 1 ? '' : 's') . ' remain open for this item.',
+            ]);
         }
 
         $status = $requiresCustomerAction ? 'awaiting_customer' : 'open';
         $notes = trim((string) ($validated['notes'] ?? '')) ?: null;
-        $nextActionNote = 'Action selected: ' . ($nextActionLabels[$nextAction] ?? ucfirst(str_replace('_', ' ', $nextAction))) . '.';
-
-        $systemEffectNotes = [];
-        if ($issueStage !== 'pre_purchase' && $arrivalExpectation === 'not_expected') {
-            $systemEffectNotes[] = 'System effect: affected quantity is removed from expected arrivals / awaiting-arrival calculations.';
-        } elseif ($issueStage !== 'pre_purchase' && $arrivalExpectation === 'replacement_expected') {
-            $systemEffectNotes[] = 'System effect: affected quantity remains expected because a replacement is expected.';
-        }
-
-        if (! empty($financeActions)) {
-            $financeLabels = collect($financeActions)->map(fn ($action) => $financeActionLabels[$action] ?? ucfirst(str_replace('_', ' ', $action)))->implode(', ');
-            $systemEffectNotes[] = 'Finance follow-up required: ' . $financeLabels . '. No finance, invoice, wallet, refund, payment or ledger change was made automatically.';
-        } else {
-            $systemEffectNotes[] = 'Finance note: no refund, wallet credit, invoice or payment change was made automatically.';
-        }
-
-        $autoNotes = trim($nextActionNote . "\n" . implode("\n", $systemEffectNotes));
-        $notes = $notes ? ($autoNotes . "\n\nOperator notes:\n" . $notes) : $autoNotes;
         $userId = Auth::id();
 
-        DB::transaction(function () use ($item, $rootItemId, $qty, $issueType, $issueStage, $arrivalExpectation, $nextAction, $financeActions, $severity, $status, $requiresCustomerAction, $notes, $userId) {
+        DB::transaction(function () use ($item, $rootItemId, $qty, $issueType, $severity, $status, $requiresCustomerAction, $notes, $userId) {
             $issueId = DB::table('purchase_issues')->insertGetId([
                 'order_item_id' => (int) $item->id,
                 'root_item_id' => $rootItemId,
@@ -569,13 +479,7 @@ class PurchasingController extends Controller
                 'order_retailer_id' => $item->order_retailer_id,
                 'retailer_id' => $item->retailer_id,
                 'qty' => $qty,
-                'affected_qty' => $qty,
                 'issue_type' => $issueType,
-                'issue_stage' => $issueStage,
-                'arrival_expectation' => $arrivalExpectation,
-                'resolution_type' => $nextAction,
-                'finance_action_required' => ! empty($financeActions) ? 1 : 0,
-                'finance_actions' => ! empty($financeActions) ? json_encode($financeActions) : null,
                 'severity' => $severity,
                 'status' => $status,
                 'notes' => $notes,
@@ -596,15 +500,13 @@ class PurchasingController extends Controller
                     'updated_at' => now(),
                 ]);
 
-            $this->syncPurchaseEventsForIssue($issueId, $userId);
-
             DB::table('activity_logs')->insert([
                 'subject_type' => 'order',
                 'subject_id' => (int) $item->order_id,
                 'type' => 'purchasing_issue',
                 'is_pinned' => 0,
                 'title' => 'Purchasing issue recorded',
-                'body' => 'Purchasing issue #' . $issueId . ' recorded for item #' . $item->id . ' on Order #' . $item->order_number . '. Qty ' . $qty . '. Stage: ' . $issueStage . '. Issue: ' . $issueType . '. Arrival expectation: ' . $arrivalExpectation . '. Severity: ' . $severity . '. Finance follow-ups: ' . (! empty($financeActions) ? implode(', ', $financeActions) : 'none') . '. No finance, invoice, wallet or refund changes were made.',
+                'body' => 'Purchasing issue #' . $issueId . ' recorded for item #' . $item->id . ' on Order #' . $item->order_number . '. Qty ' . $qty . '. Issue: ' . $issueType . '. Severity: ' . $severity . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -613,27 +515,15 @@ class PurchasingController extends Controller
             ]);
         });
 
-        if ($request->boolean('return_to_purchased_item_problems')) {
-            return redirect()
-                ->route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'open', 'payment' => 'all', 'q' => $request->input('return_search')])
-                ->with('success', $arrivalExpectation === 'not_expected' ? 'Purchased item problem recorded. Affected quantity has been removed from expected arrivals.' : 'Purchased item problem recorded.');
-        }
-
         return redirect()
-            ->route('purchasing.orders.show', ['order' => (int) $item->order_id, 'tab' => $issueStage === 'pre_purchase' ? 'problems' : 'purchased_item_problems', 'issue_view' => $issueStage === 'pre_purchase' ? 'pre' : 'post'])
-            ->with('success', $issueStage === 'pre_purchase' ? 'Purchasing issue recorded.' : 'Purchased item problem recorded.');
+            ->route('purchasing.orders.show', ['order' => (int) $item->order_id, 'tab' => 'problems'])
+            ->with('success', 'Purchasing issue recorded.');
     }
 
     public function updateProblem(Request $request, int $problem)
     {
         $validated = $request->validate([
             'issue_type' => ['required', 'string', 'max:50'],
-            'issue_stage' => ['nullable', 'string', 'max:30'],
-            'arrival_expectation' => ['nullable', 'string', 'max:30'],
-            'next_action' => ['nullable', 'string', 'max:50'],
-            'finance_actions' => ['nullable', 'array'],
-            'finance_actions.*' => ['string', 'max:50'],
-            'qty' => ['nullable', 'integer', 'min:1', 'max:999'],
             'severity' => ['required', 'string', 'max:20'],
             'requires_customer_action' => ['nullable', 'boolean'],
             'notes' => ['nullable', 'string', 'max:4000'],
@@ -648,93 +538,22 @@ class PurchasingController extends Controller
             throw ValidationException::withMessages(['issue' => 'Resolved issues cannot be updated.']);
         }
 
-        $allowedIssueTypes = ['out_of_stock', 'price_increase', 'retailer_restriction', 'retailer_cancelled', 'awaiting_customer_decision', 'supplier_delay', 'wrong_product_link', 'supplier_cancelled_after_purchase', 'lost_in_transit', 'damaged_after_purchase', 'wrong_item_received', 'missing_from_parcel', 'supplier_refunded_dabba', 'replacement_expected', 'other'];
+        $allowedIssueTypes = ['out_of_stock', 'price_increase', 'retailer_restriction', 'retailer_cancelled', 'awaiting_customer_decision', 'supplier_delay', 'wrong_product_link', 'other'];
         $issueType = in_array($validated['issue_type'], $allowedIssueTypes, true) ? $validated['issue_type'] : 'other';
-        $issueStage = in_array(($validated['issue_stage'] ?? ($issue->issue_stage ?? 'pre_purchase')), ['pre_purchase', 'post_purchase', 'arrival'], true) ? (string) ($validated['issue_stage'] ?? ($issue->issue_stage ?? 'pre_purchase')) : 'pre_purchase';
-        $arrivalExpectation = in_array(($validated['arrival_expectation'] ?? ($issue->arrival_expectation ?? 'expected')), ['expected', 'replacement_expected', 'not_expected'], true) ? (string) ($validated['arrival_expectation'] ?? ($issue->arrival_expectation ?? 'expected')) : 'expected';
-        $nextActionLabels = [
-            'keep_in_purchase_issues' => 'Keep in purchase issues',
-            'remove_from_arrivals' => 'Remove from arrivals queue',
-            'return_to_buy' => 'Return to purchasing queue',
-            'replacement_expected' => 'Replacement expected',
-            'awaiting_supplier_response' => 'Awaiting supplier response',
-            'awaiting_customer_decision' => 'Awaiting customer decision',
-            'write_off' => 'Write off / absorb loss',
-            'other' => 'Other / see notes',
-        ];
-
-        $financeActionLabels = [
-            'customer_refund_required' => 'Customer refund required',
-            'wallet_credit_required' => 'Wallet credit required',
-            'supplier_refund_pending' => 'Supplier refund pending',
-            'supplier_refunded' => 'Supplier refunded Dabba',
-            'manual_finance_review' => 'Manual finance review',
-        ];
-
-        $financeActions = collect($validated['finance_actions'] ?? [])
-            ->map(fn ($action) => (string) $action)
-            ->filter(fn ($action) => array_key_exists($action, $financeActionLabels))
-            ->unique()
-            ->values()
-            ->all();
-
-        $nextAction = array_key_exists((string) ($validated['next_action'] ?? ''), $nextActionLabels)
-            ? (string) $validated['next_action']
-            : (string) ($issue->resolution_type ?: (($issueStage === 'pre_purchase') ? 'keep_in_purchase_issues' : 'remove_from_arrivals'));
-        if ($issueStage === 'pre_purchase') {
-            $arrivalExpectation = 'expected';
-        } elseif ($nextAction === 'replacement_expected') {
-            $arrivalExpectation = 'replacement_expected';
-        } elseif (in_array($nextAction, ['remove_from_arrivals', 'return_to_buy', 'write_off'], true)) {
-            $arrivalExpectation = 'not_expected';
-        }
-        $qty = (int) ($validated['qty'] ?? ($issue->affected_qty ?: $issue->qty ?: 1));
         $severity = in_array($validated['severity'], ['low', 'medium', 'high'], true) ? $validated['severity'] : 'medium';
         $requiresCustomerAction = (bool) ($validated['requires_customer_action'] ?? false);
-        if ($issueType === 'awaiting_customer_decision' || $nextAction === 'awaiting_customer_decision') {
+        if ($issueType === 'awaiting_customer_decision') {
             $requiresCustomerAction = true;
         }
         $status = $requiresCustomerAction ? 'awaiting_customer' : 'open';
         $notes = trim((string) ($validated['notes'] ?? '')) ?: null;
-        if ($notes !== null) {
-            $notes = preg_replace('/^Action selected:.*?(?:\r?\n|$)/m', '', $notes);
-            $notes = preg_replace('/^System effect:.*?(?:\r?\n|$)/m', '', $notes);
-            $notes = preg_replace('/^Finance note:.*?(?:\r?\n|$)/m', '', $notes);
-            $notes = preg_replace('/^Finance follow-up required:.*?(?:\r?\n|$)/m', '', $notes);
-            $notes = preg_replace('/^Operator notes:\s*(?:\r?\n)?/m', '', $notes);
-            $notes = trim((string) $notes) ?: null;
-        }
-
-        $nextActionNote = 'Action selected: ' . ($nextActionLabels[$nextAction] ?? ucfirst(str_replace('_', ' ', $nextAction))) . '.';
-        $systemEffectNotes = [];
-        if ($issueStage !== 'pre_purchase' && $arrivalExpectation === 'not_expected') {
-            $systemEffectNotes[] = 'System effect: affected quantity is removed from expected arrivals / awaiting-arrival calculations.';
-        } elseif ($issueStage !== 'pre_purchase' && $arrivalExpectation === 'replacement_expected') {
-            $systemEffectNotes[] = 'System effect: affected quantity remains expected because a replacement is expected.';
-        }
-
-        if (! empty($financeActions)) {
-            $financeLabels = collect($financeActions)->map(fn ($action) => $financeActionLabels[$action] ?? ucfirst(str_replace('_', ' ', $action)))->implode(', ');
-            $systemEffectNotes[] = 'Finance follow-up required: ' . $financeLabels . '. No finance, invoice, wallet, refund, payment or ledger change was made automatically.';
-        } else {
-            $systemEffectNotes[] = 'Finance note: no refund, wallet credit, invoice or payment change was made automatically.';
-        }
-        $autoNotes = trim($nextActionNote . "\n" . implode("\n", $systemEffectNotes));
-        $notes = $notes ? ($autoNotes . "\n\nOperator notes:\n" . $notes) : $autoNotes;
         $userId = Auth::id();
 
-        DB::transaction(function () use ($issue, $problem, $issueType, $issueStage, $arrivalExpectation, $nextAction, $financeActions, $qty, $severity, $status, $requiresCustomerAction, $notes, $validated, $userId) {
+        DB::transaction(function () use ($issue, $problem, $issueType, $severity, $status, $requiresCustomerAction, $notes, $validated, $userId) {
             DB::table('purchase_issues')
                 ->where('id', $problem)
                 ->update([
                     'issue_type' => $issueType,
-                    'issue_stage' => $issueStage,
-                    'arrival_expectation' => $arrivalExpectation,
-                    'resolution_type' => $nextAction,
-                    'finance_action_required' => ! empty($financeActions) ? 1 : 0,
-                    'finance_actions' => ! empty($financeActions) ? json_encode($financeActions) : null,
-                    'qty' => $qty,
-                    'affected_qty' => $qty,
                     'severity' => $severity,
                     'status' => $status,
                     'notes' => $notes,
@@ -753,15 +572,13 @@ class PurchasingController extends Controller
                     'updated_at' => now(),
                 ]);
 
-            $this->syncPurchaseEventsForIssue($problem, $userId);
-
             DB::table('activity_logs')->insert([
                 'subject_type' => 'order',
                 'subject_id' => (int) $issue->order_id,
                 'type' => 'purchasing_issue',
                 'is_pinned' => 0,
                 'title' => 'Purchasing issue updated',
-                'body' => 'Purchasing issue #' . $problem . ' was updated. Issue: ' . $issueType . '. Severity: ' . $severity . '. Finance follow-ups: ' . (! empty($financeActions) ? implode(', ', $financeActions) : 'none') . '.',
+                'body' => 'Purchasing issue #' . $problem . ' was updated. Issue: ' . $issueType . '. Severity: ' . $severity . '.',
                 'occurred_at' => now(),
                 'created_by_user_id' => $userId,
                 'updated_by_user_id' => $userId,
@@ -770,86 +587,9 @@ class PurchasingController extends Controller
             ]);
         });
 
-        if ($request->boolean('return_to_purchased_item_problems')) {
-            return redirect()
-                ->route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'open', 'payment' => 'all', 'q' => $request->input('return_search')])
-                ->with('success', $arrivalExpectation === 'not_expected' ? 'Purchased item problem updated. Affected quantity has been removed from expected arrivals.' : 'Purchased item problem updated.');
-        }
-
         return redirect()
-            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => 'problems', 'issue_view' => (($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase' ? 'pre' : 'post')])
+            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => 'problems'])
             ->with('success', 'Purchasing issue updated.');
-    }
-
-    public function cancelProblem(Request $request, int $problem)
-    {
-        $issue = DB::table('purchase_issues')->where('id', $problem)->first();
-        abort_if(! $issue, 404);
-        $this->assertOrderIsMutable((int) $issue->order_id);
-
-        if ((string) $issue->status === 'cancelled') {
-            return redirect()
-                ->route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'open', 'payment' => 'all', 'q' => $request->input('return_search')])
-                ->with('success', 'Problem was already cancelled.');
-        }
-
-        $userId = Auth::id();
-
-        DB::transaction(function () use ($issue, $problem, $userId) {
-            DB::table('purchase_issues')
-                ->where('id', $problem)
-                ->update([
-                    'status' => 'cancelled',
-                    'requires_customer_action' => 0,
-                    'resolution_type' => 'cancelled_error',
-                    'resolution_notes' => trim(((string) ($issue->resolution_notes ?? '')) . "
-Cancelled as an incorrect or duplicate recorded problem."),
-                    'resolved_at' => now(),
-                    'resolved_by_user_id' => $userId,
-                    'updated_by_user_id' => $userId,
-                    'updated_at' => now(),
-                ]);
-
-            $activeIssueQty = (int) DB::table('purchase_issues')
-                ->where('root_item_id', (int) $issue->root_item_id)
-                ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
-                ->sum('qty');
-
-            DB::table('order_items')
-                ->where('id', (int) $issue->order_item_id)
-                ->update([
-                    'purchase_problem_reason' => $activeIssueQty > 0 ? DB::raw('purchase_problem_reason') : null,
-                    'purchase_problem_note' => $activeIssueQty > 0 ? DB::raw('purchase_problem_note') : null,
-                    'updated_by_user_id' => $userId,
-                    'updated_at' => now(),
-                ]);
-
-            $this->restorePurchaseEventsForIssue($problem, $userId);
-
-            DB::table('activity_logs')->insert([
-                'subject_type' => 'order',
-                'subject_id' => (int) $issue->order_id,
-                'type' => 'purchasing_issue',
-                'is_pinned' => 0,
-                'title' => 'Purchased item problem cancelled',
-                'body' => 'Purchased item problem #' . $problem . ' was cancelled. No finance, invoice, wallet or refund changes were made.',
-                'occurred_at' => now(),
-                'created_by_user_id' => $userId,
-                'updated_by_user_id' => $userId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        });
-
-        if ($request->boolean('return_to_purchased_item_problems', true)) {
-            return redirect()
-                ->route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'open', 'payment' => 'all', 'q' => $request->input('return_search')])
-                ->with('success', 'Recorded problem cancelled.');
-        }
-
-        return redirect()
-            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => 'purchased_item_problems'])
-            ->with('success', 'Recorded problem cancelled.');
     }
 
     public function markCustomerContacted(int $problem)
@@ -887,7 +627,7 @@ Cancelled as an incorrect or duplicate recorded problem."),
         });
 
         return redirect()
-            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => 'problems', 'issue_view' => (($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase' ? 'pre' : 'post')])
+            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => 'problems'])
             ->with('success', 'Customer contact recorded.');
     }
 
@@ -902,7 +642,7 @@ Cancelled as an incorrect or duplicate recorded problem."),
         abort_if(! $issue, 404);
         $this->assertOrderIsMutable((int) $issue->order_id);
 
-        $allowedResolutionTypes = ['return_to_buy', 'purchased_successfully', 'alternative_purchased', 'replacement_expected', 'closed_no_replacement', 'supplier_refunded', 'customer_cancelled', 'customer_refunded', 'duplicate_item', 'no_longer_required', 'written_off', 'other'];
+        $allowedResolutionTypes = ['return_to_buy', 'purchased_successfully', 'alternative_purchased', 'customer_cancelled', 'customer_refunded', 'duplicate_item', 'no_longer_required'];
         $resolutionType = in_array($validated['resolution_type'], $allowedResolutionTypes, true)
             ? $validated['resolution_type']
             : 'return_to_buy';
@@ -911,7 +651,7 @@ Cancelled as an incorrect or duplicate recorded problem."),
         $userId = Auth::id();
 
         DB::transaction(function () use ($issue, $problem, $resolutionType, $resolutionNotes, $userId) {
-            $returnsToBuy = $resolutionType === 'return_to_buy';
+            $returnsToBuy = in_array($resolutionType, ['return_to_buy', 'purchased_successfully', 'alternative_purchased'], true);
             $issueStatus = $returnsToBuy ? 'returned_to_buy' : 'resolved';
 
             DB::table('purchase_issues')
@@ -919,11 +659,6 @@ Cancelled as an incorrect or duplicate recorded problem."),
                 ->update([
                     'status' => $issueStatus,
                     'requires_customer_action' => 0,
-                    'arrival_expectation' => match ($resolutionType) {
-                        'return_to_buy', 'closed_no_replacement', 'supplier_refunded', 'customer_refunded', 'customer_cancelled', 'written_off', 'no_longer_required' => 'not_expected',
-                        'replacement_expected' => 'replacement_expected',
-                        default => ($issue->arrival_expectation ?? 'expected'),
-                    },
                     'resolution_type' => $resolutionType,
                     'resolution_notes' => $resolutionNotes,
                     'resolved_at' => now(),
@@ -934,7 +669,7 @@ Cancelled as an incorrect or duplicate recorded problem."),
 
             $activeIssueQty = (int) DB::table('purchase_issues')
                 ->where('root_item_id', (int) $issue->root_item_id)
-                ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
+                ->whereIn('status', ['open', 'awaiting_customer'])
                 ->sum('qty');
 
             DB::table('order_items')
@@ -961,14 +696,13 @@ Cancelled as an incorrect or duplicate recorded problem."),
             ]);
         });
 
-        $targetTab = $resolutionType === 'return_to_buy' ? 'buy' : 'problems';
-        $targetIssueView = (($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase') ? 'pre' : 'post';
+        $targetTab = in_array($resolutionType, ['return_to_buy', 'purchased_successfully', 'alternative_purchased'], true) ? 'buy' : 'problems';
         $message = $targetTab === 'buy'
             ? 'Issue resolved and item returned to the purchase queue.'
             : 'Purchasing issue resolved.';
 
         return redirect()
-            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => $targetTab, 'issue_view' => $targetTab === 'problems' ? $targetIssueView : null])
+            ->route('purchasing.orders.show', ['order' => (int) $issue->order_id, 'tab' => $targetTab])
             ->with('success', $message);
     }
 
@@ -1176,107 +910,6 @@ Cancelled as an incorrect or duplicate recorded problem."),
     }
 
 
-    private function syncPurchaseEventsForIssue(int $issueId, ?int $userId = null): void
-    {
-        $issue = DB::table('purchase_issues')->where('id', $issueId)->first();
-
-        if (! $issue || ($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase') {
-            return;
-        }
-
-        if (($issue->arrival_expectation ?? 'expected') !== 'not_expected') {
-            $this->restorePurchaseEventsForIssue($issueId, $userId);
-            return;
-        }
-
-        $notExpectedActions = [
-            'remove_from_arrivals',
-            'return_to_buy',
-            'write_off',
-        ];
-
-        if (! in_array((string) ($issue->resolution_type ?? ''), $notExpectedActions, true)) {
-            return;
-        }
-
-        $status = match ((string) $issue->issue_type) {
-            'lost_in_transit' => 'lost',
-            'damaged_after_purchase' => 'damaged',
-            'wrong_item_received' => 'wrong_item',
-            'missing_from_parcel' => 'problem',
-            'supplier_refunded_dabba' => 'retailer_refunded',
-            default => 'supplier_cancelled',
-        };
-
-        $remainingQty = max(1, (int) ($issue->affected_qty ?: $issue->qty ?: 1));
-        $marker = 'Marked not expected via purchased item problem #' . $issueId . '.';
-
-        $purchaseRows = DB::table('order_item_purchases')
-            ->where('root_item_id', (int) $issue->root_item_id)
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get(['id', 'qty', 'problem_notes']);
-
-        foreach ($purchaseRows as $purchase) {
-            if ($remainingQty <= 0) {
-                break;
-            }
-
-            $existingNotes = trim((string) ($purchase->problem_notes ?? ''));
-            $notes = $existingNotes === '' ? $marker : ($existingNotes . "\n" . $marker);
-
-            DB::table('order_item_purchases')
-                ->where('id', (int) $purchase->id)
-                ->update([
-                    'status' => $status,
-                    'resolution_status' => 'not_expected',
-                    'problem_code' => (string) $issue->issue_type,
-                    'resolution_action' => (string) $issue->resolution_type,
-                    'problem_notes' => $notes,
-                    'updated_by_user_id' => $userId,
-                    'updated_at' => now(),
-                ]);
-
-            $remainingQty -= max(1, (int) $purchase->qty);
-        }
-    }
-
-    private function restorePurchaseEventsForIssue(int $issueId, ?int $userId = null): void
-    {
-        $issue = DB::table('purchase_issues')->where('id', $issueId)->first();
-
-        if (! $issue || ($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase') {
-            return;
-        }
-
-        $otherActiveNotExpectedIssueExists = DB::table('purchase_issues')
-            ->where('root_item_id', (int) $issue->root_item_id)
-            ->where('id', '!=', $issueId)
-            ->whereIn('status', ['open', 'awaiting_customer', 'resolved', 'returned_to_buy'])
-            ->where('arrival_expectation', 'not_expected')
-            ->exists();
-
-        if ($otherActiveNotExpectedIssueExists) {
-            return;
-        }
-
-        $marker = 'Marked not expected via purchased item problem #' . $issueId . '.';
-
-        DB::table('order_item_purchases')
-            ->where('root_item_id', (int) $issue->root_item_id)
-            ->where('problem_notes', 'like', '%' . $marker . '%')
-            ->update([
-                'status' => 'purchased',
-                'resolution_status' => null,
-                'problem_code' => null,
-                'resolution_action' => null,
-                'updated_by_user_id' => $userId,
-                'updated_at' => now(),
-            ]);
-    }
-
     private function assertOrderIsMutable(int $orderId): void
     {
         $order = DB::table('orders')->where('id', $orderId)->first(['id', 'order_number', 'status', 'cancel_reason']);
@@ -1304,31 +937,6 @@ Cancelled as an incorrect or duplicate recorded problem."),
         }
     }
 
-    private function openPurchasedQtyForException(int $rootItemId): int
-    {
-        $purchased = (int) DB::table('order_item_purchases')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->sum('qty');
-
-        $arrived = (int) DB::table('purchase_arrival_assignments')
-            ->where('root_item_id', $rootItemId)
-            ->whereNull('undone_at')
-            ->sum('qty');
-
-        $notExpected = (int) DB::table('purchase_issues')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['open', 'awaiting_customer', 'resolved', 'returned_to_buy'])
-            ->where(function ($query) {
-                $query->where('arrival_expectation', 'not_expected')
-                    ->orWhere('resolution_type', 'return_to_buy');
-            })
-            ->sum('qty');
-
-        return max(0, $purchased - $arrived - $notExpected);
-    }
-
     private function remainingToBuyQty(int $rootItemId, int $itemQty): int
     {
         $purchased = (int) DB::table('order_item_purchases')
@@ -1341,15 +949,23 @@ Cancelled as an incorrect or duplicate recorded problem."),
             ->where('root_item_id', $rootItemId)
             ->whereIn('status', ['unfulfilled', 'failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable'])
             ->whereNull('cancelled_at')
+            ->where(function ($query) {
+                $query->whereNull('resolution_action')
+                    ->orWhere('resolution_action', '<>', 'return_to_buy');
+            })
+            ->where(function ($query) {
+                $query->whereNull('resolution_status')
+                    ->orWhere('resolution_status', 'pending');
+            })
             ->sum('qty');
 
         $activeIssueQty = (int) DB::table('purchase_issues')
             ->where('root_item_id', $rootItemId)
+            ->whereIn('status', ['open', 'awaiting_customer'])
             ->where(function ($query) {
-                $query->whereNull('issue_stage')
-                    ->orWhere('issue_stage', 'pre_purchase');
+                $query->whereNull('resolution_type')
+                    ->orWhere('resolution_type', '<>', 'return_to_buy');
             })
-            ->whereIn('status', ['open', 'awaiting_customer', 'returned_to_buy'])
             ->sum('qty');
 
         return max(0, $itemQty - $purchased - $terminalProblem - $activeIssueQty);

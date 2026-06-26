@@ -111,6 +111,11 @@ class FinaliseDraftOrderService
             $itemMap = $this->createOrderItems($orderId, $items, $retailerSummaries, $orderRetailerIds, $previousOrderId, $userId);
 
             if ($previousOrderId) {
+                // Revision safety rule:
+                // Financial and operational history must follow the surviving item/order lineage.
+                // Carry purchases/arrivals first so the new order does not show already-bought
+                // items as pending purchase, then move/apply any superseded balance.
+                $this->carryForwardOperationalState($previousOrderId, $orderId, $itemMap, $userId);
                 $this->carryForwardSettlementToNewRevision($previousOrderId, $orderId, (int) $draft->customer_id, $userId);
 
                 DB::table('orders')
@@ -512,41 +517,93 @@ class FinaliseDraftOrderService
     {
         $previousSettled = $this->orderSettledTotal($previousOrderId);
 
-        if ($previousSettled <= 0) {
+        if ($previousSettled > 0) {
+            $this->ensureSupersededOrderCredit($previousOrderId, $customerId, $previousSettled, $userId);
+        }
+
+        $chainOrderIds = $this->revisionChainOrderIds($previousOrderId);
+        $creditIds = DB::table('customer_credits')
+            ->where('customer_id', $customerId)
+            ->where('status', 'open')
+            ->where('remaining_amount', '>', 0)
+            ->whereIn('source_type', ['superseded_order_balance', 'order_revision_credit', 'revision_overpayment'])
+            ->where(function ($query) use ($chainOrderIds) {
+                $query->whereIn('source_id', $chainOrderIds)
+                    ->orWhereIn('order_id', $chainOrderIds);
+            })
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (empty($creditIds)) {
+            $this->refreshOrderPaymentStatus($newOrderId, $userId);
             return;
         }
+
+        $appliedTotal = 0.0;
+
+        foreach ($creditIds as $creditId) {
+            $appliedTotal += $this->applyCustomerCreditToRevision($creditId, $newOrderId, $previousOrderId, $userId);
+
+            $newOrder = DB::table('orders')->where('id', $newOrderId)->first(['grand_total']);
+            if (! $newOrder) {
+                break;
+            }
+
+            $balanceDue = max(0.0, round((float) ($newOrder->grand_total ?? 0) - $this->orderSettledTotal($newOrderId), 2));
+            if ($balanceDue <= 0) {
+                break;
+            }
+        }
+
+        $this->refreshOrderPaymentStatus($newOrderId, $userId);
+
+        if ($appliedTotal > 0) {
+            DB::table('activity_logs')->insert([
+                'subject_type' => 'order',
+                'subject_id' => $newOrderId,
+                'type' => 'system_note',
+                'title' => 'Superseded balance carried forward',
+                'body' => '£' . number_format($appliedTotal, 2) . ' was applied from wallet credit created from earlier order revision(s).',
+                'occurred_at' => now(),
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function applyCustomerCreditToRevision(int $creditId, int $newOrderId, int $previousOrderId, int $userId): float
+    {
+        $credit = DB::table('customer_credits')
+            ->where('id', $creditId)
+            ->lockForUpdate()
+            ->first(['id', 'remaining_amount']);
 
         $newOrder = DB::table('orders')
             ->where('id', $newOrderId)
-            ->first(['id', 'grand_total', 'status']);
+            ->first(['id', 'grand_total']);
 
-        if (! $newOrder) {
-            return;
+        if (! $credit || ! $newOrder) {
+            return 0.0;
         }
 
-        $creditId = $this->ensureSupersededOrderCredit($previousOrderId, $customerId, $previousSettled, $userId);
-
-        $available = (float) DB::table('customer_credits')
-            ->where('id', $creditId)
-            ->value('remaining_amount');
-
-        if ($available <= 0) {
-            return;
-        }
-
+        $available = max(0.0, round((float) ($credit->remaining_amount ?? 0), 2));
+        $newTotal = max(0.0, round((float) ($newOrder->grand_total ?? 0), 2));
+        $alreadySettled = $this->orderSettledTotal($newOrderId);
+        $balanceDue = max(0.0, round($newTotal - $alreadySettled, 2));
         $alreadyApplied = (float) DB::table('credit_applications')
             ->where('customer_credit_id', $creditId)
             ->where('order_id', $newOrderId)
             ->sum('amount_applied');
 
-        $newTotal = max(0.0, round((float) ($newOrder->grand_total ?? 0), 2));
-        $alreadySettled = $this->orderSettledTotal($newOrderId);
-        $balanceDue = max(0.0, round($newTotal - $alreadySettled, 2));
         $amountToApply = max(0.0, min($available, $balanceDue));
 
         if ($amountToApply <= 0 || $alreadyApplied > 0) {
-            $this->refreshOrderPaymentStatus($newOrderId, $userId);
-            return;
+            return 0.0;
         }
 
         $applicationId = (int) DB::table('credit_applications')->insertGetId([
@@ -589,20 +646,24 @@ class FinaliseDraftOrderService
                 'updated_at' => now(),
             ]);
 
-        $this->refreshOrderPaymentStatus($newOrderId, $userId);
+        return $amountToApply;
+    }
 
-        DB::table('activity_logs')->insert([
-            'subject_type' => 'order',
-            'subject_id' => $newOrderId,
-            'type' => 'system_note',
-            'title' => 'Superseded balance carried forward',
-            'body' => '£' . number_format($amountToApply, 2) . ' was applied from wallet credit created from superseded Order ID #' . $previousOrderId . '.',
-            'occurred_at' => now(),
-            'created_by_user_id' => $userId,
-            'updated_by_user_id' => $userId,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+    private function revisionChainOrderIds(int $orderId): array
+    {
+        $ids = [];
+        $seen = [];
+        $current = $orderId;
+
+        while ($current > 0 && empty($seen[$current])) {
+            $seen[$current] = true;
+            $ids[] = $current;
+
+            $parent = DB::table('orders')->where('id', $current)->value('parent_order_id');
+            $current = $parent ? (int) $parent : 0;
+        }
+
+        return $ids;
     }
 
     private function ensureSupersededOrderCredit(int $previousOrderId, int $customerId, float $amount, int $userId): int
@@ -638,15 +699,12 @@ class FinaliseDraftOrderService
         return round((float) DB::table('order_transactions')
             ->where('order_id', $orderId)
             ->where('status', 'recorded')
-            ->whereIn('type', [
-                'payment',
-                'credit_application',
-                'payment_void',
-                'credit_application_void',
-                'refund',
-                'refund_void',
-            ])
-            ->sum('amount'), 2);
+            ->selectRaw("COALESCE(SUM(CASE
+                WHEN type IN ('payment', 'credit_application', 'refund_void') THEN amount
+                WHEN type IN ('payment_void', 'credit_application_void', 'refund') THEN -ABS(amount)
+                ELSE 0
+            END), 0) as total")
+            ->value('total'), 2);
     }
 
     private function refreshOrderPaymentStatus(int $orderId, int $userId): void
@@ -944,6 +1002,8 @@ class FinaliseDraftOrderService
                 });
         }
 
+        $this->refreshCarriedForwardItemStatuses($newOrderId, $itemMap, $userId);
+
         DB::table('activity_logs')->insert([
             'subject_type' => 'order',
             'subject_id' => $newOrderId,
@@ -956,6 +1016,44 @@ class FinaliseDraftOrderService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function refreshCarriedForwardItemStatuses(int $newOrderId, array $itemMap, int $userId): void
+    {
+        if (empty($itemMap)) {
+            return;
+        }
+
+        $newItemIds = array_values($itemMap);
+
+        foreach ($newItemIds as $itemId) {
+            $purchasedQty = (int) DB::table('order_item_purchases')
+                ->where('order_id', $newOrderId)
+                ->where('order_item_id', $itemId)
+                ->whereNull('cancelled_at')
+                ->whereIn('status', ['purchased', 'supplier_cancelled', 'partially_purchased'])
+                ->whereNull('reversal_of_purchase_id')
+                ->sum('qty');
+
+            $item = DB::table('order_items')->where('id', $itemId)->first(['quantity', 'status']);
+            if (! $item) {
+                continue;
+            }
+
+            $quantity = max(1, (int) ($item->quantity ?? 1));
+            if ($purchasedQty <= 0) {
+                continue;
+            }
+
+            DB::table('order_items')
+                ->where('id', $itemId)
+                ->update([
+                    'status' => $purchasedQty >= $quantity ? 'purchased' : 'partially_purchased',
+                    'last_status_changed_at' => now(),
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+        }
     }
 
     private function insertFiltered(string $table, array $row): int

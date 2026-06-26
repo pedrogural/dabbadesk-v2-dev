@@ -20,8 +20,8 @@ class PurchasingQueueService
         $payment = $this->normalisePayment($filters['payment'] ?? 'paid_or_part');
         $search = trim((string) ($filters['q'] ?? ''));
         $mineOnly = (bool) ($filters['mine'] ?? false);
-        $purchasedProblemView = $this->normalisePurchasedProblemView($filters['purchased_problem_view'] ?? 'items');
         $userId = isset($filters['user_id']) ? (int) $filters['user_id'] : null;
+        $purchasedProblemView = $this->normalisePurchasedProblemView($filters['problem_view'] ?? ($filters['purchased_problem_view'] ?? 'items'));
 
         $items = $this->itemRows($search, null, $mineOnly ? $userId : null);
         $orders = $this->groupOrders($items);
@@ -37,23 +37,15 @@ class PurchasingQueueService
         $summary = [
             'to_buy' => $paymentScopedOrders->filter(fn ($order) => $this->isToBuyOrder($order))->count(),
             'purchases' => $this->purchaseRows($search, $payment, $mineOnly ? $userId : null)->count(),
-            'problems' => $paymentScopedOrders->filter(fn ($order) => $this->isPrePurchaseProblemOrder($order))->count(),
-            'purchased_item_problems' => $paymentScopedOrders->filter(fn ($order) => $this->isPurchasedItemProblemOrder($order))->count(),
+            'problems' => $paymentScopedOrders->filter(fn ($order) => $this->isProblemOrder($order))->count(),
             'awaiting_customer' => $paymentScopedOrders->filter(fn ($order) => (int) ($order['awaiting_customer_issue_count'] ?? 0) > 0)->count(),
             'purple_checks' => $paymentScopedOrders->sum('inspection_count'),
+            'purchased_item_problems' => (int) $this->purchasedProblemRows('open', $search, $payment, $mineOnly ? $userId : null)->count(),
         ];
 
         $filtered = $paymentScopedOrders
             ->filter(fn ($order) => $this->matchesTab($order, $tab))
             ->values();
-
-        $purchasedProblemOpenRows = $tab === 'purchased_item_problems'
-            ? $this->purchasedProblemRows($search, $payment, $mineOnly ? $userId : null, 'open')
-            : collect();
-
-        $purchasedProblemHistoryRows = $tab === 'purchased_item_problems'
-            ? $this->purchasedProblemRows($search, $payment, $mineOnly ? $userId : null, 'history')
-            : collect();
 
         return [
             'filters' => [
@@ -61,14 +53,15 @@ class PurchasingQueueService
                 'payment' => $payment,
                 'q' => $search,
                 'mine' => $mineOnly,
+                'problem_view' => $purchasedProblemView,
                 'purchased_problem_view' => $purchasedProblemView,
             ],
             'summary' => $summary,
             'orders' => $filtered,
             'purchaseRows' => in_array($tab, ['purchases', 'purchased_item_problems'], true) ? $this->purchaseRows($search, $payment, $mineOnly ? $userId : null) : collect(),
-            'purchasedProblemRows' => $purchasedProblemView === 'history' ? $purchasedProblemHistoryRows : $purchasedProblemOpenRows,
-            'purchasedProblemOpenCount' => $purchasedProblemOpenRows->count(),
-            'purchasedProblemHistoryCount' => $purchasedProblemHistoryRows->count(),
+            'purchasedProblemRows' => $tab === 'purchased_item_problems' && in_array($purchasedProblemView, ['open', 'history'], true) ? $this->purchasedProblemRows($purchasedProblemView, $search, $payment, $mineOnly ? $userId : null) : collect(),
+            'purchasedProblemOpenCount' => (int) $this->purchasedProblemRows('open', $search, $payment, $mineOnly ? $userId : null)->count(),
+            'purchasedProblemHistoryCount' => (int) $this->purchasedProblemRows('history', $search, $payment, $mineOnly ? $userId : null)->count(),
             'purchasedProblemView' => $purchasedProblemView,
             'tabs' => $this->tabs($summary),
             'paymentOptions' => $this->paymentOptions(),
@@ -187,8 +180,7 @@ class PurchasingQueueService
                 'overview' => 'Overview',
                 'buy' => 'Buy',
                 'awaiting' => 'Awaiting Arrival',
-                'problems' => 'Purchase Issues',
-                'purchased_item_problems' => 'Purchased Item Problems',
+                'problems' => 'Problems',
                 'timeline' => 'Timeline',
             ],
         ];
@@ -198,9 +190,9 @@ class PurchasingQueueService
     {
         $purchaseTotals = DB::table('order_item_purchases')
             ->selectRaw('root_item_id')
-            ->selectRaw("SUM(CASE WHEN status IN ('purchased','ordered','received') AND cancelled_at IS NULL THEN qty ELSE 0 END) as purchased_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' THEN qty ELSE 0 END) as terminal_problem_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' THEN qty ELSE 0 END) as pending_problem_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ('purchased','ordered','received') AND cancelled_at IS NULL THEN qty ELSE 0 END) as gross_purchased_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' AND COALESCE(resolution_action, '') <> 'return_to_buy' THEN qty ELSE 0 END) as terminal_problem_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' AND COALESCE(resolution_action, '') <> 'return_to_buy' THEN qty ELSE 0 END) as pending_problem_qty")
             ->selectRaw('MAX(created_at) as latest_purchase_event_at')
             ->selectRaw('COUNT(*) as purchase_event_count')
             ->groupBy('root_item_id');
@@ -213,12 +205,9 @@ class PurchasingQueueService
 
         $issueTotals = DB::table('purchase_issues')
             ->selectRaw('root_item_id')
-            ->selectRaw("SUM(CASE WHEN status IN ('open','awaiting_customer') THEN qty ELSE 0 END) as active_issue_qty")
-            ->selectRaw("SUM(CASE WHEN COALESCE(issue_stage, 'pre_purchase') = 'pre_purchase' AND status IN ('open','awaiting_customer') THEN qty ELSE 0 END) as active_pre_purchase_issue_qty")
-            ->selectRaw("SUM(CASE WHEN COALESCE(issue_stage, 'pre_purchase') IN ('post_purchase','arrival') AND status IN ('open','awaiting_customer') THEN qty ELSE 0 END) as active_post_purchase_issue_qty")
-            ->selectRaw("SUM(CASE WHEN status = 'resolved' AND resolution_type IN ('customer_cancelled','customer_refunded','duplicate_item','no_longer_required','closed_no_replacement','supplier_refunded','written_off') THEN qty ELSE 0 END) as resolved_terminal_issue_qty")
-            ->selectRaw("SUM(CASE WHEN COALESCE(arrival_expectation, 'expected') = 'not_expected' AND status IN ('open','awaiting_customer','resolved') THEN qty ELSE 0 END) as not_expected_issue_qty")
-            ->selectRaw("SUM(CASE WHEN status = 'returned_to_buy' OR resolution_type = 'return_to_buy' THEN qty ELSE 0 END) as returned_to_buy_issue_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ('open','awaiting_customer') AND COALESCE(resolution_type, '') <> 'return_to_buy' THEN qty ELSE 0 END) as active_issue_qty")
+            ->selectRaw("SUM(CASE WHEN status IN ('returned_to_buy','resolved') AND COALESCE(resolution_type, '') = 'return_to_buy' THEN COALESCE(affected_qty, qty, 1) ELSE 0 END) as return_to_buy_issue_qty")
+            ->selectRaw("SUM(CASE WHEN status = 'resolved' AND resolution_type IN ('customer_cancelled','customer_refunded','duplicate_item','no_longer_required') THEN qty ELSE 0 END) as resolved_terminal_issue_qty")
             ->selectRaw("SUM(CASE WHEN status = 'awaiting_customer' THEN 1 ELSE 0 END) as awaiting_customer_issue_count")
             ->selectRaw('COUNT(*) as issue_count')
             ->selectRaw('MAX(created_at) as latest_issue_at')
@@ -269,9 +258,6 @@ class PurchasingQueueService
                 'oi.quantity',
                 'oi.unit_price',
                 'oi.line_total',
-                'oi.item_retailer_delivery_fee',
-                'oi.retailer_delivery_allocated',
-                'ore.retailer_delivery_fee_total',
                 'oi.status as item_status',
                 'oi.purchase_problem_reason',
                 'oi.purchase_problem_note',
@@ -280,14 +266,12 @@ class PurchasingQueueService
                 'ore.retailer_id',
                 DB::raw('COALESCE(r.name, ore.retailer_name, "Unknown retailer") as retailer_name'),
                 DB::raw('COALESCE(oi.root_item_id, oi.id) as lineage_root_id'),
-                DB::raw('COALESCE(pt.purchased_qty, 0) as purchased_qty'),
+                DB::raw('COALESCE(pt.gross_purchased_qty, 0) as gross_purchased_qty'),
+                DB::raw('COALESCE(pit.return_to_buy_issue_qty, 0) as return_to_buy_issue_qty'),
+                DB::raw('GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) as purchased_qty'),
                 DB::raw('COALESCE(pt.terminal_problem_qty, 0) as terminal_problem_qty'),
                 DB::raw('COALESCE(pit.active_issue_qty, 0) as active_issue_qty'),
-                DB::raw('COALESCE(pit.active_pre_purchase_issue_qty, 0) as active_pre_purchase_issue_qty'),
-                DB::raw('COALESCE(pit.active_post_purchase_issue_qty, 0) as active_post_purchase_issue_qty'),
                 DB::raw('COALESCE(pit.resolved_terminal_issue_qty, 0) as resolved_terminal_issue_qty'),
-                DB::raw('COALESCE(pit.not_expected_issue_qty, 0) as not_expected_issue_qty'),
-                DB::raw('COALESCE(pit.returned_to_buy_issue_qty, 0) as returned_to_buy_issue_qty'),
                 DB::raw('COALESCE(pit.awaiting_customer_issue_count, 0) as awaiting_customer_issue_count'),
                 DB::raw("CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END as item_sourcing_problem_qty"),
                 DB::raw("COALESCE(pt.pending_problem_qty, 0) + COALESCE(pit.active_issue_qty, 0) + CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END as problem_qty"),
@@ -301,8 +285,8 @@ class PurchasingQueueService
                     WHEN COALESCE(st.settled_amount, 0) > 0 THEN 'part_paid'
                     ELSE 'unpaid'
                 END as payment_status"),
-                DB::raw("GREATEST(0, oi.quantity - COALESCE(pt.purchased_qty, 0) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_pre_purchase_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0) - CASE WHEN COALESCE(pit.active_pre_purchase_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END + COALESCE(pit.returned_to_buy_issue_qty, 0)) as remaining_to_buy_qty"),
-                DB::raw('GREATEST(0, COALESCE(pt.purchased_qty, 0) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.not_expected_issue_qty, 0) - COALESCE(pit.returned_to_buy_issue_qty, 0) - COALESCE(at.arrived_qty, 0)) as awaiting_arrival_qty'),
+                DB::raw("GREATEST(0, oi.quantity - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0) - CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END) as remaining_to_buy_qty"),
+                DB::raw('GREATEST(0, GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(at.arrived_qty, 0)) as awaiting_arrival_qty'),
             ])
             ->whereNull('o.cancelled_at')
             ->whereNull('o.completed_at')
@@ -362,16 +346,14 @@ class PurchasingQueueService
             ->get()
             ->map(function ($row) {
                 $row->quantity = (int) $row->quantity;
+                $row->gross_purchased_qty = (int) ($row->gross_purchased_qty ?? 0);
+                $row->return_to_buy_issue_qty = (int) ($row->return_to_buy_issue_qty ?? 0);
                 $row->purchased_qty = (int) $row->purchased_qty;
                 $row->terminal_problem_qty = (int) $row->terminal_problem_qty;
                 $row->item_sourcing_problem_qty = (int) ($row->item_sourcing_problem_qty ?? 0);
                 $row->problem_qty = (int) $row->problem_qty;
                 $row->active_issue_qty = (int) ($row->active_issue_qty ?? 0);
-                $row->active_pre_purchase_issue_qty = (int) ($row->active_pre_purchase_issue_qty ?? 0);
-                $row->active_post_purchase_issue_qty = (int) ($row->active_post_purchase_issue_qty ?? 0);
                 $row->resolved_terminal_issue_qty = (int) ($row->resolved_terminal_issue_qty ?? 0);
-                $row->not_expected_issue_qty = (int) ($row->not_expected_issue_qty ?? 0);
-                $row->returned_to_buy_issue_qty = (int) ($row->returned_to_buy_issue_qty ?? 0);
                 $row->awaiting_customer_issue_count = (int) ($row->awaiting_customer_issue_count ?? 0);
                 $row->arrived_qty = (int) $row->arrived_qty;
                 $row->remaining_to_buy_qty = (int) $row->remaining_to_buy_qty;
@@ -379,10 +361,6 @@ class PurchasingQueueService
                 $row->purchase_event_count = (int) $row->purchase_event_count;
                 $row->requires_inspection = (int) ($row->requires_inspection ?? 0);
                 $row->inspection_note = trim((string) ($row->inspection_note ?? ''));
-                $row->item_retailer_delivery_fee = round((float) ($row->item_retailer_delivery_fee ?? 0), 2);
-                $row->retailer_delivery_allocated = round((float) ($row->retailer_delivery_allocated ?? 0), 2);
-                $row->retailer_delivery_fee_total = round((float) ($row->retailer_delivery_fee_total ?? 0), 2);
-                $row->visible_delivery_fee = round($row->item_retailer_delivery_fee + $row->retailer_delivery_allocated, 2);
 
                 return $row;
             });
@@ -468,107 +446,6 @@ class PurchasingQueueService
             ->values();
     }
 
-
-    private function purchasedProblemRows(string $search = '', string $payment = 'paid_or_part', ?int $mineUserId = null, string $view = 'open'): Collection
-    {
-        $settlementTotals = DB::table('order_transactions')
-            ->selectRaw('order_id')
-            ->selectRaw("SUM(CASE
-                WHEN status = 'recorded' AND type IN ('payment', 'credit_application') THEN amount
-                WHEN status = 'recorded' AND type IN ('payment_void', 'credit_application_void', 'refund') THEN -ABS(amount)
-                WHEN status = 'recorded' AND type = 'refund_void' THEN ABS(amount)
-                ELSE 0
-            END) as settled_amount")
-            ->groupBy('order_id');
-
-        $latestPurchaseIds = DB::table('order_item_purchases')
-            ->selectRaw('order_item_id, MAX(id) as latest_purchase_id')
-            ->whereNull('cancelled_at')
-            ->groupBy('order_item_id');
-
-        $query = DB::table('purchase_issues as pi')
-            ->join('orders as o', 'o.id', '=', 'pi.order_id')
-            ->leftJoin('order_items as oi', 'oi.id', '=', 'pi.order_item_id')
-            ->leftJoinSub($latestPurchaseIds, 'latest_problem_purchase', function ($join) {
-                $join->on('latest_problem_purchase.order_item_id', '=', 'pi.order_item_id');
-            })
-            ->leftJoin('order_item_purchases as problem_purchase', 'problem_purchase.id', '=', 'latest_problem_purchase.latest_purchase_id')
-            ->leftJoin('retailers as r', 'r.id', '=', 'pi.retailer_id')
-            ->leftJoin('users as cu', 'cu.id', '=', 'pi.created_by_user_id')
-            ->leftJoin('users as ru', 'ru.id', '=', 'pi.resolved_by_user_id')
-            ->leftJoinSub($settlementTotals, 'st', function ($join) {
-                $join->on('st.order_id', '=', 'o.id');
-            })
-            ->select([
-                'pi.*',
-                'o.order_number',
-                'o.bill_to_name',
-                'o.bill_to_company',
-                'o.bill_to_email',
-                'o.grand_total',
-                'oi.item_name',
-                'oi.product_code',
-                'oi.product_url',
-                'problem_purchase.retailer_order_reference as purchase_retailer_order_reference',
-                'problem_purchase.ordered_at as purchase_ordered_at',
-                'problem_purchase.created_at as purchase_created_at',
-                'problem_purchase.purchase_line_total as purchase_line_total',
-                'problem_purchase.purchase_unit_price as purchase_unit_price',
-                'problem_purchase.qty as purchase_qty',
-                DB::raw('COALESCE(oi.line_total, 0) as customer_line_value'),
-                DB::raw('COALESCE(oi.unit_price, 0) as customer_unit_price'),
-                DB::raw('COALESCE(oi.quantity, 0) as customer_qty'),
-                DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
-                'cu.name as created_by_name',
-                'ru.name as resolved_by_name',
-                DB::raw("CASE
-                    WHEN COALESCE(st.settled_amount, 0) >= o.grand_total AND o.grand_total > 0 THEN 'paid'
-                    WHEN COALESCE(st.settled_amount, 0) > 0 THEN 'part_paid'
-                    ELSE 'unpaid'
-                END as payment_status"),
-            ])
-            ->whereIn(DB::raw("COALESCE(pi.issue_stage, 'pre_purchase')"), ['post_purchase', 'arrival'])
-            ->whereNull('o.cancelled_at');
-
-        if ($view === 'history') {
-            $query->whereIn('pi.status', ['resolved', 'cancelled']);
-        } else {
-            $query->whereIn('pi.status', ['open', 'awaiting_customer', 'returned_to_buy']);
-        }
-
-        if ($mineUserId !== null && $mineUserId > 0) {
-            $query->where(function ($query) use ($mineUserId) {
-                $query->where('pi.created_by_user_id', $mineUserId)
-                    ->orWhere('o.created_by_user_id', $mineUserId)
-                    ->orWhere('o.updated_by_user_id', $mineUserId);
-            });
-        }
-
-        if ($search !== '') {
-            $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $search) . '%';
-            $query->where(function ($query) use ($like) {
-                $query->where('o.order_number', 'like', $like)
-                    ->orWhere('o.bill_to_name', 'like', $like)
-                    ->orWhere('o.bill_to_company', 'like', $like)
-                    ->orWhere('o.bill_to_email', 'like', $like)
-                    ->orWhere('oi.item_name', 'like', $like)
-                    ->orWhere('oi.product_code', 'like', $like)
-                    ->orWhere('pi.issue_type', 'like', $like)
-                    ->orWhere('pi.resolution_type', 'like', $like)
-                    ->orWhere('pi.notes', 'like', $like)
-                    ->orWhere('r.name', 'like', $like);
-            });
-        }
-
-        return $query
-            ->orderByRaw("FIELD(pi.status, 'awaiting_customer', 'open', 'returned_to_buy', 'resolved', 'cancelled')")
-            ->orderByDesc('pi.created_at')
-            ->limit(500)
-            ->get()
-            ->filter(fn ($row) => $this->matchesPayment((string) $row->payment_status, $payment))
-            ->values();
-    }
-
     private function groupOrders(Collection $items): Collection
     {
         return $items
@@ -578,8 +455,6 @@ class PurchasingQueueService
                 $remaining = (int) $rows->sum('remaining_to_buy_qty');
                 $awaiting = (int) $rows->sum('awaiting_arrival_qty');
                 $problem = (int) $rows->sum('problem_qty');
-                $prePurchaseProblem = (int) $rows->sum('active_pre_purchase_issue_qty');
-                $postPurchaseProblem = (int) $rows->sum('active_post_purchase_issue_qty');
                 $purchased = (int) $rows->sum('purchased_qty');
                 $arrived = (int) $rows->sum('arrived_qty');
                 $requested = (int) $rows->sum('quantity');
@@ -588,10 +463,8 @@ class PurchasingQueueService
                 $awaitingCustomerIssueCount = (int) $rows->sum('awaiting_customer_issue_count');
 
                 $action = 'Completed';
-                if ($prePurchaseProblem > 0) {
-                    $action = 'Resolve Purchase Issue';
-                } elseif ($postPurchaseProblem > 0) {
-                    $action = 'Review Purchased Item Problem';
+                if ($problem > 0) {
+                    $action = 'Resolve Problem';
                 } elseif ($remaining > 0) {
                     $action = 'Buy Items';
                 } elseif ($awaiting > 0) {
@@ -615,12 +488,10 @@ class PurchasingQueueService
                     'remaining_to_buy_qty' => $remaining,
                     'awaiting_arrival_qty' => $awaiting,
                     'problem_qty' => $problem,
-                    'pre_purchase_problem_qty' => $prePurchaseProblem,
-                    'post_purchase_problem_qty' => $postPurchaseProblem,
                     'inspection_count' => $inspectionCount,
                     'awaiting_customer_issue_count' => $awaitingCustomerIssueCount,
                     'action' => $action,
-                    'is_completed' => $remaining === 0 && $awaiting === 0 && $prePurchaseProblem === 0 && $postPurchaseProblem === 0 && $purchased > 0,
+                    'is_completed' => $remaining === 0 && $awaiting === 0 && $problem === 0 && $purchased > 0,
                     'latest_activity_at' => collect([$rows->max('latest_purchase_event_at'), $rows->max('latest_arrival_at')])->filter()->max(),
                     'items' => $rows->values(),
                 ];
@@ -646,9 +517,95 @@ class PurchasingQueueService
         return [
             'to_buy' => ['label' => 'To Buy', 'count' => $summary['to_buy']],
             'purchases' => ['label' => 'Already Purchased', 'count' => $summary['purchases']],
-            'problems' => ['label' => 'Purchase Issues', 'count' => $summary['problems']],
-            'purchased_item_problems' => ['label' => 'Purchased Item Problems', 'count' => $summary['purchased_item_problems']],
+            'problems' => ['label' => 'Purchasing Issues', 'count' => $summary['problems']],
+            'purchased_item_problems' => ['label' => 'Purchased Item Problems', 'count' => $summary['purchased_item_problems'] ?? 0],
         ];
+    }
+
+
+    private function normalisePurchasedProblemView(string $view): string
+    {
+        $view = $view === 'recorded' ? 'open' : $view;
+
+        return in_array($view, ['items', 'open', 'history'], true) ? $view : 'items';
+    }
+
+    private function purchasedProblemRows(string $view = 'open', string $search = '', string $payment = 'paid_or_part', ?int $mineUserId = null): Collection
+    {
+        // Aggregate purchase data separately so the main purchase_issues query
+        // remains one row per issue and stays compatible with MariaDB ONLY_FULL_GROUP_BY.
+        $purchaseAgg = DB::table('order_item_purchases as oip')
+            ->selectRaw('
+                oip.root_item_id,
+                MAX(oip.retailer_order_reference) as purchase_retailer_order_reference,
+                MAX(oip.ordered_at) as purchase_ordered_at,
+                SUM(CASE WHEN oip.status IN ("purchased","ordered","received") THEN COALESCE(oip.purchase_line_total, 0) ELSE 0 END) as purchase_cost_total,
+                MAX(oip.purchase_unit_price) as purchase_unit_price
+            ')
+            ->whereNull('oip.cancelled_at')
+            ->groupBy('oip.root_item_id');
+
+        $query = DB::table('purchase_issues as pi')
+            ->join('orders as o', 'o.id', '=', 'pi.order_id')
+            ->join('order_items as oi', 'oi.id', '=', 'pi.order_item_id')
+            ->leftJoin('order_retailers as ore', 'ore.id', '=', 'oi.order_retailer_id')
+            ->leftJoin('retailers as r', 'r.id', '=', 'ore.retailer_id')
+            ->leftJoin('users as u', 'u.id', '=', 'pi.created_by_user_id')
+            ->leftJoinSub($purchaseAgg, 'pa', function ($join) {
+                $join->on('pa.root_item_id', '=', 'pi.root_item_id');
+            })
+            ->select([
+                'pi.*',
+                'o.order_number',
+                'o.grand_total',
+                'o.bill_to_name',
+                'o.bill_to_company',
+                'o.bill_to_email',
+                'oi.item_name',
+                'oi.product_code',
+                'oi.product_url',
+                'oi.quantity as item_quantity',
+                'oi.unit_price as customer_unit_price',
+                'oi.line_total as customer_line_total',
+                DB::raw('COALESCE(r.name, ore.retailer_name, "Unknown retailer") as retailer_name'),
+                'u.name as created_by_name',
+                'pa.purchase_retailer_order_reference',
+                'pa.purchase_ordered_at',
+                DB::raw('COALESCE(pa.purchase_cost_total, 0) as purchase_cost_total'),
+                'pa.purchase_unit_price',
+            ])
+            ->whereIn(DB::raw("COALESCE(pi.issue_stage, 'pre_purchase')"), ['post_purchase', 'arrival'])
+            ->whereNull('o.cancelled_at')
+            ->where(function ($query) {
+                $query->whereNull('o.status')->orWhereNotIn('o.status', ['cancelled', 'superseded']);
+            });
+
+        if ($view === 'history') {
+            $query->whereIn('pi.status', ['resolved', 'cancelled']);
+        } else {
+            $query->whereIn('pi.status', ['open', 'awaiting_customer', 'returned_to_buy']);
+        }
+
+        if ($search !== '') {
+            $like = '%' . $search . '%';
+            $query->where(function ($query) use ($like) {
+                $query->where('o.order_number', 'like', $like)
+                    ->orWhere('o.bill_to_name', 'like', $like)
+                    ->orWhere('o.bill_to_company', 'like', $like)
+                    ->orWhere('o.bill_to_email', 'like', $like)
+                    ->orWhere('oi.item_name', 'like', $like)
+                    ->orWhere('oi.product_code', 'like', $like)
+                    ->orWhere('r.name', 'like', $like)
+                    ->orWhere('ore.retailer_name', 'like', $like)
+                    ->orWhere('pa.purchase_retailer_order_reference', 'like', $like);
+            });
+        }
+
+        if ($mineUserId) {
+            $query->where('pi.created_by_user_id', $mineUserId);
+        }
+
+        return $query->orderByDesc('pi.created_at')->limit(250)->get();
     }
 
     private function paymentOptions(): array
@@ -665,7 +622,7 @@ class PurchasingQueueService
         return match ($tab) {
             'to_buy' => $this->isToBuyOrder($order),
             'purchases' => false,
-            'problems' => $this->isPrePurchaseProblemOrder($order),
+            'problems' => $this->isProblemOrder($order),
             'purchased_item_problems' => false,
             default => $this->isToBuyOrder($order),
         };
@@ -680,30 +637,20 @@ class PurchasingQueueService
      * 3. Awaiting Arrival third: already bought and waiting for goods.
      * 4. Completed last.
      */
-    private function isPrePurchaseProblemOrder(array $order): bool
-    {
-        return (int) ($order['pre_purchase_problem_qty'] ?? 0) > 0;
-    }
-
-    private function isPurchasedItemProblemOrder(array $order): bool
-    {
-        return (int) ($order['post_purchase_problem_qty'] ?? 0) > 0;
-    }
-
     private function isProblemOrder(array $order): bool
     {
-        return $this->isPrePurchaseProblemOrder($order) || $this->isPurchasedItemProblemOrder($order);
+        return (int) ($order['problem_qty'] ?? 0) > 0;
     }
 
     private function isToBuyOrder(array $order): bool
     {
-        return ! $this->isPrePurchaseProblemOrder($order)
+        return ! $this->isProblemOrder($order)
             && (int) ($order['remaining_to_buy_qty'] ?? 0) > 0;
     }
 
     private function isAwaitingArrivalOrder(array $order): bool
     {
-        return ! $this->isPrePurchaseProblemOrder($order)
+        return ! $this->isProblemOrder($order)
             && ! $this->isToBuyOrder($order)
             && (int) ($order['awaiting_arrival_qty'] ?? 0) > 0;
     }
@@ -728,15 +675,6 @@ class PurchasingQueueService
     private function normaliseTab(string $tab): string
     {
         return in_array($tab, ['to_buy', 'purchases', 'problems', 'purchased_item_problems'], true) ? $tab : 'to_buy';
-    }
-
-    private function normalisePurchasedProblemView(string $view): string
-    {
-        if ($view === 'recorded') {
-            return 'open';
-        }
-
-        return in_array($view, ['items', 'open', 'history'], true) ? $view : 'items';
     }
 
     private function normalisePayment(string $payment): string
