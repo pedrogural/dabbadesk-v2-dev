@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\Purchasing\ItemLifecycleService;
 use App\Services\Purchasing\PurchasingQueueService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -939,35 +940,6 @@ class PurchasingController extends Controller
 
     private function remainingToBuyQty(int $rootItemId, int $itemQty): int
     {
-        $purchased = (int) DB::table('order_item_purchases')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['purchased', 'ordered', 'received'])
-            ->whereNull('cancelled_at')
-            ->sum('qty');
-
-        $terminalProblem = (int) DB::table('order_item_purchases')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['unfulfilled', 'failed', 'problem', 'supplier_problem', 'supplier_cancelled', 'cancelled', 'refunded', 'retailer_refunded', 'lost', 'damaged', 'wrong_item', 'unavailable'])
-            ->whereNull('cancelled_at')
-            ->where(function ($query) {
-                $query->whereNull('resolution_action')
-                    ->orWhere('resolution_action', '<>', 'return_to_buy');
-            })
-            ->where(function ($query) {
-                $query->whereNull('resolution_status')
-                    ->orWhere('resolution_status', 'pending');
-            })
-            ->sum('qty');
-
-        $activeIssueQty = (int) DB::table('purchase_issues')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', ['open', 'awaiting_customer'])
-            ->where(function ($query) {
-                $query->whereNull('resolution_type')
-                    ->orWhere('resolution_type', '<>', 'return_to_buy');
-            })
-            ->sum('qty');
-
-        return max(0, $itemQty - $purchased - $terminalProblem - $activeIssueQty);
+        return (new ItemLifecycleService())->remainingToBuyQty($rootItemId, $itemQty);
     }
 }

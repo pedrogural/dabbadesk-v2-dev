@@ -9,6 +9,7 @@ use App\Http\Controllers\MoneyDeskController;
 use App\Http\Controllers\OrderRequestsController;
 use App\Http\Controllers\OrdersController;
 use App\Http\Controllers\PurchasingController;
+use App\Http\Controllers\PurchaseDeskV2Controller;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicIntakeSupportController;
 use Illuminate\Support\Facades\Route;
@@ -21,6 +22,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
+    Route::get('/purchase-desk-v2', [PurchaseDeskV2Controller::class, 'index'])->name('purchase-desk-v2.index');
+    Route::get('/purchase-desk-v2/orders/{order}', [PurchaseDeskV2Controller::class, 'show'])->name('purchase-desk-v2.orders.show');
+
     Route::get('/purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
     Route::get('/purchasing/orders/{order}', [PurchasingController::class, 'show'])->name('purchasing.orders.show');
     Route::get('/purchasing/order/{order}', [PurchasingController::class, 'show'])->name('purchasing.show');

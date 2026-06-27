@@ -2,6 +2,7 @@
 
 namespace App\Support\Purchasing;
 
+use App\Services\Purchasing\ItemLifecycleService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -189,28 +190,12 @@ class PurchaseActionService
 
     private function itemOperationalTotals(object $item): array
     {
-        $rootItemId = $item->root_item_id ?: $item->id;
-
-        $purchasedQty = (int) DB::table('order_item_purchases')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', PurchaseProgressSummary::PURCHASED_STATUSES)
-            ->whereNull('cancelled_at')
-            ->sum('qty');
-
-        $problemQty = (int) DB::table('order_item_purchases')
-            ->where('root_item_id', $rootItemId)
-            ->whereIn('status', PurchaseProgressSummary::PROBLEM_STATUSES)
-            ->whereNull('cancelled_at')
-            ->sum('qty');
-
-        $arrivedQty = (int) DB::table('purchase_arrival_assignments')
-            ->where('root_item_id', $rootItemId)
-            ->whereNull('undone_at')
-            ->sum('qty');
+        $rootItemId = (int) ($item->root_item_id ?: $item->id);
+        $state = (new ItemLifecycleService())->currentStateForItem($rootItemId, (int) $item->quantity);
 
         return [
-            'purchase_remaining_qty' => max(0, (int) $item->quantity - $purchasedQty - $problemQty),
-            'arrival_remaining_qty' => max(0, $purchasedQty - $problemQty - $arrivedQty),
+            'purchase_remaining_qty' => (int) $state['remaining_to_buy_qty'],
+            'arrival_remaining_qty' => (int) $state['awaiting_arrival_qty'],
         ];
     }
 

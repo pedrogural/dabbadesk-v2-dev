@@ -50,6 +50,8 @@
             'replacement_expected' => 'Replacement expected in arrivals',
             'not_expected' => 'Removed from arrivals queue',
         ];
+        $activeIssueStatuses = ['open', 'awaiting_customer'];
+        $closedIssueStatuses = ['resolved', 'cancelled', 'returned_to_buy'];
     @endphp
 
     <div class="mx-auto max-w-6xl space-y-5">
@@ -165,19 +167,19 @@
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'items', 'payment' => $filters['payment'], 'q' => $filters['q'], 'mine' => ($filters['mine'] ?? false) ? 1 : null]) }}"
                            class="rounded-2xl px-4 py-2 text-sm font-black ring-1 transition {{ $purchasedProblemView === 'items' ? 'bg-rose-600 text-white ring-rose-600 shadow-sm' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50' }}">
-                            Purchased Items <span class="opacity-70">{{ $purchasedItemProblemRows->count() }}</span>
+                            Record New Problem <span class="opacity-70">{{ $purchasedItemProblemRows->count() }}</span>
                         </a>
                         <a href="{{ route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'open', 'payment' => $filters['payment'], 'q' => $filters['q'], 'mine' => ($filters['mine'] ?? false) ? 1 : null]) }}"
                            class="rounded-2xl px-4 py-2 text-sm font-black ring-1 transition {{ $purchasedProblemView === 'open' ? 'bg-rose-600 text-white ring-rose-600 shadow-sm' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50' }}">
-                            Open Problems <span class="opacity-70">{{ $purchasedProblemOpenCount }}</span>
+                            Current Problems <span class="opacity-70">{{ $purchasedProblemOpenCount }}</span>
                         </a>
                         <a href="{{ route('purchasing.index', ['tab' => 'purchased_item_problems', 'problem_view' => 'history', 'payment' => $filters['payment'], 'q' => $filters['q'], 'mine' => ($filters['mine'] ?? false) ? 1 : null]) }}"
                            class="rounded-2xl px-4 py-2 text-sm font-black ring-1 transition {{ $purchasedProblemView === 'history' ? 'bg-slate-700 text-white ring-slate-700 shadow-sm' : 'bg-white text-slate-600 ring-slate-200 hover:bg-slate-50' }}">
-                            History <span class="opacity-70">{{ $purchasedProblemHistoryCount }}</span>
+                            Closed History <span class="opacity-70">{{ $purchasedProblemHistoryCount }}</span>
                         </a>
                     </div>
                     <p class="mt-3 text-sm font-semibold leading-6 text-slate-500">
-                        Use <span class="font-black text-slate-700">Purchased Items</span> to record a new problem. Use <span class="font-black text-slate-700">Open Problems</span> as the working queue. Use <span class="font-black text-slate-700">History</span> for resolved or cancelled records.
+                        <span class="font-black text-slate-800">Current Problems</span> are unresolved and need operator action. <span class="font-black text-slate-800">Closed History</span> is audit-only: resolved, returned-to-buy or cancelled records should not be worked from there. Use <span class="font-black text-slate-800">Record New Problem</span> to log a fresh purchased-item problem.
                     </p>
                 </div>
 
@@ -203,12 +205,17 @@
                                 ? $problem->customer_line_total
                                 : ((float) ($problem->customer_unit_price ?? 0) * max(1, (int) ($problem->affected_qty ?: $problem->qty)));
                             $productUrl = trim((string) ($problem->product_url ?? ''));
+                            $isClosedProblem = in_array((string) $problem->status, $closedIssueStatuses, true) || ! in_array((string) $problem->status, $activeIssueStatuses, true);
+                            $stateLabel = $isClosedProblem ? 'Closed history - no action required' : 'Current problem - needs resolution';
+                            $statePillClass = $isClosedProblem ? 'bg-slate-100 text-slate-700 ring-slate-300' : 'bg-rose-600 text-white ring-rose-600';
+                            $statePanelClass = $isClosedProblem ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-rose-200 bg-rose-50 text-rose-800';
+                            $resolvedAtLabel = $problem->resolved_at ? \Carbon\Carbon::parse($problem->resolved_at)->format('d M Y H:i') : null;
                         @endphp
-                        <article class="rounded-[1.5rem] border {{ in_array((string) $problem->status, ['resolved', 'cancelled'], true) ? 'border-slate-200' : 'border-rose-100' }} bg-white p-4 shadow-sm sm:p-5">
+                        <article class="rounded-[1.5rem] border {{ $isClosedProblem ? 'border-slate-200 bg-slate-50/70' : 'border-rose-200 bg-white' }} p-4 shadow-sm sm:p-5">
                             <div class="grid gap-4 lg:grid-cols-[1fr_170px_180px_180px_170px] lg:items-start">
                                 <div class="min-w-0">
                                     <div class="flex flex-wrap items-center gap-2">
-                                        <span class="rounded-full {{ in_array((string) $problem->status, ['resolved', 'cancelled'], true) ? 'bg-slate-50 text-slate-600 ring-slate-200' : 'bg-rose-50 text-rose-700 ring-rose-200' }} px-3 py-1.5 text-xs font-black ring-1">{{ $purchasedProblemView === 'history' ? 'Problem history' : 'Open problem' }}</span>
+                                        <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $statePillClass }}">{{ $stateLabel }}</span>
                                         <span class="rounded-full bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-600 ring-1 ring-slate-200">Order #{{ $problem->order_number }}</span>
                                         <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $statusClass }}">{{ ucfirst(str_replace('_', ' ', (string) $problem->status)) }}</span>
                                     </div>
@@ -217,6 +224,14 @@
                                     <p class="mt-1 text-xs font-semibold text-slate-400">
                                         Recorded {{ $problem->created_at ? \Carbon\Carbon::parse($problem->created_at)->format('d M Y H:i') : '—' }} by {{ $problem->created_by_name ?: 'Unknown user' }}
                                     </p>
+
+                                    <div class="mt-3 rounded-2xl border px-4 py-3 text-sm font-bold leading-6 {{ $statePanelClass }}">
+                                        @if ($isClosedProblem)
+                                            This is a historical record. It has been closed{{ $resolvedAtLabel ? ' on ' . $resolvedAtLabel : '' }}{{ $problem->resolved_by_name ? ' by ' . $problem->resolved_by_name : '' }}. Do not use it as a work queue item.
+                                        @else
+                                            This is active and still needs a decision or resolution. Work this item until it is returned to buy, resolved, cancelled or otherwise closed.
+                                        @endif
+                                    </div>
 
                                     <div class="mt-3 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-3">
                                         <div class="rounded-2xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100">
@@ -375,8 +390,8 @@
                         </article>
                     @empty
                         <div class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
-                            <p class="text-lg font-black text-slate-900">{{ $purchasedProblemView === 'history' ? 'No purchased-item problem history found.' : 'No open purchased-item problems found.' }}</p>
-                            <p class="mt-2 text-sm font-semibold text-slate-500">{{ $purchasedProblemView === 'history' ? 'Cancelled and resolved records will appear here.' : 'Record one from Purchased Items, or change the search/payment filter.' }}</p>
+                            <p class="text-lg font-black text-slate-900">{{ $purchasedProblemView === 'history' ? 'No closed purchased-item problem history found.' : 'No current purchased-item problems found.' }}</p>
+                            <p class="mt-2 text-sm font-semibold text-slate-500">{{ $purchasedProblemView === 'history' ? 'Resolved, returned-to-buy and cancelled records will appear here.' : 'Only unresolved purchased-item problems appear here. Record one from Record New Problem, or change the search/payment filter.' }}</p>
                         </div>
                     @endforelse
                 @else
@@ -486,7 +501,7 @@
                     @php
                         $payClass = $paymentBadge[$order['payment_status']] ?? $paymentBadge['unpaid'];
                         $payText = $paymentLabel[$order['payment_status']] ?? ucfirst((string) $order['payment_status']);
-                        $primaryAction = $activeTab === 'problems' ? 'View Purchase Issues' : 'Purchase Items';
+                        $primaryAction = $activeTab === 'problems' ? 'View Current Issues' : 'Purchase Items';
                     @endphp
                     <article class="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -505,7 +520,7 @@
                             <div class="grid gap-2 text-sm sm:grid-cols-3 lg:min-w-[460px]">
                                 <div class="rounded-2xl bg-indigo-50 p-3 ring-1 ring-indigo-100"><p class="text-[10px] font-black uppercase tracking-wide text-indigo-500">To purchase</p><p class="mt-1 font-black text-indigo-950">{{ $order['remaining_to_buy_qty'] }}</p></div>
                                 <div class="rounded-2xl bg-emerald-50 p-3 ring-1 ring-emerald-100"><p class="text-[10px] font-black uppercase tracking-wide text-emerald-600">Purchased</p><p class="mt-1 font-black text-emerald-950">{{ $order['purchased_qty'] }}</p></div>
-                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Purchase issues</p><p class="mt-1 font-black text-rose-950">{{ $activeTab === 'problems' ? ($order['pre_purchase_problem_qty'] ?? $order['problem_qty']) : $order['problem_qty'] }}</p></div>
+                                <div class="rounded-2xl bg-rose-50 p-3 ring-1 ring-rose-100"><p class="text-[10px] font-black uppercase tracking-wide text-rose-500">Current issues</p><p class="mt-1 font-black text-rose-950">{{ $activeTab === 'problems' ? ($order['pre_purchase_problem_qty'] ?? $order['problem_qty']) : $order['problem_qty'] }}</p></div>
                             </div>
                         </div>
 

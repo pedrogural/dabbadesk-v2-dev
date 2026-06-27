@@ -180,7 +180,8 @@ class PurchasingQueueService
                 'overview' => 'Overview',
                 'buy' => 'Buy',
                 'awaiting' => 'Awaiting Arrival',
-                'problems' => 'Problems',
+                'problems' => 'Purchase Issues',
+                'purchased_item_problems' => 'Purchased Item Problems',
                 'timeline' => 'Timeline',
             ],
         ];
@@ -188,30 +189,11 @@ class PurchasingQueueService
 
     private function itemRows(string $search = '', ?int $orderId = null, ?int $mineUserId = null): Collection
     {
-        $purchaseTotals = DB::table('order_item_purchases')
-            ->selectRaw('root_item_id')
-            ->selectRaw("SUM(CASE WHEN status IN ('purchased','ordered','received') AND cancelled_at IS NULL THEN qty ELSE 0 END) as gross_purchased_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' AND COALESCE(resolution_action, '') <> 'return_to_buy' THEN qty ELSE 0 END) as terminal_problem_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('unfulfilled','failed','problem','supplier_problem','supplier_cancelled','cancelled','refunded','retailer_refunded','lost','damaged','wrong_item','unavailable') AND cancelled_at IS NULL AND COALESCE(resolution_status, 'pending') = 'pending' AND COALESCE(resolution_action, '') <> 'return_to_buy' THEN qty ELSE 0 END) as pending_problem_qty")
-            ->selectRaw('MAX(created_at) as latest_purchase_event_at')
-            ->selectRaw('COUNT(*) as purchase_event_count')
-            ->groupBy('root_item_id');
+        $lifecycle = new ItemLifecycleService();
 
-        $arrivalTotals = DB::table('purchase_arrival_assignments')
-            ->selectRaw('root_item_id')
-            ->selectRaw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as arrived_qty')
-            ->selectRaw('MAX(matched_at) as latest_arrival_at')
-            ->groupBy('root_item_id');
-
-        $issueTotals = DB::table('purchase_issues')
-            ->selectRaw('root_item_id')
-            ->selectRaw("SUM(CASE WHEN status IN ('open','awaiting_customer') AND COALESCE(resolution_type, '') <> 'return_to_buy' THEN qty ELSE 0 END) as active_issue_qty")
-            ->selectRaw("SUM(CASE WHEN status IN ('returned_to_buy','resolved') AND COALESCE(resolution_type, '') = 'return_to_buy' THEN COALESCE(affected_qty, qty, 1) ELSE 0 END) as return_to_buy_issue_qty")
-            ->selectRaw("SUM(CASE WHEN status = 'resolved' AND resolution_type IN ('customer_cancelled','customer_refunded','duplicate_item','no_longer_required') THEN qty ELSE 0 END) as resolved_terminal_issue_qty")
-            ->selectRaw("SUM(CASE WHEN status = 'awaiting_customer' THEN 1 ELSE 0 END) as awaiting_customer_issue_count")
-            ->selectRaw('COUNT(*) as issue_count')
-            ->selectRaw('MAX(created_at) as latest_issue_at')
-            ->groupBy('root_item_id');
+        $purchaseTotals = $lifecycle->purchaseTotalsSubquery();
+        $arrivalTotals = $lifecycle->arrivalTotalsSubquery();
+        $issueTotals = $lifecycle->issueTotalsSubquery();
 
         $settlementTotals = DB::table('order_transactions')
             ->selectRaw('order_id')
@@ -271,6 +253,8 @@ class PurchasingQueueService
                 DB::raw('GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) as purchased_qty'),
                 DB::raw('COALESCE(pt.terminal_problem_qty, 0) as terminal_problem_qty'),
                 DB::raw('COALESCE(pit.active_issue_qty, 0) as active_issue_qty'),
+                DB::raw('COALESCE(pit.active_pre_purchase_issue_qty, 0) as active_pre_purchase_issue_qty'),
+                DB::raw('COALESCE(pit.active_post_purchase_issue_qty, 0) as active_post_purchase_issue_qty'),
                 DB::raw('COALESCE(pit.resolved_terminal_issue_qty, 0) as resolved_terminal_issue_qty'),
                 DB::raw('COALESCE(pit.awaiting_customer_issue_count, 0) as awaiting_customer_issue_count'),
                 DB::raw("CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END as item_sourcing_problem_qty"),
@@ -285,7 +269,7 @@ class PurchasingQueueService
                     WHEN COALESCE(st.settled_amount, 0) > 0 THEN 'part_paid'
                     ELSE 'unpaid'
                 END as payment_status"),
-                DB::raw("GREATEST(0, oi.quantity - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0) - CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END) as remaining_to_buy_qty"),
+                DB::raw("LEAST(oi.quantity, GREATEST(0, oi.quantity - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0) - CASE WHEN COALESCE(pit.active_issue_qty, 0) > 0 THEN 0 WHEN oi.purchase_problem_reason IS NOT NULL AND oi.purchase_problem_reason <> '' THEN oi.quantity ELSE 0 END)) as remaining_to_buy_qty"),
                 DB::raw('GREATEST(0, GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(at.arrived_qty, 0)) as awaiting_arrival_qty'),
             ])
             ->whereNull('o.cancelled_at')
@@ -356,8 +340,8 @@ class PurchasingQueueService
                 $row->resolved_terminal_issue_qty = (int) ($row->resolved_terminal_issue_qty ?? 0);
                 $row->awaiting_customer_issue_count = (int) ($row->awaiting_customer_issue_count ?? 0);
                 $row->arrived_qty = (int) $row->arrived_qty;
-                $row->remaining_to_buy_qty = (int) $row->remaining_to_buy_qty;
-                $row->awaiting_arrival_qty = (int) $row->awaiting_arrival_qty;
+                $row->remaining_to_buy_qty = min((int) $row->quantity, max(0, (int) $row->remaining_to_buy_qty));
+                $row->awaiting_arrival_qty = max(0, (int) $row->awaiting_arrival_qty);
                 $row->purchase_event_count = (int) $row->purchase_event_count;
                 $row->requires_inspection = (int) ($row->requires_inspection ?? 0);
                 $row->inspection_note = trim((string) ($row->inspection_note ?? ''));
@@ -581,9 +565,9 @@ class PurchasingQueueService
             });
 
         if ($view === 'history') {
-            $query->whereIn('pi.status', ['resolved', 'cancelled']);
+            $query->whereIn('pi.status', ['resolved', 'cancelled', 'returned_to_buy']);
         } else {
-            $query->whereIn('pi.status', ['open', 'awaiting_customer', 'returned_to_buy']);
+            $query->whereIn('pi.status', ['open', 'awaiting_customer']);
         }
 
         if ($search !== '') {

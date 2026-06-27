@@ -55,15 +55,17 @@
         ];
         $prePurchaseIssuesForView = $issues->filter(fn ($issue) => ($issue->issue_stage ?? 'pre_purchase') === 'pre_purchase')->values();
         $postPurchaseIssuesForView = $issues->filter(fn ($issue) => in_array(($issue->issue_stage ?? 'pre_purchase'), ['post_purchase', 'arrival'], true))->values();
-        $prePurchaseIssueCount = $prePurchaseIssuesForView->filter(fn ($issue) => in_array((string) $issue->status, ['open', 'awaiting_customer'], true))->count();
-        $postPurchaseIssueCount = $postPurchaseIssuesForView->filter(fn ($issue) => in_array((string) $issue->status, ['open', 'awaiting_customer'], true))->count();
+        $activeIssueStatuses = ['open', 'awaiting_customer'];
+        $closedIssueStatuses = ['resolved', 'cancelled', 'returned_to_buy'];
+        $prePurchaseIssueCount = $prePurchaseIssuesForView->filter(fn ($issue) => in_array((string) $issue->status, $activeIssueStatuses, true))->count();
+        $postPurchaseIssueCount = $postPurchaseIssuesForView->filter(fn ($issue) => in_array((string) $issue->status, $activeIssueStatuses, true))->count();
 
         $isIssueTab = in_array($activeTab, ['problems', 'exceptions'], true);
         $issueView = request('issue_view');
         $activeIssueView = $activeTab === 'exceptions' ? 'post' : (in_array($issueView, ['pre', 'post'], true) ? $issueView : 'pre');
         $currentIssueSetForView = $activeIssueView === 'post' ? $postPurchaseIssuesForView : $prePurchaseIssuesForView;
-        $activeIssuesForView = $currentIssueSetForView->filter(fn ($issue) => in_array((string) $issue->status, ['open', 'awaiting_customer'], true))->values();
-        $resolvedIssuesForView = $currentIssueSetForView->reject(fn ($issue) => in_array((string) $issue->status, ['open', 'awaiting_customer'], true))->values();
+        $activeIssuesForView = $currentIssueSetForView->filter(fn ($issue) => in_array((string) $issue->status, $activeIssueStatuses, true))->values();
+        $resolvedIssuesForView = $currentIssueSetForView->reject(fn ($issue) => in_array((string) $issue->status, $activeIssueStatuses, true))->values();
         $issuePageTitle = $activeIssueView === 'post' ? 'Purchased item problems' : 'Pre-purchase problems';
         $issueEmptyTitle = $activeIssueView === 'post' ? 'No active purchased item problems.' : 'No active pre-purchase problems.';
         $issueEmptyText = $activeIssueView === 'post'
@@ -132,8 +134,8 @@
             </div>
 
             <div class="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-xs font-black">
-                <span class="rounded-full {{ $prePurchaseIssueCount > 0 ? 'bg-amber-50 text-amber-700 ring-amber-100' : 'bg-slate-50 text-slate-700 ring-slate-200' }} px-3 py-1.5 ring-1">Purchasing problems: {{ $prePurchaseIssueCount }}</span>
-                <span class="rounded-full {{ $postPurchaseIssueCount > 0 ? 'bg-rose-50 text-rose-700 ring-rose-100' : 'bg-slate-50 text-slate-700 ring-slate-200' }} px-3 py-1.5 ring-1">Purchased item problems: {{ $postPurchaseIssueCount }}</span>
+                <span class="rounded-full {{ $prePurchaseIssueCount > 0 ? 'bg-amber-50 text-amber-700 ring-amber-100' : 'bg-slate-50 text-slate-700 ring-slate-200' }} px-3 py-1.5 ring-1">Current purchasing problems: {{ $prePurchaseIssueCount }}</span>
+                <span class="rounded-full {{ $postPurchaseIssueCount > 0 ? 'bg-rose-50 text-rose-700 ring-rose-100' : 'bg-slate-50 text-slate-700 ring-slate-200' }} px-3 py-1.5 ring-1">Current purchased item problems: {{ $postPurchaseIssueCount }}</span>
                 <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-700 ring-1 ring-indigo-100 hover:bg-indigo-100">View full order ↗</a>
             </div>
         </section>
@@ -146,7 +148,7 @@
                         $isActiveMainTab = $tabKey === 'problems'
                             ? in_array($activeTab, ['problems', 'exceptions'], true)
                             : $activeTab === $tabKey;
-                        $displayTabLabel = $tabKey === 'problems' ? 'Purchase Issues' : $tabLabel;
+                        $displayTabLabel = $tabKey === 'problems' ? 'Current Issues' : $tabLabel;
                     @endphp
                     <a href="{{ route('purchasing.orders.show', ['order' => $order->id, 'tab' => $tabKey]) }}" class="rounded-2xl px-4 py-2 ring-1 transition {{ $isActiveMainTab ? 'bg-indigo-600 text-white ring-indigo-600 shadow-sm' : 'bg-white text-slate-600 ring-slate-200 hover:bg-indigo-50 hover:text-indigo-700' }}">{{ $displayTabLabel }}</a>
                 @endforeach
@@ -283,7 +285,7 @@
                             </p>
                         </div>
                         <div class="rounded-2xl bg-white px-4 py-3 text-sm font-black text-slate-700 ring-1 ring-slate-200">
-                            {{ $activeIssuesForView->count() }} active · {{ $resolvedIssuesForView->count() }} history
+                            {{ $activeIssuesForView->count() }} current · {{ $resolvedIssuesForView->count() }} closed history
                         </div>
                     </div>
                 </div>
@@ -299,16 +301,23 @@
                     </a>
                 </div>
 
+                <div class="rounded-[1.25rem] border border-white/70 bg-white/80 p-4 text-sm font-semibold leading-6 text-slate-600 shadow-sm">
+                    <span class="font-black text-slate-900">Current queue:</span> only unresolved items needing action are shown below. Closed / returned-to-buy / resolved records are kept separately under history and should not be worked from there.
+                </div>
+
                 @forelse ($activeIssuesForView as $issue)
                     @php
                         $issueTypeLabel = $issueTypeLabels[$issue->issue_type] ?? ucfirst(str_replace('_', ' ', (string) $issue->issue_type));
                         $severityClass = $severityClasses[$issue->severity] ?? $severityClasses['medium'];
                         $statusClass = $statusClasses[$issue->status] ?? 'bg-slate-50 text-slate-700 ring-slate-200';
+                        $activeCardBorder = $activeIssueView === 'post' ? 'border-rose-200' : 'border-amber-200';
+                        $activeQueuePillClass = $activeIssueView === 'post' ? 'bg-rose-600 text-white ring-rose-600' : 'bg-amber-500 text-white ring-amber-500';
                     @endphp
-                    <article class="rounded-[1.5rem] border border-amber-100 bg-white p-5 shadow-sm">
+                    <article class="rounded-[1.5rem] border {{ $activeCardBorder }} bg-white p-5 shadow-sm">
                         <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                             <div class="min-w-0 flex-1">
                                 <div class="flex flex-wrap items-center gap-2">
+                                    <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $activeQueuePillClass }}">CURRENT - NEEDS RESOLUTION</span>
                                     <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $severityClass }}">{{ strtoupper((string) $issue->severity) }}</span>
                                     <span class="rounded-full px-3 py-1.5 text-xs font-black ring-1 {{ $statusClass }}">{{ str_replace('_', ' ', strtoupper((string) $issue->status)) }}</span>
                                     <span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700 ring-1 ring-amber-200">{{ $issueTypeLabel }}</span>
@@ -461,10 +470,11 @@
                 @endforelse
 
                 @if ($resolvedIssuesForView->isNotEmpty())
-                    <details class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                        <summary class="cursor-pointer text-sm font-black text-slate-800">{{ $activeIssueView === 'post' ? 'Resolved purchased item problem history' : 'Resolved / returned pre-purchase problem history' }} ({{ $resolvedIssuesForView->count() }})</summary>
+                    <details class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-5 shadow-sm">
+                        <summary class="cursor-pointer text-sm font-black text-slate-800">Closed history - not active work queue ({{ $resolvedIssuesForView->count() }})</summary>
+                        <p class="mt-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-600">These records are kept for audit/history. They are resolved, returned to buy, cancelled, or otherwise closed and should not be treated as current operator work.</p>
                         <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200">
-                            <div class="hidden grid-cols-[130px_1fr_90px_170px] gap-3 bg-slate-50 px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-400 md:grid">
+                            <div class="hidden grid-cols-[150px_1fr_90px_190px] gap-3 bg-slate-100 px-4 py-3 text-[10px] font-black uppercase tracking-wide text-slate-500 md:grid">
                                 <div>Status</div>
                                 <div>Item</div>
                                 <div>Qty</div>
@@ -474,8 +484,8 @@
                                 @php
                                     $historyStatusClass = $statusClasses[$historyIssue->status] ?? 'bg-slate-50 text-slate-700 ring-slate-200';
                                 @endphp
-                                <div class="grid gap-3 border-t border-slate-100 px-4 py-3 text-sm first:border-t-0 md:grid-cols-[130px_1fr_90px_170px] md:items-center">
-                                    <div><span class="rounded-full px-2.5 py-1 text-[10px] font-black ring-1 {{ $historyStatusClass }}">{{ str_replace('_', ' ', strtoupper((string) $historyIssue->status)) }}</span></div>
+                                <div class="grid gap-3 border-t border-slate-100 bg-white px-4 py-3 text-sm first:border-t-0 md:grid-cols-[150px_1fr_90px_190px] md:items-center">
+                                    <div><span class="rounded-full px-2.5 py-1 text-[10px] font-black ring-1 {{ $historyStatusClass }}">HISTORY: {{ str_replace('_', ' ', strtoupper((string) $historyIssue->status)) }}</span></div>
                                     <div>
                                         <p class="font-bold text-slate-800">{{ $historyIssue->item_name }}</p>
                                         <p class="mt-1 text-xs font-semibold text-slate-400">{{ $historyIssue->retailer_name }}</p>
