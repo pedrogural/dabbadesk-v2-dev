@@ -27,7 +27,7 @@
         </section>
 
         <section class="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <form method="GET" action="{{ route('purchase-desk-v2.index') }}" x-data="{ timer: null }" class="grid gap-3 lg:grid-cols-[1fr_240px]">
+            <form method="GET" action="{{ route('purchases.index') }}" x-data="{ timer: null }" class="grid gap-3 lg:grid-cols-[1fr_240px]">
                 <div>
                     <label class="text-xs font-black uppercase tracking-wide text-slate-400">Live search</label>
                     <input
@@ -79,19 +79,30 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 grid gap-2 lg:grid-cols-2">
+                    <div class="mt-4 space-y-3">
                         <div>
-                            <div class="mb-1 flex justify-between text-[11px] font-black uppercase tracking-wide text-slate-400"><span>Purchased progress</span><span>{{ $purchasedPct }}%</span></div>
-                            <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-indigo-500" style="width: {{ $purchasedPct }}%"></div></div>
+                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                                <span>Purchasing</span>
+                                <span>{{ $order->purchased_qty }} / {{ $order->active_item_qty }} · {{ $purchasedPct }}%</span>
+                            </div>
+                            <div class="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-indigo-500" style="width: {{ $purchasedPct }}%"></div>
+                            </div>
                         </div>
+
                         <div>
-                            <div class="mb-1 flex justify-between text-[11px] font-black uppercase tracking-wide text-slate-400"><span>Arrivals progress</span><span>{{ $arrivedPct }}%</span></div>
-                            <div class="h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-emerald-500" style="width: {{ $arrivedPct }}%"></div></div>
+                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                                <span>Arrivals</span>
+                                <span>{{ $order->arrived_qty }} / {{ $order->active_item_qty }} · {{ $arrivedPct }}%</span>
+                            </div>
+                            <div class="h-2.5 overflow-hidden rounded-full bg-slate-100">
+                                <div class="h-full rounded-full bg-emerald-500" style="width: {{ $arrivedPct }}%"></div>
+                            </div>
                         </div>
                     </div>
 
                     <div class="mt-4 flex flex-wrap gap-2 text-xs font-black">
-                        <a href="{{ route('purchase-desk-v2.orders.show', $order->id) }}" class="rounded-full bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700">Purchase items</a>
+                        <a href="{{ route('purchases.orders.show', $order->id) }}" class="rounded-full bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700">Purchase items</a>
                         <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700 hover:bg-slate-200">Order page</a>
                         @if (!empty($order->draft_order_id))
                             <a href="{{ route('draft-orders.show', $order->draft_order_id) }}" class="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700 hover:bg-slate-200">Draft page</a>

@@ -3,7 +3,9 @@
 namespace App\Services\Purchasing;
 
 use Illuminate\Support\Collection;
+use App\Services\Retailers\RetailerRegistrationService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class PurchaseDeskV2Service
 {
@@ -149,6 +151,397 @@ class PurchaseDeskV2Service
         ];
     }
 
+
+    public function recordPurchase(int $orderId, int $itemId, array $data, ?int $userId = null): array
+    {
+        return DB::transaction(function () use ($orderId, $itemId, $data, $userId) {
+            $item = $this->itemRowsForOrder($orderId, '', 'all')
+                ->first(fn ($row) => (int) $row->item_id === $itemId);
+
+            if (! $item) {
+                throw ValidationException::withMessages([
+                    'item' => 'This item was not found on the selected order.',
+                ]);
+            }
+
+            $maxQty = max(0, (int) $item->remaining_to_buy_qty + (int) $item->active_pre_purchase_issue_qty);
+            $qty = (int) ($data['qty'] ?? 0);
+
+            if ($maxQty < 1) {
+                throw ValidationException::withMessages([
+                    'qty' => 'There is no remaining or problem quantity available to purchase for this item.',
+                ]);
+            }
+
+            if ($qty > $maxQty) {
+                throw ValidationException::withMessages([
+                    'qty' => 'Quantity cannot exceed the outstanding purchasable quantity of ' . $maxQty . '.',
+                ]);
+            }
+
+            $unitPrice = round((float) ($data['purchase_unit_price'] ?? 0), 2);
+            $lineTotal = round($unitPrice * $qty, 2);
+            $orderedAt = ! empty($data['ordered_at']) ? $data['ordered_at'] : now()->toDateString();
+            $rootItemId = (int) ($item->lineage_root_id ?: $item->item_id);
+
+            $purchaseId = DB::table('order_item_purchases')->insertGetId([
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'order_id' => $orderId,
+                'order_retailer_id' => $item->order_retailer_id,
+                'retailer_id' => ! empty($data['supplier_retailer_id']) ? (int) $data['supplier_retailer_id'] : $item->retailer_id,
+                'qty' => $qty,
+                'status' => 'purchased',
+                'purchase_unit_price' => $unitPrice,
+                'purchase_line_total' => $lineTotal,
+                'estimated_retailer_delivery_date' => ! empty($data['estimated_retailer_delivery_date']) ? $data['estimated_retailer_delivery_date'] : null,
+                'currency' => 'GBP',
+                'marketplace_seller' => trim((string) ($data['marketplace_seller'] ?? '')) ?: ($item->marketplace_seller ?: null),
+                'retailer_order_reference' => trim((string) ($data['retailer_order_reference'] ?? '')) ?: null,
+                'note' => trim((string) ($data['note'] ?? '')) ?: null,
+                'ordered_at' => $orderedAt,
+                'resolution_status' => null,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $openIssueIds = DB::table('purchase_issues')
+                ->where('root_item_id', $rootItemId)
+                ->where('issue_stage', 'pre_purchase')
+                ->whereIn('status', ['open', 'pending', 'awaiting_customer'])
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $resolvedIssues = 0;
+
+            if (! empty($openIssueIds)) {
+                $resolutionNote = 'Automatically resolved because purchase event #' . $purchaseId . ' was recorded for this item.';
+
+                $resolvedIssues = DB::table('purchase_issues')
+                    ->whereIn('id', $openIssueIds)
+                    ->update([
+                        'status' => 'resolved',
+                        'resolution_type' => 'purchased_successfully',
+                        'resolution_notes' => DB::raw("TRIM(CONCAT(COALESCE(resolution_notes, ''), CASE WHEN COALESCE(resolution_notes, '') = '' THEN '' ELSE '\\n' END, " . DB::getPdo()->quote($resolutionNote) . "))"),
+                        'resolved_at' => now(),
+                        'resolved_by_user_id' => $userId,
+                        'updated_by_user_id' => $userId,
+                        'updated_at' => now(),
+                    ]);
+
+                foreach ($openIssueIds as $issueId) {
+                    $this->writePurchaseDeskEvent('purchase_issue', $issueId, 'pre_purchase_issue_resolved_by_purchase', [
+                        'order_id' => $orderId,
+                        'order_item_id' => $itemId,
+                        'root_item_id' => $rootItemId,
+                        'purchase_event_id' => $purchaseId,
+                        'qty' => $qty,
+                    ], $userId);
+
+                    $this->writeActivityLog('purchase_issue', $issueId, 'Pre-purchase issue resolved', $resolutionNote, $userId);
+                }
+            }
+
+            $this->writePurchaseDeskEvent('order_item_purchase', $purchaseId, 'purchase_recorded_v2', [
+                'order_id' => $orderId,
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'qty' => $qty,
+                'purchase_unit_price' => $unitPrice,
+                'purchase_line_total' => $lineTotal,
+                'retailer_order_reference' => trim((string) ($data['retailer_order_reference'] ?? '')) ?: null,
+                'resolved_issue_ids' => $openIssueIds,
+            ], $userId);
+
+            return [
+                'purchase_id' => $purchaseId,
+                'resolved_issues' => (int) $resolvedIssues,
+            ];
+        });
+    }
+
+
+    public function recordPurchaseBasket(int $orderId, array $data, ?int $userId = null): array
+    {
+        $lines = collect($data['lines'] ?? [])
+            ->filter(fn ($line) => ! empty($line['selected']))
+            ->mapWithKeys(fn ($line, $itemId) => [(int) $itemId => $line]);
+
+        if ($lines->isEmpty()) {
+            throw ValidationException::withMessages([
+                'lines' => 'Select at least one item line to record a purchase.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($orderId, $data, $userId, $lines) {
+            $created = 0;
+            $resolvedIssues = 0;
+            $purchaseIds = [];
+
+            foreach ($lines as $itemId => $line) {
+                $lineData = [
+                    'qty' => $line['qty'] ?? null,
+                    'purchase_unit_price' => $line['purchase_unit_price'] ?? null,
+                    'ordered_at' => $data['ordered_at'] ?? null,
+                    'estimated_retailer_delivery_date' => $data['estimated_retailer_delivery_date'] ?? null,
+                    'retailer_order_reference' => $data['retailer_order_reference'] ?? null,
+                    'marketplace_seller' => $data['marketplace_seller'] ?? null,
+                    'supplier_retailer_id' => $data['supplier_retailer_id'] ?? null,
+                    'note' => $data['note'] ?? null,
+                ];
+
+                $result = $this->recordPurchase($orderId, (int) $itemId, $lineData, $userId);
+                $created++;
+                $resolvedIssues += (int) ($result['resolved_issues'] ?? 0);
+                $purchaseIds[] = (int) ($result['purchase_id'] ?? 0);
+            }
+
+            $this->writePurchaseDeskEvent('order', $orderId, 'purchase_basket_recorded_v2', [
+                'line_count' => $created,
+                'purchase_ids' => array_values(array_filter($purchaseIds)),
+                'retailer_order_reference' => trim((string) ($data['retailer_order_reference'] ?? '')) ?: null,
+                'supplier_retailer_id' => ! empty($data['supplier_retailer_id']) ? (int) $data['supplier_retailer_id'] : null,
+            ], $userId);
+
+            return [
+                'created' => $created,
+                'resolved_issues' => $resolvedIssues,
+            ];
+        });
+    }
+
+    public function updatePurchaseBatch(int $orderId, array $data, ?int $userId = null): array
+    {
+        $purchaseIds = collect($data['purchase_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($purchaseIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'purchase_ids' => 'No purchase lines were selected for editing.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($orderId, $data, $userId, $purchaseIds) {
+            $existing = DB::table('order_item_purchases')
+                ->where('order_id', $orderId)
+                ->whereIn('id', $purchaseIds->all())
+                ->whereNull('cancelled_at')
+                ->get();
+
+            if ($existing->count() !== $purchaseIds->count()) {
+                throw ValidationException::withMessages([
+                    'purchase_ids' => 'One or more purchase lines could not be found for this order.',
+                ]);
+            }
+
+            $orderedAt = ! empty($data['ordered_at']) ? \Carbon\Carbon::parse($data['ordered_at'])->toDateString() : null;
+            $eta = ! empty($data['estimated_retailer_delivery_date']) ? \Carbon\Carbon::parse($data['estimated_retailer_delivery_date'])->toDateString() : null;
+            $reference = trim((string) ($data['retailer_order_reference'] ?? '')) ?: null;
+            $seller = trim((string) ($data['marketplace_seller'] ?? '')) ?: null;
+            $note = trim((string) ($data['note'] ?? '')) ?: null;
+
+            $updates = [
+                'retailer_id' => (int) $data['supplier_retailer_id'],
+                'retailer_order_reference' => $reference,
+                'estimated_retailer_delivery_date' => $eta,
+                'marketplace_seller' => $seller,
+                'note' => $note,
+                'updated_by_user_id' => $userId,
+                'updated_at' => now(),
+            ];
+
+            if ($orderedAt !== null) {
+                $updates['ordered_at'] = $orderedAt;
+            }
+
+            $updated = DB::table('order_item_purchases')
+                ->where('order_id', $orderId)
+                ->whereIn('id', $purchaseIds->all())
+                ->whereNull('cancelled_at')
+                ->update($updates);
+
+            $this->writePurchaseDeskEvent('order', $orderId, 'purchase_batch_metadata_updated_v2', [
+                'purchase_ids' => $purchaseIds->all(),
+                'supplier_retailer_id' => (int) $data['supplier_retailer_id'],
+                'retailer_order_reference' => $reference,
+                'ordered_at' => $orderedAt,
+                'estimated_retailer_delivery_date' => $eta,
+                'marketplace_seller' => $seller,
+            ], $userId);
+
+            return [
+                'updated' => (int) $updated,
+            ];
+        });
+    }
+
+
+    public function undoPurchaseBatch(int $orderId, array $data, ?int $userId = null): array
+    {
+        $purchaseIds = collect($data['purchase_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($purchaseIds->isEmpty()) {
+            throw ValidationException::withMessages([
+                'purchase_ids' => 'No purchase lines were selected for undo.',
+            ]);
+        }
+
+        return DB::transaction(function () use ($orderId, $purchaseIds, $data, $userId) {
+            $undone = 0;
+            $reason = trim((string) ($data['reason'] ?? ''));
+
+            foreach ($purchaseIds as $purchaseId) {
+                $this->undoPurchaseLineInsideTransaction($orderId, (int) $purchaseId, $reason, $userId);
+                $undone++;
+            }
+
+            $this->writePurchaseDeskEvent('order', $orderId, 'purchase_batch_undone_v2', [
+                'purchase_ids' => $purchaseIds->all(),
+                'reason' => $reason,
+                'undone_count' => $undone,
+            ], $userId);
+
+            $this->writeActivityLog('order', $orderId, 'Purchase batch undone', $undone . ' purchase line' . ($undone === 1 ? '' : 's') . ' were undone. Reason: ' . $reason, $userId);
+
+            return [
+                'undone' => $undone,
+            ];
+        });
+    }
+
+    public function undoPurchaseLine(int $orderId, int $purchaseId, string $reason, ?int $userId = null): array
+    {
+        return DB::transaction(function () use ($orderId, $purchaseId, $reason, $userId) {
+            $this->undoPurchaseLineInsideTransaction($orderId, $purchaseId, trim($reason), $userId);
+
+            return [
+                'undone' => 1,
+            ];
+        });
+    }
+
+    private function undoPurchaseLineInsideTransaction(int $orderId, int $purchaseId, string $reason, ?int $userId = null): void
+    {
+        if ($reason === '') {
+            throw ValidationException::withMessages([
+                'reason' => 'Please enter a reason for undoing this purchase.',
+            ]);
+        }
+
+        $row = DB::table('order_item_purchases')
+            ->where('order_id', $orderId)
+            ->where('id', $purchaseId)
+            ->lockForUpdate()
+            ->first();
+
+        if (! $row) {
+            throw ValidationException::withMessages([
+                'purchase_ids' => 'One or more purchase lines could not be found for this order.',
+            ]);
+        }
+
+        if ($row->cancelled_at !== null) {
+            return;
+        }
+
+        if (! in_array((string) $row->status, ['purchased', 'ordered', 'received'], true)) {
+            throw ValidationException::withMessages([
+                'purchase_ids' => 'Only purchased lines can be undone from this screen.',
+            ]);
+        }
+
+        $hasArrival = DB::table('purchase_arrival_assignments')
+            ->where('order_item_purchase_id', $purchaseId)
+            ->whereNull('undone_at')
+            ->exists();
+
+        if ($hasArrival) {
+            throw ValidationException::withMessages([
+                'undo' => 'This purchase line has an active arrival assignment. Undo the arrival assignment before undoing the purchase.',
+            ]);
+        }
+
+        $noteAppend = "\nPurchase line undone " . now()->format('Y-m-d H:i') . ' by user #' . ($userId ?: 'unknown') . ': ' . $reason;
+
+        DB::table('order_item_purchases')
+            ->where('id', $purchaseId)
+            ->update([
+                'cancelled_at' => now(),
+                'internal_notes' => trim((string) ($row->internal_notes ?? '') . $noteAppend),
+                'updated_by_user_id' => $userId,
+                'updated_at' => now(),
+            ]);
+
+        $reversalId = DB::table('order_item_purchases')->insertGetId([
+            'order_item_id' => (int) $row->order_item_id,
+            'root_item_id' => (int) $row->root_item_id,
+            'order_id' => (int) $row->order_id,
+            'order_retailer_id' => $row->order_retailer_id,
+            'retailer_id' => $row->retailer_id,
+            'qty' => (int) $row->qty,
+            'status' => 'purchase_undo',
+            'reversal_of_purchase_id' => $purchaseId,
+            'purchase_unit_price' => $row->purchase_unit_price,
+            'purchase_line_total' => $row->purchase_line_total !== null ? -abs((float) $row->purchase_line_total) : null,
+            'estimated_retailer_delivery_date' => $row->estimated_retailer_delivery_date,
+            'currency' => $row->currency ?: 'GBP',
+            'marketplace_seller' => $row->marketplace_seller,
+            'retailer_order_reference' => $row->retailer_order_reference,
+            'note' => $row->note,
+            'ordered_at' => $row->ordered_at,
+            'internal_notes' => 'Reversal event for purchase #' . $purchaseId . '. Reason: ' . $reason,
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $activeQty = (int) DB::table('order_item_purchases')
+            ->where('root_item_id', $row->root_item_id)
+            ->whereIn('status', ['purchased', 'ordered', 'received'])
+            ->whereNull('cancelled_at')
+            ->sum('qty');
+
+        DB::table('order_items')
+            ->where('id', $row->order_item_id)
+            ->update([
+                'status' => $activeQty > 0 ? 'purchased' : 'requested',
+                'requires_inspection' => 0,
+                'inspection_note' => null,
+                'updated_by_user_id' => $userId,
+                'updated_at' => now(),
+            ]);
+
+        $this->writePurchaseDeskEvent('order_item_purchase', $purchaseId, 'purchase_line_undone_v2', [
+            'order_id' => $orderId,
+            'order_item_id' => (int) $row->order_item_id,
+            'root_item_id' => (int) $row->root_item_id,
+            'qty' => (int) $row->qty,
+            'reason' => $reason,
+            'reversal_purchase_id' => $reversalId,
+        ], $userId);
+
+        $this->writeActivityLog('order', $orderId, 'Purchase line undone', 'Purchase #' . $purchaseId . ' was undone and returned to the buying list. Reason: ' . $reason, $userId);
+    }
+
+
+    public function createSupplier(array $data, ?int $userId = null): int
+    {
+        $result = app(RetailerRegistrationService::class)->register($data, $userId);
+
+        return (int) $result['id'];
+    }
+
     public function orderWorkspace(int $orderId, array $filters = []): ?array
     {
         $order = DB::table('orders as o')
@@ -189,10 +582,16 @@ class PurchaseDeskV2Service
                     'pre_purchase_problem_qty' => (int) $rows->sum('active_pre_purchase_issue_qty'),
                     'items_cost' => (float) $rows->sum('line_subtotal'),
                     'actionable_count' => (int) $rows->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0 || (int) $item->active_pre_purchase_issue_qty > 0)->count(),
+                    'purchase_batches' => collect(),
+                    'purchase_batches_count' => 0,
+                    'purchase_batches_line_count' => 0,
+                    'purchase_batches_total' => 0.0,
                 ];
             })
             ->sortBy('retailer_name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
+
+        $retailers = $this->attachPurchaseBatchesToRetailers($retailers, $allItems, $purchaseEvents);
 
         $settlement = DB::query()->fromSub($this->settlementTotalsSubquery(), 'st')
             ->where('st.order_id', $orderId)
@@ -206,6 +605,7 @@ class PurchaseDeskV2Service
             'purchaseEvents' => $purchaseEvents,
             'purchaseEventsByRoot' => $purchaseEventsByRoot,
             'issuesByRoot' => $issuesByRoot,
+            'suppliers' => $this->activeSuppliers(),
             'filters' => [
                 'q' => $q,
                 'view' => $view,
@@ -312,6 +712,7 @@ class PurchaseDeskV2Service
     {
         $query = DB::table('order_item_purchases as oip')
             ->leftJoin('retailers as r', 'r.id', '=', 'oip.retailer_id')
+            ->leftJoin('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
             ->leftJoin('users as u', 'u.id', '=', 'oip.created_by_user_id')
             ->select([
                 'oip.id',
@@ -323,6 +724,7 @@ class PurchaseDeskV2Service
                 'oip.purchase_unit_price',
                 'oip.purchase_line_total',
                 'oip.currency',
+                'oip.retailer_id',
                 'oip.retailer_order_reference',
                 'oip.marketplace_seller',
                 'oip.ordered_at',
@@ -335,6 +737,9 @@ class PurchaseDeskV2Service
                 'oip.note',
                 'oip.created_at',
                 DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
+                'oi.item_name',
+                'oi.product_code',
+                'oi.product_url',
                 'u.name as created_by_name',
             ]);
 
@@ -349,6 +754,65 @@ class PurchaseDeskV2Service
             ->get();
     }
 
+    private function attachPurchaseBatchesToRetailers(Collection $retailers, Collection $allItems, Collection $purchaseEvents): Collection
+    {
+        $rootsByRetailerKey = $allItems
+            ->groupBy(fn ($item) => (string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer'))
+            ->map(fn (Collection $rows) => $rows->map(fn ($row) => (int) $row->lineage_root_id)->unique()->values());
+
+        return $retailers->map(function (array $retailer) use ($rootsByRetailerKey, $purchaseEvents) {
+            $key = (string) ($retailer['retailer_id'] ?? 0) . '|' . ($retailer['retailer_name'] ?: 'Unknown retailer');
+            $rootIds = $rootsByRetailerKey->get($key, collect())->all();
+
+            $events = $purchaseEvents
+                ->filter(fn ($event) => in_array((int) $event->root_item_id, $rootIds, true))
+                ->filter(fn ($event) => in_array((string) $event->status, ['purchased', 'ordered', 'received'], true))
+                ->values();
+
+            $batches = $events
+                ->groupBy(function ($event) {
+                    $date = $event->ordered_at ?: $event->created_at;
+                    $dateKey = $date ? \Carbon\Carbon::parse($date)->toDateString() : 'unknown-date';
+                    $supplierKey = (string) ($event->retailer_id ?? 0);
+                    $referenceKey = mb_strtolower(trim((string) ($event->retailer_order_reference ?? 'no-reference')));
+
+                    return $dateKey . '|' . $supplierKey . '|' . $referenceKey;
+                })
+                ->map(function (Collection $lines) {
+                    $first = $lines->first();
+                    $date = $first->ordered_at ?: $first->created_at;
+                    $timeAt = $first->created_at ?: $first->ordered_at;
+
+                    return [
+                        'date' => $date,
+                        'time_at' => $timeAt,
+                        'purchase_ids' => $lines->pluck('id')->map(fn ($id) => (int) $id)->values(),
+                        'supplier_retailer_id' => $first->retailer_id ?: null,
+                        'supplier_name' => $first->retailer_name ?: 'Unknown supplier',
+                        'retailer_order_reference' => $first->retailer_order_reference ?: null,
+                        'marketplace_seller' => $first->marketplace_seller ?: null,
+                        'note' => $first->note ?: null,
+                        'eta' => $lines->pluck('estimated_retailer_delivery_date')->filter()->sort()->first(),
+                        'qty' => (int) $lines->sum('qty'),
+                        'line_count' => $lines->count(),
+                        'total' => (float) $lines->sum('purchase_line_total'),
+                        'created_by_name' => $first->created_by_name ?: null,
+                        'latest_at' => $lines->max(fn ($line) => $line->ordered_at ?: $line->created_at),
+                        'lines' => $lines->sortBy('item_name', SORT_NATURAL | SORT_FLAG_CASE)->values(),
+                    ];
+                })
+                ->sortByDesc('latest_at')
+                ->values();
+
+            $retailer['purchase_batches'] = $batches;
+            $retailer['purchase_batches_count'] = $batches->count();
+            $retailer['purchase_batches_line_count'] = (int) $batches->sum('line_count');
+            $retailer['purchase_batches_total'] = (float) $batches->sum('total');
+
+            return $retailer;
+        });
+    }
+
     private function prePurchaseIssuesForOrder(int $orderId): Collection
     {
         return DB::table('purchase_issues as pi')
@@ -360,6 +824,9 @@ class PurchaseDeskV2Service
                 'oi.item_name',
                 'oi.product_code',
                 DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
+                'oi.item_name',
+                'oi.product_code',
+                'oi.product_url',
                 'u.name as created_by_name',
             ])
             ->where('pi.order_id', $orderId)
@@ -507,6 +974,45 @@ class PurchaseDeskV2Service
         }
 
         return $seen->unique()->values()->all();
+    }
+
+
+    private function writePurchaseDeskEvent(string $entityType, int $entityId, string $eventType, array $payload, ?int $userId = null): void
+    {
+        DB::table('order_events')->insert([
+            'entity_type' => $entityType,
+            'entity_id' => $entityId,
+            'event_type' => $eventType,
+            'payload' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            'created_by_user_id' => $userId,
+            'created_at' => now(),
+        ]);
+    }
+
+    private function writeActivityLog(string $subjectType, int $subjectId, string $title, string $body, ?int $userId = null): void
+    {
+        DB::table('activity_logs')->insert([
+            'subject_type' => $subjectType,
+            'subject_id' => $subjectId,
+            'type' => 'purchasing',
+            'title' => $title,
+            'body' => $body,
+            'occurred_at' => now(),
+            'created_by_user_id' => $userId,
+            'updated_by_user_id' => $userId,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+
+    private function activeSuppliers(): Collection
+    {
+        return DB::table('retailers')
+            ->select(['id', 'name', 'base_url'])
+            ->where('is_active', 1)
+            ->orderBy('name')
+            ->get();
     }
 
     private function settlementTotalsSubquery()

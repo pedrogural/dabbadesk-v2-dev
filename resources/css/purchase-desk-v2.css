@@ -1,0 +1,19 @@
+.purchase-desk-retailer-card {
+    scroll-margin-top: 1rem;
+}
+
+.purchase-desk-row-selected {
+    box-shadow: inset 4px 0 0 rgb(79 70 229);
+}
+
+.purchase-desk-sticky-card {
+    position: sticky;
+    bottom: 1rem;
+    z-index: 20;
+}
+
+@media (max-width: 1023px) {
+    .purchase-desk-sticky-card {
+        bottom: 0.5rem;
+    }
+}

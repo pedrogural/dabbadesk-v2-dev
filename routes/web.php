@@ -22,8 +22,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
-    Route::get('/purchase-desk-v2', [PurchaseDeskV2Controller::class, 'index'])->name('purchase-desk-v2.index');
-    Route::get('/purchase-desk-v2/orders/{order}', [PurchaseDeskV2Controller::class, 'show'])->name('purchase-desk-v2.orders.show');
+    // New purchasing rebuild. Keep this separate from the old Purchasing Desk until Phase 2 is complete.
+    Route::get('/purchases', [PurchaseDeskV2Controller::class, 'index'])->name('purchases.index');
+    Route::get('/purchases/orders/{order}', [PurchaseDeskV2Controller::class, 'show'])->name('purchases.orders.show');
+    Route::post('/purchases/orders/{order}/basket', [PurchaseDeskV2Controller::class, 'storeBasket'])->name('purchases.basket.store');
+    Route::post('/purchases/orders/{order}/suppliers', [PurchaseDeskV2Controller::class, 'storeSupplier'])->name('purchases.suppliers.store');
+    Route::patch('/purchases/orders/{order}/purchase-batches', [PurchaseDeskV2Controller::class, 'updateBatch'])->name('purchases.batches.update');
+    Route::post('/purchases/orders/{order}/purchase-batches/undo', [PurchaseDeskV2Controller::class, 'undoBatch'])->name('purchases.batches.undo');
+    Route::post('/purchases/orders/{order}/purchase-lines/{purchase}/undo', [PurchaseDeskV2Controller::class, 'undoLine'])->name('purchases.lines.undo');
+    Route::post('/purchases/orders/{order}/items/{item}/purchases', [PurchaseDeskV2Controller::class, 'storePurchase'])->name('purchases.purchases.store');
+
+    // Temporary backwards-compatible aliases for any old bookmarks during the transition.
+    Route::redirect('/purchase-desk-v2', '/purchases')->name('purchase-desk-v2.index');
+    Route::redirect('/purchase-desk-v2/orders/{order}', '/purchases/orders/{order}')->name('purchase-desk-v2.orders.show');
 
     Route::get('/purchasing', [PurchasingController::class, 'index'])->name('purchasing.index');
     Route::get('/purchasing/orders/{order}', [PurchasingController::class, 'show'])->name('purchasing.orders.show');
