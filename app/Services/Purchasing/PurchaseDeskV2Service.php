@@ -846,10 +846,26 @@ class PurchaseDeskV2Service
 
     private function purchaseEventsForOrderIds(array $orderIds = []): Collection
     {
+        $editEvents = DB::table('order_events')
+            ->selectRaw('entity_id as purchase_id')
+            ->selectRaw('COUNT(*) as edit_count')
+            ->selectRaw('MAX(created_at) as latest_edit_at')
+            ->where('entity_type', 'order_item_purchase')
+            ->where('event_type', 'purchase_line_updated_v2')
+            ->groupBy('entity_id');
+
+        $arrivalAssignments = DB::table('purchase_arrival_assignments')
+            ->selectRaw('order_item_purchase_id')
+            ->selectRaw('SUM(CASE WHEN undone_at IS NULL THEN qty ELSE 0 END) as active_arrival_qty')
+            ->whereNull('undone_at')
+            ->groupBy('order_item_purchase_id');
+
         $query = DB::table('order_item_purchases as oip')
             ->leftJoin('retailers as r', 'r.id', '=', 'oip.retailer_id')
             ->leftJoin('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
             ->leftJoin('users as u', 'u.id', '=', 'oip.created_by_user_id')
+            ->leftJoinSub($editEvents, 'pe', fn ($join) => $join->on('pe.purchase_id', '=', 'oip.id'))
+            ->leftJoinSub($arrivalAssignments, 'paa', fn ($join) => $join->on('paa.order_item_purchase_id', '=', 'oip.id'))
             ->select([
                 'oip.id',
                 'oip.order_id',
@@ -872,6 +888,9 @@ class PurchaseDeskV2Service
                 'oip.resolution_action',
                 'oip.note',
                 'oip.created_at',
+                DB::raw('COALESCE(pe.edit_count, 0) as edit_count'),
+                'pe.latest_edit_at',
+                DB::raw('COALESCE(paa.active_arrival_qty, 0) as active_arrival_qty'),
                 DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
                 'oi.item_name',
                 'oi.product_code',
@@ -884,7 +903,6 @@ class PurchaseDeskV2Service
         }
 
         return $query
-            ->whereNull('oip.cancelled_at')
             ->orderByDesc(DB::raw('COALESCE(oip.ordered_at, oip.created_at)'))
             ->orderByDesc('oip.id')
             ->get();
@@ -918,23 +936,38 @@ class PurchaseDeskV2Service
                     $first = $lines->first();
                     $date = $first->ordered_at ?: $first->created_at;
                     $timeAt = $first->created_at ?: $first->ordered_at;
+                    $activeLines = $lines->filter(fn ($line) => $line->cancelled_at === null)->values();
+                    $undoneLines = $lines->filter(fn ($line) => $line->cancelled_at !== null)->values();
+                    $editedLines = $lines->filter(fn ($line) => (int) ($line->edit_count ?? 0) > 0)->values();
 
                     return [
                         'date' => $date,
                         'time_at' => $timeAt,
-                        'purchase_ids' => $lines->pluck('id')->map(fn ($id) => (int) $id)->values(),
+                        'purchase_ids' => $activeLines->pluck('id')->map(fn ($id) => (int) $id)->values(),
+                        'all_purchase_ids' => $lines->pluck('id')->map(fn ($id) => (int) $id)->values(),
                         'supplier_retailer_id' => $first->retailer_id ?: null,
                         'supplier_name' => $first->retailer_name ?: 'Unknown supplier',
                         'retailer_order_reference' => $first->retailer_order_reference ?: null,
                         'marketplace_seller' => $first->marketplace_seller ?: null,
                         'note' => $first->note ?: null,
                         'eta' => $lines->pluck('estimated_retailer_delivery_date')->filter()->sort()->first(),
-                        'qty' => (int) $lines->sum('qty'),
-                        'line_count' => $lines->count(),
-                        'total' => (float) $lines->sum('purchase_line_total'),
+                        'qty' => (int) $activeLines->sum('qty'),
+                        'line_count' => $activeLines->count(),
+                        'total' => (float) $activeLines->sum('purchase_line_total'),
+                        'original_qty' => (int) $lines->sum('qty'),
+                        'original_line_count' => $lines->count(),
+                        'original_total' => (float) $lines->sum('purchase_line_total'),
+                        'undone_qty' => (int) $undoneLines->sum('qty'),
+                        'undone_line_count' => $undoneLines->count(),
+                        'undone_total' => (float) $undoneLines->sum('purchase_line_total'),
+                        'edited_line_count' => $editedLines->count(),
+                        'latest_edit_at' => $editedLines->max(fn ($line) => $line->latest_edit_at),
                         'created_by_name' => $first->created_by_name ?: null,
                         'latest_at' => $lines->max(fn ($line) => $line->ordered_at ?: $line->created_at),
-                        'lines' => $lines->sortBy('item_name', SORT_NATURAL | SORT_FLAG_CASE)->values(),
+                        'lines' => $lines->sortBy([
+                            fn ($a, $b) => ($a->cancelled_at !== null) <=> ($b->cancelled_at !== null),
+                            fn ($a, $b) => strnatcasecmp((string) $a->item_name, (string) $b->item_name),
+                        ])->values(),
                     ];
                 })
                 ->sortByDesc('latest_at')
@@ -944,6 +977,8 @@ class PurchaseDeskV2Service
             $retailer['purchase_batches_count'] = $batches->count();
             $retailer['purchase_batches_line_count'] = (int) $batches->sum('line_count');
             $retailer['purchase_batches_total'] = (float) $batches->sum('total');
+            $retailer['purchase_batches_undone_line_count'] = (int) $batches->sum('undone_line_count');
+            $retailer['purchase_batches_edited_line_count'] = (int) $batches->sum('edited_line_count');
 
             return $retailer;
         });

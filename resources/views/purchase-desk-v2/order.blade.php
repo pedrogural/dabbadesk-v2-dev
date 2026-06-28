@@ -342,9 +342,15 @@
                                     <p class="text-base font-semibold text-slate-950">Purchased batches · {{ $purchaseBatches->count() }}</p>
                                     <p class="mt-1 text-sm text-slate-500">
                                         {{ (int) ($retailer['purchase_batches_count'] ?? 0) }} batch{{ (int) ($retailer['purchase_batches_count'] ?? 0) === 1 ? '' : 'es' }} ·
-                                        {{ (int) ($retailer['purchase_batches_line_count'] ?? 0) }} line{{ (int) ($retailer['purchase_batches_line_count'] ?? 0) === 1 ? '' : 's' }} purchased
+                                        {{ (int) ($retailer['purchase_batches_line_count'] ?? 0) }} active line{{ (int) ($retailer['purchase_batches_line_count'] ?? 0) === 1 ? '' : 's' }}
                                         @if (($retailer['purchase_batches_total'] ?? 0) > 0)
-                                            · Total {{ $money($retailer['purchase_batches_total']) }}.
+                                            · Active total {{ $money($retailer['purchase_batches_total']) }}
+                                        @endif
+                                        @if ((int) ($retailer['purchase_batches_edited_line_count'] ?? 0) > 0)
+                                            · {{ (int) $retailer['purchase_batches_edited_line_count'] }} edited
+                                        @endif
+                                        @if ((int) ($retailer['purchase_batches_undone_line_count'] ?? 0) > 0)
+                                            · {{ (int) $retailer['purchase_batches_undone_line_count'] }} undone
                                         @endif
                                     </p>
                                 </div>
@@ -365,6 +371,10 @@
                                             $batchDate = $batch['date'] ? \Carbon\Carbon::parse($batch['date']) : null;
                                             $batchTime = $batch['time_at'] ? \Carbon\Carbon::parse($batch['time_at']) : null;
                                             $batchLines = $batch['lines'] ?? collect();
+                                            $activeLineCount = (int) ($batch['line_count'] ?? 0);
+                                            $undoneLineCount = (int) ($batch['undone_line_count'] ?? 0);
+                                            $editedLineCount = (int) ($batch['edited_line_count'] ?? 0);
+                                            $isFullyUndone = $activeLineCount === 0 && $undoneLineCount > 0;
                                         @endphp
                                         <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" x-data="{ open: false, editing: false, undoing: false, confirmBatchUndo: false, batchUndoReason: '', batchUndoError: '', checkBatchUndo() { if (this.batchUndoReason.trim().length < 2) { this.batchUndoError = 'Please enter a short reason before undoing this batch.'; return; } this.batchUndoError = ''; this.confirmBatchUndo = true; } }">
                                             <button type="button" class="w-full px-4 py-4 text-left hover:bg-slate-50 sm:px-5" @click="open = !open" :aria-expanded="open.toString()">
@@ -392,12 +402,27 @@
                                                             <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 8-9-5-9 5 9 5 9-5Z"></path><path d="M3 8v8l9 5 9-5V8"></path><path d="M12 13v8"></path></svg>
                                                         </span>
                                                         <div>
-                                                            <p class="text-sm font-semibold text-slate-900">{{ $batch['line_count'] }} line{{ $batch['line_count'] === 1 ? '' : 's' }} · {{ $batch['qty'] }} unit{{ $batch['qty'] === 1 ? '' : 's' }}</p>
+                                                            <p class="text-sm font-semibold text-slate-900">{{ $activeLineCount }} active line{{ $activeLineCount === 1 ? '' : 's' }} · {{ (int) ($batch['qty'] ?? 0) }} active unit{{ (int) ($batch['qty'] ?? 0) === 1 ? '' : 's' }}</p>
                                                             <p class="mt-1 text-xs font-semibold text-slate-500">ETA {{ $batch['eta'] ? $fmtDate($batch['eta']) : 'not set' }}</p>
+                                                            <div class="mt-2 flex flex-wrap gap-1.5">
+                                                                @if ($editedLineCount > 0)
+                                                                    <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-100">{{ $editedLineCount }} edited</span>
+                                                                @endif
+                                                                @if ($undoneLineCount > 0)
+                                                                    <span class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-100">{{ $undoneLineCount }} undone</span>
+                                                                @endif
+                                                                @if ($isFullyUndone)
+                                                                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">fully undone</span>
+                                                                @endif
+                                                            </div>
                                                         </div>
                                                     </div>
                                                     <div class="text-left lg:text-right">
                                                         <p class="text-sm font-semibold text-slate-950">{{ $money($batch['total']) }}</p>
+                                                        <p class="mt-1 text-xs font-semibold text-slate-500">active total</p>
+                                                        @if (($batch['original_total'] ?? 0) > ($batch['total'] ?? 0))
+                                                            <p class="mt-1 text-[11px] font-semibold text-rose-600">Original {{ $money($batch['original_total']) }}</p>
+                                                        @endif
                                                         <p class="mt-1 text-xs font-semibold text-indigo-600" x-text="open ? 'Hide details' : 'Open details'"></p>
                                                     </div>
                                                     <div class="flex justify-start lg:justify-end">
@@ -410,11 +435,15 @@
                                                 <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                                     <div>
                                                         <p class="text-sm font-semibold text-slate-900">Purchase batch details</p>
-                                                        <p class="mt-1 text-xs font-medium text-slate-500">Edit supplier, reference, ETA, ordered date and notes. You can also undo one line or the whole batch if a purchase was recorded by mistake.</p>
+                                                        <p class="mt-1 text-xs font-medium text-slate-500">Active totals exclude undone lines. Edited and undone lines stay visible here for audit clarity.</p>
                                                     </div>
                                                     <div class="flex flex-wrap gap-2">
-                                                        <button type="button" class="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50" @click.stop="editing = !editing; if (editing) undoing = false" x-text="editing ? 'Cancel edit' : 'Edit batch'"></button>
-                                                        <button type="button" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-50" @click.stop="undoing = !undoing; if (undoing) editing = false" x-text="undoing ? 'Cancel undo' : 'Undo batch'"></button>
+                                                        @if ($activeLineCount > 0)
+                                                            <button type="button" class="inline-flex items-center justify-center rounded-xl border border-indigo-200 bg-white px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-50" @click.stop="editing = !editing; if (editing) undoing = false" x-text="editing ? 'Cancel edit' : 'Edit batch'"></button>
+                                                            <button type="button" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-700 shadow-sm hover:bg-rose-50" @click.stop="undoing = !undoing; if (undoing) editing = false" x-text="undoing ? 'Cancel undo' : 'Undo batch'"></button>
+                                                        @else
+                                                            <span class="inline-flex items-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600">No active lines to edit or undo</span>
+                                                        @endif
                                                     </div>
                                                 </div>
 
@@ -495,7 +524,7 @@
                                                 <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
                                                     <div class="hidden border-b border-slate-100 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[1fr_90px_110px_110px_80px_260px] md:gap-3">
                                                         <div>Item</div>
-                                                        <div>Qty</div>
+                                                        <div>Status / Qty</div>
                                                         <div>Unit price</div>
                                                         <div>Line total</div>
                                                         <div>Link</div>
@@ -506,16 +535,33 @@
                                                             @php
                                                                 $lineQty = (int) $line->qty;
                                                                 $lineUnitPrice = $line->purchase_unit_price !== null ? number_format((float) $line->purchase_unit_price, 2, '.', '') : '0.00';
+                                                                $lineIsUndone = $line->cancelled_at !== null;
+                                                                $lineWasEdited = (int) ($line->edit_count ?? 0) > 0;
+                                                                $lineHasArrival = (int) ($line->active_arrival_qty ?? 0) > 0;
                                                             @endphp
-                                                            <div x-data="{ editingLine: false, editQty: '{{ $lineQty }}', editPrice: '{{ $lineUnitPrice }}', editError: '', checkLineEdit() { const qty = parseInt(this.editQty, 10); const price = parseFloat(this.editPrice); if (!Number.isInteger(qty) || qty < 1) { this.editError = 'Quantity must be at least 1.'; return; } if (Number.isNaN(price) || price < 0) { this.editError = 'Purchase price cannot be negative.'; return; } this.editError = ''; this.$refs.lineEditForm.requestSubmit(); } }">
+                                                            <div x-data="{ editingLine: false, editQty: '{{ $lineQty }}', editPrice: '{{ $lineUnitPrice }}', editError: '', checkLineEdit() { const qty = parseInt(this.editQty, 10); const price = parseFloat(this.editPrice); if (!Number.isInteger(qty) || qty < 1) { this.editError = 'Quantity must be at least 1.'; return; } if (Number.isNaN(price) || price < 0) { this.editError = 'Purchase price cannot be negative.'; return; } this.editError = ''; this.$refs.lineEditForm.requestSubmit(); } }" @if ($lineIsUndone) class="bg-rose-50/40" @endif>
                                                                 <div class="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_90px_110px_110px_80px_260px] md:items-center">
                                                                     <div class="min-w-0">
-                                                                        <p class="font-semibold text-slate-900">{{ $line->item_name ?: 'Purchased item' }}</p>
+                                                                        <p class="font-semibold {{ $lineIsUndone ? 'text-slate-500 line-through decoration-rose-300' : 'text-slate-900' }}">{{ $line->item_name ?: 'Purchased item' }}</p>
                                                                         <p class="mt-1 truncate text-xs text-slate-500">{{ $line->product_code ?: 'No product code' }}</p>
+                                                                        <div class="mt-2 flex flex-wrap gap-1.5">
+                                                                            @if ($lineWasEdited)
+                                                                                <span class="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-indigo-100">edited</span>
+                                                                            @endif
+                                                                            @if ($lineIsUndone)
+                                                                                <span class="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 ring-1 ring-rose-100">undone</span>
+                                                                            @endif
+                                                                            @if ($lineHasArrival)
+                                                                                <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">arrival linked</span>
+                                                                            @endif
+                                                                        </div>
                                                                     </div>
-                                                                    <div class="font-semibold text-slate-700">Qty {{ $line->qty }}</div>
-                                                                    <div class="text-slate-600">{{ $line->purchase_unit_price !== null ? $money($line->purchase_unit_price) : '—' }}</div>
-                                                                    <div class="font-semibold text-slate-900">{{ $line->purchase_line_total !== null ? $money($line->purchase_line_total) : '—' }}</div>
+                                                                    <div>
+                                                                        <p class="font-semibold {{ $lineIsUndone ? 'text-rose-700' : 'text-slate-700' }}">{{ $lineIsUndone ? 'Returned' : 'Active' }}</p>
+                                                                        <p class="mt-1 text-xs font-semibold text-slate-500">Qty {{ $line->qty }}</p>
+                                                                    </div>
+                                                                    <div class="{{ $lineIsUndone ? 'text-slate-400 line-through decoration-rose-300' : 'text-slate-600' }}">{{ $line->purchase_unit_price !== null ? $money($line->purchase_unit_price) : '—' }}</div>
+                                                                    <div class="font-semibold {{ $lineIsUndone ? 'text-slate-400 line-through decoration-rose-300' : 'text-slate-900' }}">{{ $line->purchase_line_total !== null ? $money($line->purchase_line_total) : '—' }}</div>
                                                                     <div>
                                                                         @if ($line->product_url)
                                                                             <a href="{{ $line->product_url }}" target="_blank" class="inline-grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 hover:bg-indigo-100">↗</a>
@@ -524,9 +570,12 @@
                                                                         @endif
                                                                     </div>
                                                                     <div>
-                                                                        <div class="flex flex-wrap gap-2">
-                                                                            <button type="button" class="h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" @click="editingLine = !editingLine">Edit</button>
-                                                                            <div x-data="{ confirmLineUndo: false, lineUndoReason: '', lineUndoError: '', checkLineUndo() { if (this.lineUndoReason.trim().length < 2) { this.lineUndoError = 'Please enter a reason.'; return; } this.lineUndoError = ''; this.confirmLineUndo = true; } }" class="min-w-[190px] flex-1">
+                                                                        @if ($lineIsUndone)
+                                                                            <span class="inline-flex h-10 items-center rounded-xl border border-rose-100 bg-rose-50 px-3 text-xs font-semibold text-rose-700">Returned to buying list</span>
+                                                                        @else
+                                                                            <div class="flex flex-wrap gap-2">
+                                                                                <button type="button" class="h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" @click="editingLine = !editingLine">Edit</button>
+                                                                                <div x-data="{ confirmLineUndo: false, lineUndoReason: '', lineUndoError: '', checkLineUndo() { if (this.lineUndoReason.trim().length < 2) { this.lineUndoError = 'Please enter a reason.'; return; } this.lineUndoError = ''; this.confirmLineUndo = true; } }" class="min-w-[190px] flex-1">
                                                                                 <form x-ref="lineUndoForm" method="POST" action="{{ route('purchases.lines.undo', ['order' => $order->id, 'purchase' => $line->id]) }}" class="flex gap-2">
                                                                                     @csrf
                                                                                     <input type="text" name="reason" x-model="lineUndoReason" maxlength="255" class="h-10 min-w-0 flex-1 rounded-xl border-slate-200 bg-white text-xs text-slate-900" placeholder="Reason" @input="lineUndoError = ''">
@@ -551,11 +600,13 @@
                                                                                         </div>
                                                                                     </div>
                                                                                 </div>
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
+                                                                        @endif
                                                                     </div>
                                                                 </div>
 
+                                                                @if (! $lineIsUndone)
                                                                 <div x-show="editingLine" x-cloak class="border-t border-indigo-100 bg-indigo-50/50 px-4 py-4">
                                                                     <form x-ref="lineEditForm" method="POST" action="{{ route('purchases.lines.update', ['order' => $order->id, 'purchase' => $line->id]) }}" class="grid gap-3 lg:grid-cols-[160px_180px_1fr_160px] lg:items-end">
                                                                         @csrf
@@ -576,6 +627,7 @@
                                                                     </form>
                                                                     <p x-show="editError" x-cloak class="mt-3 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700" x-text="editError"></p>
                                                                 </div>
+                                                                @endif
                                                             </div>
                                                         @endforeach
                                                     </div>
