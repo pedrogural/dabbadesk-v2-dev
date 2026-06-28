@@ -154,6 +154,31 @@ class PurchaseDeskV2Controller extends Controller
             ->with('success', $undone . ' purchase line' . ($undone === 1 ? '' : 's') . ' undone and returned to the buying list.');
     }
 
+
+    public function updateLine(Request $request, int $order, int $purchase, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'qty' => ['required', 'integer', 'min:1'],
+            'purchase_unit_price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        try {
+            $service->updatePurchaseLine($order, $purchase, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Purchase line could not be updated. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Purchase line quantity and price updated.');
+    }
+
     public function undoLine(Request $request, int $order, int $purchase, PurchaseDeskV2Service $service)
     {
         $validated = $request->validate([

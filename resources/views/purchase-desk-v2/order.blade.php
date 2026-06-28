@@ -493,58 +493,88 @@
                                                 </div>
 
                                                 <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                                    <div class="hidden border-b border-slate-100 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[1fr_90px_110px_110px_80px_210px] md:gap-3">
+                                                    <div class="hidden border-b border-slate-100 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400 md:grid md:grid-cols-[1fr_90px_110px_110px_80px_260px] md:gap-3">
                                                         <div>Item</div>
                                                         <div>Qty</div>
                                                         <div>Unit price</div>
                                                         <div>Line total</div>
                                                         <div>Link</div>
-                                                        <div>Undo</div>
+                                                        <div>Actions</div>
                                                     </div>
                                                     <div class="divide-y divide-slate-100">
                                                         @foreach ($batchLines as $line)
-                                                            <div class="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_90px_110px_110px_80px_210px] md:items-center">
-                                                                <div class="min-w-0">
-                                                                    <p class="font-semibold text-slate-900">{{ $line->item_name ?: 'Purchased item' }}</p>
-                                                                    <p class="mt-1 truncate text-xs text-slate-500">{{ $line->product_code ?: 'No product code' }}</p>
-                                                                </div>
-                                                                <div class="font-semibold text-slate-700">Qty {{ $line->qty }}</div>
-                                                                <div class="text-slate-600">{{ $line->purchase_unit_price !== null ? $money($line->purchase_unit_price) : '—' }}</div>
-                                                                <div class="font-semibold text-slate-900">{{ $line->purchase_line_total !== null ? $money($line->purchase_line_total) : '—' }}</div>
-                                                                <div>
-                                                                    @if ($line->product_url)
-                                                                        <a href="{{ $line->product_url }}" target="_blank" class="inline-grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 hover:bg-indigo-100">↗</a>
-                                                                    @else
-                                                                        <span class="inline-grid h-10 w-10 place-items-center rounded-xl bg-slate-50 text-slate-300 ring-1 ring-slate-100">–</span>
-                                                                    @endif
-                                                                </div>
-                                                                <div>
-                                                                    <div x-data="{ confirmLineUndo: false, lineUndoReason: '', lineUndoError: '', checkLineUndo() { if (this.lineUndoReason.trim().length < 2) { this.lineUndoError = 'Please enter a reason.'; return; } this.lineUndoError = ''; this.confirmLineUndo = true; } }">
-                                                                        <form x-ref="lineUndoForm" method="POST" action="{{ route('purchases.lines.undo', ['order' => $order->id, 'purchase' => $line->id]) }}" class="flex gap-2">
-                                                                            @csrf
-                                                                            <input type="text" name="reason" x-model="lineUndoReason" maxlength="255" class="h-10 min-w-0 flex-1 rounded-xl border-slate-200 bg-white text-xs text-slate-900" placeholder="Reason" @input="lineUndoError = ''">
-                                                                            <button type="button" class="h-10 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100" @click="checkLineUndo()">Undo</button>
-                                                                        </form>
-                                                                        <p x-show="lineUndoError" x-cloak class="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" x-text="lineUndoError"></p>
+                                                            @php
+                                                                $lineQty = (int) $line->qty;
+                                                                $lineUnitPrice = $line->purchase_unit_price !== null ? number_format((float) $line->purchase_unit_price, 2, '.', '') : '0.00';
+                                                            @endphp
+                                                            <div x-data="{ editingLine: false, editQty: '{{ $lineQty }}', editPrice: '{{ $lineUnitPrice }}', editError: '', checkLineEdit() { const qty = parseInt(this.editQty, 10); const price = parseFloat(this.editPrice); if (!Number.isInteger(qty) || qty < 1) { this.editError = 'Quantity must be at least 1.'; return; } if (Number.isNaN(price) || price < 0) { this.editError = 'Purchase price cannot be negative.'; return; } this.editError = ''; this.$refs.lineEditForm.requestSubmit(); } }">
+                                                                <div class="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_90px_110px_110px_80px_260px] md:items-center">
+                                                                    <div class="min-w-0">
+                                                                        <p class="font-semibold text-slate-900">{{ $line->item_name ?: 'Purchased item' }}</p>
+                                                                        <p class="mt-1 truncate text-xs text-slate-500">{{ $line->product_code ?: 'No product code' }}</p>
+                                                                    </div>
+                                                                    <div class="font-semibold text-slate-700">Qty {{ $line->qty }}</div>
+                                                                    <div class="text-slate-600">{{ $line->purchase_unit_price !== null ? $money($line->purchase_unit_price) : '—' }}</div>
+                                                                    <div class="font-semibold text-slate-900">{{ $line->purchase_line_total !== null ? $money($line->purchase_line_total) : '—' }}</div>
+                                                                    <div>
+                                                                        @if ($line->product_url)
+                                                                            <a href="{{ $line->product_url }}" target="_blank" class="inline-grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600 ring-1 ring-indigo-100 hover:bg-indigo-100">↗</a>
+                                                                        @else
+                                                                            <span class="inline-grid h-10 w-10 place-items-center rounded-xl bg-slate-50 text-slate-300 ring-1 ring-slate-100">–</span>
+                                                                        @endif
+                                                                    </div>
+                                                                    <div>
+                                                                        <div class="flex flex-wrap gap-2">
+                                                                            <button type="button" class="h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" @click="editingLine = !editingLine">Edit</button>
+                                                                            <div x-data="{ confirmLineUndo: false, lineUndoReason: '', lineUndoError: '', checkLineUndo() { if (this.lineUndoReason.trim().length < 2) { this.lineUndoError = 'Please enter a reason.'; return; } this.lineUndoError = ''; this.confirmLineUndo = true; } }" class="min-w-[190px] flex-1">
+                                                                                <form x-ref="lineUndoForm" method="POST" action="{{ route('purchases.lines.undo', ['order' => $order->id, 'purchase' => $line->id]) }}" class="flex gap-2">
+                                                                                    @csrf
+                                                                                    <input type="text" name="reason" x-model="lineUndoReason" maxlength="255" class="h-10 min-w-0 flex-1 rounded-xl border-slate-200 bg-white text-xs text-slate-900" placeholder="Reason" @input="lineUndoError = ''">
+                                                                                    <button type="button" class="h-10 rounded-xl border border-rose-200 bg-rose-50 px-3 text-xs font-semibold text-rose-700 hover:bg-rose-100" @click="checkLineUndo()">Undo</button>
+                                                                                </form>
+                                                                                <p x-show="lineUndoError" x-cloak class="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" x-text="lineUndoError"></p>
 
-                                                                        <div x-show="confirmLineUndo" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
-                                                                            <div class="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-rose-100" @click.outside="confirmLineUndo = false">
-                                                                                <div class="flex items-start gap-3">
-                                                                                    <span class="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
-                                                                                        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
-                                                                                    </span>
-                                                                                    <div>
-                                                                                        <h3 class="text-base font-semibold text-slate-950">Undo this purchase line?</h3>
-                                                                                        <p class="mt-1 text-sm text-slate-600">This line will return to the buying list. The original purchase record will stay in history with a reversal event.</p>
+                                                                                <div x-show="confirmLineUndo" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+                                                                                    <div class="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-rose-100" @click.outside="confirmLineUndo = false">
+                                                                                        <div class="flex items-start gap-3">
+                                                                                            <span class="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-600 ring-1 ring-rose-100">
+                                                                                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"></path><path d="M8 6V4h8v2"></path><path d="m19 6-1 14H6L5 6"></path><path d="M10 11v5"></path><path d="M14 11v5"></path></svg>
+                                                                                            </span>
+                                                                                            <div>
+                                                                                                <h3 class="text-base font-semibold text-slate-950">Undo this purchase line?</h3>
+                                                                                                <p class="mt-1 text-sm text-slate-600">This line will return to the buying list. The original purchase record will stay in history with a reversal event.</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                                                                            <button type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="confirmLineUndo = false">Keep line</button>
+                                                                                            <button type="button" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-rose-200 hover:bg-rose-700" @click="$refs.lineUndoForm.requestSubmit()">Yes, undo line</button>
+                                                                                        </div>
                                                                                     </div>
-                                                                                </div>
-                                                                                <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                                                                                    <button type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="confirmLineUndo = false">Keep line</button>
-                                                                                    <button type="button" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-rose-200 hover:bg-rose-700" @click="$refs.lineUndoForm.requestSubmit()">Yes, undo line</button>
                                                                                 </div>
                                                                             </div>
                                                                         </div>
                                                                     </div>
+                                                                </div>
+
+                                                                <div x-show="editingLine" x-cloak class="border-t border-indigo-100 bg-indigo-50/50 px-4 py-4">
+                                                                    <form x-ref="lineEditForm" method="POST" action="{{ route('purchases.lines.update', ['order' => $order->id, 'purchase' => $line->id]) }}" class="grid gap-3 lg:grid-cols-[160px_180px_1fr_160px] lg:items-end">
+                                                                        @csrf
+                                                                        @method('PATCH')
+                                                                        <div>
+                                                                            <label class="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">Purchased qty</label>
+                                                                            <input type="text" inputmode="numeric" name="qty" x-model="editQty" class="mt-1 h-11 w-full rounded-xl border-indigo-200 bg-white text-sm font-semibold text-slate-900" placeholder="Qty" @input="editError = ''">
+                                                                        </div>
+                                                                        <div>
+                                                                            <label class="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">Unit purchase price</label>
+                                                                            <input type="text" inputmode="decimal" name="purchase_unit_price" x-model="editPrice" class="mt-1 h-11 w-full rounded-xl border-indigo-200 bg-white text-sm font-semibold text-slate-900" placeholder="0.00" @input="editError = ''">
+                                                                        </div>
+                                                                        <p class="text-xs font-medium text-slate-500 lg:pb-3">Use this only to correct a recording mistake. Arrival-linked purchase lines are protected and cannot be edited.</p>
+                                                                        <div class="flex gap-2">
+                                                                            <button type="button" class="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="editingLine = false">Cancel</button>
+                                                                            <button type="button" class="h-11 flex-1 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm shadow-indigo-200 hover:bg-indigo-700" @click="checkLineEdit()">Save line</button>
+                                                                        </div>
+                                                                    </form>
+                                                                    <p x-show="editError" x-cloak class="mt-3 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700" x-text="editError"></p>
                                                                 </div>
                                                             </div>
                                                         @endforeach

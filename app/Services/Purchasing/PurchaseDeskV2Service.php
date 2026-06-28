@@ -382,6 +382,142 @@ class PurchaseDeskV2Service
     }
 
 
+
+    public function updatePurchaseLine(int $orderId, int $purchaseId, array $data, ?int $userId = null): array
+    {
+        return DB::transaction(function () use ($orderId, $purchaseId, $data, $userId) {
+            $row = DB::table('order_item_purchases')
+                ->where('order_id', $orderId)
+                ->where('id', $purchaseId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $row) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'Purchase line could not be found for this order.',
+                ]);
+            }
+
+            if ($row->cancelled_at !== null) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'This purchase line has already been undone and cannot be edited.',
+                ]);
+            }
+
+            if (! in_array((string) $row->status, ['purchased', 'ordered', 'received'], true)) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'Only active purchased lines can be edited from this screen.',
+                ]);
+            }
+
+            $hasArrival = DB::table('purchase_arrival_assignments')
+                ->where('order_item_purchase_id', $purchaseId)
+                ->whereNull('undone_at')
+                ->exists();
+
+            if ($hasArrival) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'This purchase line has an active arrival assignment. Undo the arrival assignment before editing quantity or price.',
+                ]);
+            }
+
+            $qty = (int) ($data['qty'] ?? 0);
+            $unitPrice = round((float) ($data['purchase_unit_price'] ?? -1), 2);
+
+            if ($qty < 1) {
+                throw ValidationException::withMessages([
+                    'qty' => 'Quantity must be at least 1.',
+                ]);
+            }
+
+            if ($unitPrice < 0) {
+                throw ValidationException::withMessages([
+                    'purchase_unit_price' => 'Purchase price cannot be negative.',
+                ]);
+            }
+
+            $rootItem = DB::table('order_items')
+                ->where('id', (int) $row->root_item_id)
+                ->orWhere('id', (int) $row->order_item_id)
+                ->orderByRaw('id = ? desc', [(int) $row->root_item_id])
+                ->first();
+
+            $requestedQty = max(1, (int) ($rootItem->quantity ?? 1));
+
+            $otherActiveQty = (int) DB::table('order_item_purchases')
+                ->where('root_item_id', (int) $row->root_item_id)
+                ->whereIn('status', ['purchased', 'ordered', 'received'])
+                ->whereNull('cancelled_at')
+                ->where('id', '<>', $purchaseId)
+                ->sum('qty');
+
+            $maxAllowedQty = max(1, $requestedQty - $otherActiveQty);
+
+            if ($qty > $maxAllowedQty) {
+                throw ValidationException::withMessages([
+                    'qty' => 'Quantity cannot exceed the remaining requested quantity for this item. Maximum allowed here is ' . $maxAllowedQty . '.',
+                ]);
+            }
+
+            $lineTotal = round($qty * $unitPrice, 2);
+            $oldQty = (int) $row->qty;
+            $oldUnitPrice = $row->purchase_unit_price !== null ? (float) $row->purchase_unit_price : null;
+            $oldLineTotal = $row->purchase_line_total !== null ? (float) $row->purchase_line_total : null;
+
+            DB::table('order_item_purchases')
+                ->where('id', $purchaseId)
+                ->update([
+                    'qty' => $qty,
+                    'purchase_unit_price' => $unitPrice,
+                    'purchase_line_total' => $lineTotal,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $activeQty = (int) DB::table('order_item_purchases')
+                ->where('root_item_id', (int) $row->root_item_id)
+                ->whereIn('status', ['purchased', 'ordered', 'received'])
+                ->whereNull('cancelled_at')
+                ->sum('qty');
+
+            DB::table('order_items')
+                ->where('id', (int) $row->order_item_id)
+                ->update([
+                    'status' => $activeQty > 0 ? 'purchased' : 'requested',
+                    'purchase_price' => $unitPrice,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $this->writePurchaseDeskEvent('order_item_purchase', $purchaseId, 'purchase_line_updated_v2', [
+                'order_id' => $orderId,
+                'order_item_id' => (int) $row->order_item_id,
+                'root_item_id' => (int) $row->root_item_id,
+                'old_qty' => $oldQty,
+                'new_qty' => $qty,
+                'old_purchase_unit_price' => $oldUnitPrice,
+                'new_purchase_unit_price' => $unitPrice,
+                'old_purchase_line_total' => $oldLineTotal,
+                'new_purchase_line_total' => $lineTotal,
+            ], $userId);
+
+            $this->writeActivityLog(
+                'order',
+                $orderId,
+                'Purchase line updated',
+                'Purchase #' . $purchaseId . ' was updated from qty ' . $oldQty . ' / ' . ($oldUnitPrice !== null ? number_format($oldUnitPrice, 2) : '—') . ' to qty ' . $qty . ' / ' . number_format($unitPrice, 2) . '.',
+                $userId
+            );
+
+            return [
+                'updated' => 1,
+                'qty' => $qty,
+                'purchase_unit_price' => $unitPrice,
+                'purchase_line_total' => $lineTotal,
+            ];
+        });
+    }
+
     public function undoPurchaseBatch(int $orderId, array $data, ?int $userId = null): array
     {
         $purchaseIds = collect($data['purchase_ids'] ?? [])

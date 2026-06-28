@@ -29,6 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/purchases/orders/{order}/suppliers', [PurchaseDeskV2Controller::class, 'storeSupplier'])->name('purchases.suppliers.store');
     Route::patch('/purchases/orders/{order}/purchase-batches', [PurchaseDeskV2Controller::class, 'updateBatch'])->name('purchases.batches.update');
     Route::post('/purchases/orders/{order}/purchase-batches/undo', [PurchaseDeskV2Controller::class, 'undoBatch'])->name('purchases.batches.undo');
+    Route::patch('/purchases/orders/{order}/purchase-lines/{purchase}', [PurchaseDeskV2Controller::class, 'updateLine'])->name('purchases.lines.update');
     Route::post('/purchases/orders/{order}/purchase-lines/{purchase}/undo', [PurchaseDeskV2Controller::class, 'undoLine'])->name('purchases.lines.undo');
     Route::post('/purchases/orders/{order}/items/{item}/purchases', [PurchaseDeskV2Controller::class, 'storePurchase'])->name('purchases.purchases.store');
 
