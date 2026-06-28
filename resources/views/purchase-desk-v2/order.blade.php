@@ -234,7 +234,7 @@
                                                 <p class="text-base font-semibold text-slate-950">{{ $item->quantity }}</p>
                                             </div>
 
-                                            <div>
+                                            <div class="min-h-[72px]">
                                                 <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Qty</label>
                                                 @if ($isActionable)
                                                     <input type="number" name="lines[{{ $item->item_id }}][qty]" min="1" max="{{ $maxPurchasableQty }}" value="{{ $maxPurchasableQty }}" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
@@ -244,12 +244,14 @@
                                                 @endif
                                             </div>
 
-                                            <div>
+                                            <div class="min-h-[72px]">
                                                 <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Price</label>
                                                 @if ($isActionable)
                                                     <input type="number" name="lines[{{ $item->item_id }}][purchase_unit_price]" step="0.01" min="0" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
+                                                    <p class="mt-1 text-xs text-transparent select-none" aria-hidden="true">0 left</p>
                                                 @else
                                                     <p class="mt-1 text-sm text-slate-400">—</p>
+                                                    <p class="mt-1 text-xs text-transparent select-none" aria-hidden="true">0 left</p>
                                                 @endif
                                             </div>
 
