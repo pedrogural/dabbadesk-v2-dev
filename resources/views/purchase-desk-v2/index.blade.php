@@ -11,25 +11,25 @@
         <section class="rounded-[1.75rem] border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
             <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                    <p class="text-xs font-black uppercase tracking-[0.2em] text-indigo-600">Purchase Desk V2</p>
-                    <h1 class="mt-2 text-2xl font-black tracking-tight text-slate-950">Purchasing queue</h1>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Purchase Desk V2</p>
+                    <h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Purchasing queue</h1>
                     <p class="mt-1 max-w-3xl text-sm font-semibold text-slate-500">Read-only Pass 2. This screen calculates what needs buying from active order items, purchase events and pre-purchase issue records. No purchase actions are enabled yet.</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:min-w-[680px]">
-                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Orders</p><p class="mt-1 text-lg font-black text-slate-950">{{ $summary['orders_count'] }}</p></div>
-                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Active qty</p><p class="mt-1 text-lg font-black text-slate-950">{{ $summary['active_item_qty'] }}</p></div>
-                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">To buy</p><p class="mt-1 text-lg font-black text-slate-950">{{ $summary['remaining_to_buy_qty'] }}</p></div>
-                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Purchased</p><p class="mt-1 text-lg font-black text-slate-950">{{ $summary['purchased_qty'] }}</p></div>
-                    <div class="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100"><p class="text-[10px] font-black uppercase tracking-wide text-amber-600">Problems</p><p class="mt-1 text-lg font-black text-amber-800">{{ $summary['pre_purchase_problem_qty'] }}</p></div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Orders</p><p class="mt-1 text-lg font-semibold text-slate-950">{{ $summary['orders_count'] }}</p></div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Active qty</p><p class="mt-1 text-lg font-semibold text-slate-950">{{ $summary['active_item_qty'] }}</p></div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">To buy</p><p class="mt-1 text-lg font-semibold text-slate-950">{{ $summary['remaining_to_buy_qty'] }}</p></div>
+                    <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Purchased</p><p class="mt-1 text-lg font-semibold text-slate-950">{{ $summary['purchased_qty'] }}</p></div>
+                    <div class="rounded-2xl bg-amber-50 p-3 ring-1 ring-amber-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Problems</p><p class="mt-1 text-lg font-semibold text-amber-800">{{ $summary['pre_purchase_problem_qty'] }}</p></div>
                 </div>
             </div>
         </section>
 
         <section class="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
-            <form method="GET" action="{{ route('purchases.index') }}" x-data="{ timer: null }" class="grid gap-3 lg:grid-cols-[1fr_240px]">
+            <form method="GET" action="{{ route('purchases.index') }}" x-data="{ timer: null }" class="grid gap-3 lg:grid-cols-[1fr_240px_170px]">
                 <div>
-                    <label class="text-xs font-black uppercase tracking-wide text-slate-400">Live search</label>
+                    <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Live search</label>
                     <input
                         type="search"
                         name="q"
@@ -40,13 +40,17 @@
                     >
                 </div>
                 <div>
-                    <label class="text-xs font-black uppercase tracking-wide text-slate-400">Payment filter</label>
-                    <select name="payment" class="mt-1 w-full rounded-2xl border-slate-300 text-sm font-bold" @change="$el.form.submit()">
+                    <label class="text-xs font-semibold uppercase tracking-wide text-slate-400">Payment filter</label>
+                    <select name="payment" class="mt-1 w-full rounded-2xl border-slate-300 text-sm font-semibold" @change="$el.form.submit()">
                         <option value="paid_or_part" @selected($filters['payment'] === 'paid_or_part')>Paid / Part-paid</option>
                         <option value="pending_payment" @selected($filters['payment'] === 'pending_payment')>Pending payment</option>
                         <option value="all_active" @selected($filters['payment'] === 'all_active')>All active orders</option>
                     </select>
                 </div>
+                <label class="mt-6 flex h-11 cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 hover:bg-white">
+                    <input type="checkbox" name="my" value="1" class="rounded border-slate-300 text-indigo-600" @checked(!empty($filters['my'])) @change="$el.form.submit()">
+                    <span>My orders</span>
+                </label>
             </form>
         </section>
 
@@ -61,10 +65,10 @@
                     <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                         <div class="min-w-0 flex-1">
                             <div class="flex flex-wrap items-center gap-2">
-                                <a href="{{ route('orders.show', $order->id) }}" class="text-lg font-black text-indigo-700 hover:text-indigo-900" title="Open order page">#{{ $order->order_number }} ↗</a>
-                                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black uppercase tracking-wide text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
+                                <a href="{{ route('orders.show', $order->id) }}" class="text-lg font-semibold text-indigo-700 hover:text-indigo-900" title="Open order page">#{{ $order->order_number }} ↗</a>
+                                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600">{{ str_replace('_', ' ', $order->status) }}</span>
                                 @if ((int) $order->pre_purchase_problem_qty > 0)
-                                    <span class="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700 ring-1 ring-amber-100">{{ $order->pre_purchase_problem_qty }} pre-purchase problem</span>
+                                    <span class="rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-100">{{ $order->pre_purchase_problem_qty }} pre-purchase problem</span>
                                 @endif
                             </div>
                             <p class="mt-1 truncate text-sm font-bold text-slate-800">{{ $customer }}</p>
@@ -72,16 +76,16 @@
                         </div>
 
                         <div class="grid gap-2 sm:grid-cols-4 xl:w-[620px]">
-                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Order total</p><p class="mt-1 text-sm font-black text-slate-950">{{ $money($order->grand_total) }}</p></div>
-                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Due</p><p class="mt-1 text-sm font-black {{ (float) $order->balance_due > 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $money($order->balance_due) }}</p></div>
-                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Purchased</p><p class="mt-1 text-sm font-black text-slate-950">{{ $order->purchased_qty }} / {{ $order->active_item_qty }}</p></div>
-                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-black uppercase tracking-wide text-slate-400">Arrived</p><p class="mt-1 text-sm font-black text-slate-950">{{ $order->arrived_qty }} / {{ $order->active_item_qty }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Order total</p><p class="mt-1 text-sm font-semibold text-slate-950">{{ $money($order->grand_total) }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Due</p><p class="mt-1 text-sm font-semibold {{ (float) $order->balance_due > 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $money($order->balance_due) }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Purchased</p><p class="mt-1 text-sm font-semibold text-slate-950">{{ $order->purchased_qty }} / {{ $order->active_item_qty }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 p-3 ring-1 ring-slate-100"><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Arrived</p><p class="mt-1 text-sm font-semibold text-slate-950">{{ $order->arrived_qty }} / {{ $order->active_item_qty }}</p></div>
                         </div>
                     </div>
 
                     <div class="mt-4 space-y-3">
                         <div>
-                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                                 <span>Purchasing</span>
                                 <span>{{ $order->purchased_qty }} / {{ $order->active_item_qty }} · {{ $purchasedPct }}%</span>
                             </div>
@@ -91,7 +95,7 @@
                         </div>
 
                         <div>
-                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                            <div class="mb-1 flex items-center justify-between gap-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                                 <span>Arrivals</span>
                                 <span>{{ $order->arrived_qty }} / {{ $order->active_item_qty }} · {{ $arrivedPct }}%</span>
                             </div>
@@ -101,7 +105,7 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 flex flex-wrap gap-2 text-xs font-black">
+                    <div class="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
                         <a href="{{ route('purchases.orders.show', $order->id) }}" class="rounded-full bg-indigo-600 px-3 py-1.5 text-white hover:bg-indigo-700">Purchase items</a>
                         <a href="{{ route('orders.show', $order->id) }}" class="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700 hover:bg-slate-200">Order page</a>
                         @if (!empty($order->draft_order_id))

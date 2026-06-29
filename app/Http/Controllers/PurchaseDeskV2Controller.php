@@ -13,6 +13,8 @@ class PurchaseDeskV2Controller extends Controller
         return view('purchase-desk-v2.index', $service->index([
             'q' => $request->query('q', ''),
             'payment' => $request->query('payment', 'paid_or_part'),
+            'my' => $request->boolean('my'),
+            'user_id' => optional($request->user())->id,
         ]));
     }
 
@@ -200,6 +202,168 @@ class PurchaseDeskV2Controller extends Controller
         return redirect()
             ->route('purchases.orders.show', ['order' => $order, 'view' => 'actionable'])
             ->with('success', 'Purchase line undone and returned to the buying list.');
+    }
+
+
+    public function storeItemAttention(Request $request, int $order, int $item, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'attention_type' => ['required', 'string', 'max:64'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->addItemAttention($order, $item, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Purple attention could not be saved. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Purple attention added.');
+    }
+
+    public function storeLineAttention(Request $request, int $order, int $purchase, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'attention_type' => ['required', 'string', 'max:64'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->addPurchaseAttention($order, $purchase, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Purple attention could not be saved. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Purple attention added.');
+    }
+
+    public function clearAttention(Request $request, int $order, int $attention, PurchaseDeskV2Service $service)
+    {
+        try {
+            $service->clearAttention($order, $attention, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->with('error', 'Purple attention could not be cleared. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Purple attention cleared.');
+    }
+
+
+    public function storePrePurchaseProblem(Request $request, int $order, int $item, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'issue_type' => ['required', 'string', 'max:64'],
+            'affected_qty' => ['required', 'integer', 'min:1'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->reportPrePurchaseProblem($order, $item, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Pre-purchase problem could not be recorded. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Pre-purchase problem recorded. The item has moved out of today\'s buying list.');
+    }
+
+    public function updatePrePurchaseProblem(Request $request, int $order, int $issue, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'issue_type' => ['required', 'string', 'max:64'],
+            'affected_qty' => ['required', 'integer', 'min:1'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->updatePrePurchaseProblem($order, $issue, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->withInput()
+                ->with('error', 'Pre-purchase problem could not be updated. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => $request->query('view', 'actionable')])
+            ->with('success', 'Pre-purchase problem updated.');
+    }
+
+    public function resolvePrePurchaseProblem(Request $request, int $order, int $issue, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'resolution_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->resolvePrePurchaseProblem($order, $issue, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->with('error', 'Pre-purchase problem could not be resolved. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => 'actionable'])
+            ->with('success', 'Pre-purchase problem resolved. The item is back in the buying list.');
+    }
+
+    public function cancelPrePurchaseProblem(Request $request, int $order, int $issue, PurchaseDeskV2Service $service)
+    {
+        $validated = $request->validate([
+            'resolution_notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $service->cancelPrePurchaseProblem($order, $issue, $validated, optional($request->user())->id);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return back()
+                ->with('error', 'Pre-purchase problem could not be cancelled. Nothing was changed.');
+        }
+
+        return redirect()
+            ->route('purchases.orders.show', ['order' => $order, 'view' => 'actionable'])
+            ->with('success', 'Pre-purchase problem cancelled and removed from the active problem list.');
     }
 
     public function storePurchase(Request $request, int $order, int $item, PurchaseDeskV2Service $service)

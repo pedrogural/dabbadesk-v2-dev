@@ -26,6 +26,27 @@ class ItemLifecycleService
 
     public const ACTIVE_ISSUE_STATUSES = ['open', 'awaiting_customer'];
 
+    public const TERMINAL_ITEM_STATUSES = [
+        'cancelled',
+        'refunded',
+        'deleted',
+        'removed',
+        'void',
+        'voided',
+        'superseded',
+        'customer_cancelled',
+        'cancelled_by_customer',
+        'no_longer_required',
+        'credited',
+        'wallet_credited',
+    ];
+
+    public const NON_LIVE_ORDER_STATUSES = [
+        'cancelled',
+        'refunded',
+        'superseded',
+    ];
+
     public const RETURN_TO_BUY_STATUSES = ['returned_to_buy', 'resolved'];
 
     public const TERMINAL_ISSUE_RESOLUTIONS = [
@@ -34,6 +55,56 @@ class ItemLifecycleService
         'duplicate_item',
         'no_longer_required',
     ];
+
+
+    /**
+     * Apply the one shared definition of an order that may still be worked in Purchases.
+     *
+     * A superseded/cancelled/refunded order can remain viewable elsewhere as history,
+     * but Purchases must only operate on the current live order version.
+     */
+    public function applyLivePurchasingOrderConstraints(Builder $query, string $orderAlias = 'orders'): Builder
+    {
+        return $query
+            ->whereNotIn($orderAlias . '.status', self::NON_LIVE_ORDER_STATUSES)
+            ->whereNull($orderAlias . '.cancelled_at')
+            ->whereNotExists(function ($child) use ($orderAlias) {
+                $child->from('orders as newer')
+                    ->whereColumn('newer.parent_order_id', $orderAlias . '.id')
+                    ->whereNotIn('newer.status', self::NON_LIVE_ORDER_STATUSES)
+                    ->whereNull('newer.cancelled_at');
+            });
+    }
+
+    public function isLivePurchasingOrder(int $orderId): bool
+    {
+        return $this->applyLivePurchasingOrderConstraints(
+            DB::table('orders as o')->where('o.id', $orderId),
+            'o'
+        )->exists();
+    }
+
+    /**
+     * Apply the one shared definition of an order item that still exists for purchasing.
+     *
+     * If an item has been removed/cancelled/refunded/credited as part of an order
+     * amendment, it must not remain in the buying list even if it has no purchase event.
+     */
+    public function applyPurchasableItemConstraints(Builder $query, string $itemAlias = 'order_items'): Builder
+    {
+        return $query
+            ->whereNotIn($itemAlias . '.status', self::TERMINAL_ITEM_STATUSES)
+            ->where($itemAlias . '.quantity', '>', 0);
+    }
+
+    public function activeItemQtyExpression(string $itemAlias = 'order_items'): string
+    {
+        $quoted = collect(self::TERMINAL_ITEM_STATUSES)
+            ->map(fn (string $status) => "'" . str_replace("'", "''", $status) . "'")
+            ->implode(',');
+
+        return "CASE WHEN {$itemAlias}.status IN ({$quoted}) THEN 0 ELSE {$itemAlias}.quantity END";
+    }
 
     /**
      * Aggregates purchase events to one row per root item.

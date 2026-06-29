@@ -38,6 +38,14 @@
             </div>
         </section>
 
+        @if (!($isLivePurchasingOrder ?? true))
+            <section class="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900 shadow-sm">
+                <p class="text-base font-semibold">Purchasing is disabled for this order version.</p>
+                <p class="mt-1 text-sm">{{ $purchaseDisabledReason ?? 'This order is not the current live purchasing version.' }}</p>
+                <p class="mt-2 text-xs text-amber-700">Use the current active order version for live purchase work. This page is showing no purchase requirements by design.</p>
+            </section>
+        @endif
+
         <section class="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Order total</p><p class="mt-1 text-xl font-semibold text-slate-900">{{ $money($order->grand_total) }}</p></div>
             <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Due</p><p class="mt-1 text-xl font-semibold {{ $summary['balance_due'] > 0 ? 'text-rose-700' : 'text-emerald-700' }}">{{ $money($summary['balance_due']) }}</p></div>
@@ -67,16 +75,28 @@
         </section>
 
         <section class="space-y-6">
-            @forelse ($retailers as $retailer)
+            @if ($retailers->isEmpty())
+                <div class="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500">No active purchasable items found for this order/filter.</div>
+            @else
+                @foreach ($retailers as $retailer)
                 @php
-                    $actionableRows = $retailer['items']->filter(function ($row) {
-                        return max(0, (int) $row->remaining_to_buy_qty + (int) $row->active_pre_purchase_issue_qty) > 0;
-                    })->values();
+                    $purchaseRows = $retailer['items']->filter(fn ($row) => (int) $row->remaining_to_buy_qty > 0)->values();
+                    $actionableRows = $purchaseRows;
                     $selectableKeys = $actionableRows->map(fn ($row) => 'item_' . (int) $row->item_id)->values();
+                    $lineDefaults = $actionableRows->mapWithKeys(function ($row) {
+                        $key = 'item_' . (int) $row->item_id;
+                        $qty = max(1, (int) $row->remaining_to_buy_qty + (int) $row->active_pre_purchase_issue_qty);
+                        return [$key => [
+                            'qty' => $qty,
+                            'price' => (float) $row->unit_price,
+                        ]];
+                    })->all();
                     $defaultSupplierId = $retailer['retailer_id'];
                     $supplierModalKey = 'supplier_modal_' . ($retailer['retailer_id'] ?: 'unknown');
                     $purchasedAnchor = 'purchased-batches-' . ($retailer['retailer_id'] ?: 'unknown');
                     $hasPurchaseBatches = (int) ($retailer['purchase_batches_count'] ?? 0) > 0;
+                    $prePurchaseProblems = $retailer['pre_purchase_problems'] ?? collect();
+                    $problemsAnchor = 'purchase-problems-' . ($retailer['retailer_id'] ?: 'unknown');
                 @endphp
 
                 <article
@@ -85,8 +105,43 @@
                         selected: {},
                         supplierModal: false,
                         batchesOpen: false,
+                        attentionModal: false,
+                        attentionAction: '',
+                        attentionTitle: '',
+                        attentionType: 'documentation',
+                        attentionNote: '',
+                        attentionError: '',
+                        clearAttentionModal: false,
+                        clearAttentionAction: '',
+                        clearAttentionTitle: '',
+                        problemModal: false,
+                        problemAction: '',
+                        problemMethod: 'POST',
+                        problemTitle: '',
+                        problemType: 'out_of_stock',
+                        problemQty: 1,
+                        problemMaxQty: 1,
+                        problemNote: '',
+                        problemError: '',
                         selectable: @js($selectableKeys),
+                        lines: @js($lineDefaults),
                         selectedCount() { return Object.values(this.selected).filter(Boolean).length; },
+                        selectedUnits() {
+                            return this.selectable.reduce((total, key) => {
+                                if (!this.selected[key]) return total;
+                                const qty = Number(this.lines[key]?.qty || 0);
+                                return total + Math.max(0, qty);
+                            }, 0);
+                        },
+                        selectedTotal() {
+                            return this.selectable.reduce((total, key) => {
+                                if (!this.selected[key]) return total;
+                                const qty = Math.max(0, Number(this.lines[key]?.qty || 0));
+                                const price = Math.max(0, Number(this.lines[key]?.price || 0));
+                                return total + (qty * price);
+                            }, 0);
+                        },
+                        money(value) { return '£' + Number(value || 0).toFixed(2); },
                         selectAll() { this.selectable.forEach((key) => { this.selected[key] = true; }); },
                         clearSelection() { this.selected = {}; },
                         showPurchased(anchorId) {
@@ -95,12 +150,57 @@
                                 const target = document.getElementById(anchorId);
                                 if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                             });
+                        },
+                        openAttentionModal(action, title) {
+                            this.attentionAction = action;
+                            this.attentionTitle = title;
+                            this.attentionType = 'documentation';
+                            this.attentionNote = '';
+                            this.attentionError = '';
+                            this.attentionModal = true;
+                        },
+                        saveAttention() {
+                            if (this.attentionType === 'other' && this.attentionNote.trim().length < 2) {
+                                this.attentionError = 'Please enter a purple note when using Other.';
+                                return;
+                            }
+                            this.attentionError = '';
+                            this.$refs.attentionForm.requestSubmit();
+                        },
+                        openClearAttention(action, title) {
+                            this.clearAttentionAction = action;
+                            this.clearAttentionTitle = title;
+                            this.clearAttentionModal = true;
+                        },
+                        openProblemModal(action, title, maxQty, type = 'out_of_stock', qty = 1, note = '', method = 'POST') {
+                            this.problemAction = action;
+                            this.problemMethod = method;
+                            this.problemTitle = title;
+                            this.problemMaxQty = Math.max(1, Number(maxQty || 1));
+                            this.problemQty = Math.min(this.problemMaxQty, Math.max(1, Number(qty || 1)));
+                            this.problemType = type || 'out_of_stock';
+                            this.problemNote = note || '';
+                            this.problemError = '';
+                            this.problemModal = true;
+                        },
+                        saveProblem() {
+                            const qty = Number(this.problemQty || 0);
+                            if (qty < 1 || qty > this.problemMaxQty) {
+                                this.problemError = 'Problem quantity must be between 1 and ' + this.problemMaxQty + '.';
+                                return;
+                            }
+                            if (this.problemType === 'other' && this.problemNote.trim().length < 2) {
+                                this.problemError = 'Please enter a note when using Other.';
+                                return;
+                            }
+                            this.problemError = '';
+                            this.$refs.problemForm.requestSubmit();
                         }
                     }"
                 >
                     <div class="border-b border-slate-200 bg-white p-5 sm:p-6">
-                        <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                            <div>
+                        <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                            <div class="min-w-0">
                                 <div class="flex items-center gap-2 text-sm text-slate-500">
                                     <a href="{{ route('purchases.index') }}" class="font-semibold text-indigo-600 hover:text-indigo-800">Purchases</a>
                                     <span>›</span>
@@ -108,8 +208,27 @@
                                 </div>
                                 <h2 class="mt-3 text-2xl font-semibold tracking-tight text-slate-950">{{ $retailer['retailer_name'] }}</h2>
                                 <p class="mt-1 text-sm text-slate-600">Review items to buy from this retailer and record your purchase below.</p>
+
+                                <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div class="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                                        <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Retailer total</p>
+                                        <p class="mt-1 text-lg font-semibold text-slate-950">{{ $money($retailer['retailer_order_total'] ?? $retailer['items_cost'] ?? 0) }}</p>
+                                    </div>
+                                    <div class="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+                                        <p class="text-[11px] font-semibold uppercase tracking-wide text-indigo-500">Outstanding</p>
+                                        <p class="mt-1 text-lg font-semibold text-indigo-800">{{ (int) ($retailer['outstanding_line_count'] ?? $retailer['actionable_count'] ?? 0) }} lines · {{ (int) ($retailer['remaining_to_buy_qty'] ?? 0) }} units</p>
+                                    </div>
+                                    <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-4 py-3">
+                                        <p class="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">Purchased</p>
+                                        <p class="mt-1 text-lg font-semibold text-emerald-800">{{ (int) ($retailer['purchase_batches_line_count'] ?? 0) }} lines · {{ $money($retailer['purchase_batches_total'] ?? 0) }}</p>
+                                    </div>
+                                    <div class="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3">
+                                        <p class="text-[11px] font-semibold uppercase tracking-wide text-amber-600">Outstanding value</p>
+                                        <p class="mt-1 text-lg font-semibold text-amber-800">{{ $money($retailer['outstanding_value'] ?? 0) }}</p>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="flex flex-wrap gap-2">
+                            <div class="flex flex-wrap gap-2 xl:justify-end">
                                 @if ($hasPurchaseBatches)
                                     <button type="button" class="inline-flex items-center gap-2 rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 shadow-sm hover:bg-indigo-100" @click="showPurchased('{{ $purchasedAnchor }}')">
                                         <span>View purchased batches</span>
@@ -118,7 +237,6 @@
                                     </button>
                                 @endif
                                 <a href="{{ route('orders.show', $order->id) }}" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Order details</a>
-                                <button type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" disabled>Retailer details</button>
                             </div>
                         </div>
                     </div>
@@ -151,12 +269,13 @@
                             </div>
 
                             <div class="divide-y divide-slate-100">
-                                @foreach ($retailer['items'] as $item)
+                                @forelse ($purchaseRows as $item)
                                     @php
                                         $rootId = (int) $item->lineage_root_id;
                                         $events = $purchaseEventsByRoot->get($rootId, collect());
                                         $itemIssues = $issuesByRoot->get($rootId, collect());
-                                        $maxPurchasableQty = max(0, (int) $item->remaining_to_buy_qty + (int) $item->active_pre_purchase_issue_qty);
+                                        $rootAttention = $attentionByRoot->get($rootId, collect());
+                                        $maxPurchasableQty = max(0, (int) $item->remaining_to_buy_qty);
                                         $isActionable = $maxPurchasableQty > 0;
                                         $isFullyPurchased = ! $isActionable && (int) $item->purchased_qty > 0;
                                         $lineValue = $item->line_subtotal ?: $item->line_total;
@@ -204,8 +323,38 @@
                                                     @endif
                                                 </div>
 
+                                                <div class="mt-3 flex flex-wrap items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100"
+                                                        @click="openAttentionModal('{{ route('purchases.items.attention.store', ['order' => $order->id, 'item' => $item->item_id]) }}', @js('Purple attention · ' . $item->item_name))"
+                                                    >
+                                                        <span>🟣</span>
+                                                        <span>Purple</span>
+                                                    </button>
+
+                                                    @if ($isActionable)
+                                                        <button
+                                                            type="button"
+                                                            class="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+                                                            @click="openProblemModal('{{ route('purchases.pre-purchase-problems.store', ['order' => $order->id, 'item' => $item->item_id]) }}', @js('Report problem · ' . $item->item_name), {{ $maxPurchasableQty }})"
+                                                        >
+                                                            <span>🚧</span>
+                                                            <span>Pre-purchase problem</span>
+                                                        </button>
+                                                    @endif
+
+                                                    @foreach ($rootAttention as $flag)
+                                                        <span class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700" title="{{ $flag->note ?: $flag->attention_label }}">
+                                                            <span>🟣</span>
+                                                            <span>{{ $flag->attention_label }}</span>
+                                                            <button type="button" class="ml-1 rounded-full bg-white/70 px-1.5 text-[10px] font-bold text-purple-600 hover:bg-white" @click="openClearAttention('{{ route('purchases.attention.clear', ['order' => $order->id, 'attention' => $flag->id]) }}', @js($flag->attention_label))">Clear</button>
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+
                                                 @if ($item->active_pre_purchase_issue_qty > 0)
-                                                    <span class="mt-3 inline-flex rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">⚠ Record purchasing issue</span>
+                                                    <span class="mt-3 inline-flex rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">🚧 Pre-purchase problem active</span>
                                                 @endif
 
                                                 @if ($events->count())
@@ -237,7 +386,7 @@
                                             <div class="min-h-[72px]">
                                                 <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Qty</label>
                                                 @if ($isActionable)
-                                                    <input type="number" name="lines[{{ $item->item_id }}][qty]" min="1" max="{{ $maxPurchasableQty }}" value="{{ $maxPurchasableQty }}" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
+                                                    <input type="number" name="lines[{{ $item->item_id }}][qty]" min="1" max="{{ $maxPurchasableQty }}" x-model.number="lines['{{ $rowKey }}'].qty" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
                                                     <p class="mt-1 text-xs text-slate-500">{{ $maxPurchasableQty }} left</p>
                                                 @else
                                                     <p class="mt-1 text-sm font-semibold text-emerald-700">0 left</p>
@@ -247,7 +396,7 @@
                                             <div class="min-h-[72px]">
                                                 <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Price</label>
                                                 @if ($isActionable)
-                                                    <input type="number" name="lines[{{ $item->item_id }}][purchase_unit_price]" step="0.01" min="0" value="{{ number_format((float) $item->unit_price, 2, '.', '') }}" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
+                                                    <input type="number" name="lines[{{ $item->item_id }}][purchase_unit_price]" step="0.01" min="0" x-model.number="lines['{{ $rowKey }}'].price" class="mt-1 w-full rounded-xl border-slate-300 text-sm font-semibold disabled:bg-slate-50 disabled:text-slate-400" :disabled="!selected['{{ $rowKey }}']">
                                                     <p class="mt-1 text-xs text-transparent select-none" aria-hidden="true">0 left</p>
                                                 @else
                                                     <p class="mt-1 text-sm text-slate-400">—</p>
@@ -257,7 +406,10 @@
 
                                             <div>
                                                 <p class="text-xs font-semibold uppercase tracking-wide text-slate-400 lg:hidden">Delivery</p>
-                                                <p class="text-sm text-slate-400">—</p>
+                                                @php
+                                                    $deliveryFee = (float) (($item->item_retailer_delivery_fee ?? null) ?: ($item->retailer_delivery_allocated ?? 0));
+                                                @endphp
+                                                <p class="text-sm font-semibold {{ $deliveryFee > 0 ? 'text-slate-700' : 'text-slate-400' }}">{{ $deliveryFee > 0 ? $money($deliveryFee) : '—' }}</p>
                                             </div>
 
                                             <div>
@@ -269,7 +421,9 @@
                                             </div>
                                         </div>
                                     </div>
-                                @endforeach
+                                @empty
+                                    <div class="px-5 py-8 text-center text-sm font-medium text-slate-500">No outstanding items for this retailer. Active problems and purchased batches are shown below.</div>
+                                @endforelse
                             </div>
                         </div>
 
@@ -279,8 +433,12 @@
                                     <div>
                                         <p class="text-[11px] font-semibold uppercase tracking-[0.24em] text-indigo-100">Record purchase</p>
                                         <p class="mt-1 text-sm font-semibold">Select item lines above, then save this retailer basket.</p>
+                                        <p class="mt-1 text-xs font-semibold text-indigo-100">Estimated purchase: <span x-text="money(selectedTotal())">£0.00</span></p>
                                     </div>
-                                    <span class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold"><span x-text="selectedCount()">0</span> selected</span>
+                                    <div class="flex flex-col items-end gap-1 text-right">
+                                        <span class="rounded-full bg-white/15 px-3 py-1 text-xs font-semibold"><span x-text="selectedCount()">0</span> selected</span>
+                                        <span class="text-xs font-semibold text-indigo-100"><span x-text="selectedUnits()">0</span> units · <span x-text="money(selectedTotal())">£0.00</span></span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -540,8 +698,9 @@
                                                                 $lineIsUndone = $line->cancelled_at !== null;
                                                                 $lineWasEdited = (int) ($line->edit_count ?? 0) > 0;
                                                                 $lineHasArrival = (int) ($line->active_arrival_qty ?? 0) > 0;
+                                                                $lineAttention = $line->active_attention_flags ?? collect();
                                                             @endphp
-                                                            <div x-data="{ editingLine: false, editQty: '{{ $lineQty }}', editPrice: '{{ $lineUnitPrice }}', editError: '', checkLineEdit() { const qty = parseInt(this.editQty, 10); const price = parseFloat(this.editPrice); if (!Number.isInteger(qty) || qty < 1) { this.editError = 'Quantity must be at least 1.'; return; } if (Number.isNaN(price) || price < 0) { this.editError = 'Purchase price cannot be negative.'; return; } this.editError = ''; this.$refs.lineEditForm.requestSubmit(); } }" @if ($lineIsUndone) class="bg-rose-50/40" @endif>
+                                                            <div x-data="{ editingLine: false, editQty: '{{ $lineQty }}', editPrice: '{{ $lineUnitPrice }}', editError: '', checkLineEdit() { const qty = parseInt(this.editQty, 10); const price = parseFloat(this.editPrice); if (!Number.isInteger(qty) || qty < 1) { this.editError = 'Quantity must be at least 1.'; return; } if (Number.isNaN(price) || price < 0) { this.editError = 'Purchase price cannot be negative.'; return; } this.editError = ''; this.$refs.lineEditForm.requestSubmit(); } }" class="{{ $lineIsUndone ? 'bg-rose-50/40' : '' }}">
                                                                 <div class="grid gap-3 px-4 py-3 text-sm md:grid-cols-[1fr_90px_110px_110px_80px_260px] md:items-center">
                                                                     <div class="min-w-0">
                                                                         <p class="font-semibold {{ $lineIsUndone ? 'text-slate-500 line-through decoration-rose-300' : 'text-slate-900' }}">{{ $line->item_name ?: 'Purchased item' }}</p>
@@ -556,6 +715,9 @@
                                                                             @if ($lineHasArrival)
                                                                                 <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">arrival linked</span>
                                                                             @endif
+                                                                            @foreach ($lineAttention as $flag)
+                                                                                <span class="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[11px] font-semibold text-purple-700 ring-1 ring-purple-100" title="{{ $flag->note ?: $flag->attention_label }}">🟣 {{ $flag->attention_label }}</span>
+                                                                            @endforeach
                                                                         </div>
                                                                     </div>
                                                                     <div>
@@ -576,6 +738,7 @@
                                                                             <span class="inline-flex h-10 items-center rounded-xl border border-rose-100 bg-rose-50 px-3 text-xs font-semibold text-rose-700">Returned to buying list</span>
                                                                         @else
                                                                             <div class="flex flex-wrap gap-2">
+                                                                                <button type="button" class="h-10 rounded-xl border border-purple-200 bg-purple-50 px-3 text-xs font-semibold text-purple-700 hover:bg-purple-100" @click="openAttentionModal('{{ route('purchases.lines.attention.store', ['order' => $order->id, 'purchase' => $line->id]) }}', @js('Purple attention · ' . ($line->item_name ?: 'Purchased item')))">🟣 Purple</button>
                                                                                 <button type="button" class="h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 hover:bg-indigo-100" @click="editingLine = !editingLine">Edit</button>
                                                                                 <div x-data="{ confirmLineUndo: false, lineUndoReason: '', lineUndoError: '', checkLineUndo() { if (this.lineUndoReason.trim().length < 2) { this.lineUndoError = 'Please enter a reason.'; return; } this.lineUndoError = ''; this.confirmLineUndo = true; } }" class="min-w-[190px] flex-1">
                                                                                 <form x-ref="lineUndoForm" method="POST" action="{{ route('purchases.lines.undo', ['order' => $order->id, 'purchase' => $line->id]) }}" class="flex gap-2">
@@ -607,6 +770,19 @@
                                                                         @endif
                                                                     </div>
                                                                 </div>
+
+                                                                @if ($lineAttention->count())
+                                                                    <div class="border-t border-purple-100 bg-purple-50/40 px-4 py-3">
+                                                                        <div class="flex flex-wrap gap-2">
+                                                                            @foreach ($lineAttention as $flag)
+                                                                                <button type="button" class="inline-flex items-center gap-1.5 rounded-xl border border-purple-200 bg-white px-3 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-50" @click="openClearAttention('{{ route('purchases.attention.clear', ['order' => $order->id, 'attention' => $flag->id]) }}', @js($flag->attention_label))">
+                                                                                    <span>Clear</span>
+                                                                                    <span>🟣 {{ $flag->attention_label }}</span>
+                                                                                </button>
+                                                                            @endforeach
+                                                                        </div>
+                                                                    </div>
+                                                                @endif
 
                                                                 @if (! $lineIsUndone)
                                                                 <div x-show="editingLine" x-cloak class="border-t border-indigo-100 bg-indigo-50/50 px-4 py-4">
@@ -647,6 +823,179 @@
                         </div>
                     </section>
 
+
+
+                    <section id="{{ $problemsAnchor }}" class="scroll-mt-6 m-4 mt-5 rounded-2xl border border-amber-200 bg-amber-50/45 sm:m-5 sm:mt-5">
+                        <details {{ $prePurchaseProblems->count() ? 'open' : '' }} class="group">
+                            <summary class="flex cursor-pointer list-none flex-col gap-3 rounded-2xl px-4 py-4 text-left hover:bg-white/60 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                                <div class="flex gap-3">
+                                    <span class="mt-0.5 inline-grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-700 ring-1 ring-amber-200">🚧</span>
+                                    <div>
+                                        <h3 class="text-base font-semibold text-slate-950">Purchase problems</h3>
+                                        <p class="mt-1 text-sm font-medium text-amber-800">Items temporarily removed from today’s buying list.</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 text-sm font-semibold text-amber-800">
+                                    <span>{{ $prePurchaseProblems->count() }} active</span>
+                                    <svg class="h-4 w-4 transition group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                                </div>
+                            </summary>
+
+                            <div class="border-t border-amber-100 px-4 py-4 sm:px-5">
+                                @if ($prePurchaseProblems->isEmpty())
+                                    <p class="rounded-2xl bg-white px-4 py-4 text-sm font-medium text-slate-500 ring-1 ring-amber-100">No active pre-purchase problems for this retailer.</p>
+                                @else
+                                    <div class="space-y-3">
+                                        @foreach ($prePurchaseProblems->groupBy('issue_label') as $problemLabel => $problemGroup)
+                                            <div class="rounded-2xl bg-white p-4 ring-1 ring-amber-100">
+                                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                                    <h4 class="text-sm font-semibold text-amber-900">{{ $problemLabel }}</h4>
+                                                    <span class="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">{{ $problemGroup->count() }} item{{ $problemGroup->count() === 1 ? '' : 's' }}</span>
+                                                </div>
+                                                <div class="mt-3 divide-y divide-slate-100">
+                                                    @foreach ($problemGroup as $problem)
+                                                        @php
+                                                            $problemQty = (int) ($problem->affected_qty ?: $problem->qty ?: 1);
+                                                            $problemEditMax = max(1, $problemQty + (int) ($items->firstWhere('item_id', $problem->order_item_id)->remaining_to_buy_qty ?? 0));
+                                                        @endphp
+                                                        <div class="py-3 first:pt-0 last:pb-0">
+                                                            <div class="grid gap-3 lg:grid-cols-[1.3fr_90px_1fr_220px] lg:items-start">
+                                                                <div class="min-w-0">
+                                                                    <p class="font-semibold text-slate-950">{{ $problem->item_name ?: 'Unknown item' }}</p>
+                                                                    <p class="mt-1 text-xs font-medium text-slate-500">{{ $problem->product_code ?: 'No product code' }} · Reported {{ $problem->created_at ? \Carbon\Carbon::parse($problem->created_at)->format('d M Y H:i') : '—' }}{{ $problem->created_by_name ? ' · ' . $problem->created_by_name : '' }}</p>
+                                                                    @if ($problem->notes)
+                                                                        <p class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ $problem->notes }}</p>
+                                                                    @endif
+                                                                </div>
+                                                                <div>
+                                                                    <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Qty</p>
+                                                                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ $problemQty }}</p>
+                                                                </div>
+                                                                <div>
+                                                                    <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</p>
+                                                                    <p class="mt-1 text-sm font-semibold text-amber-800">{{ str_replace('_', ' ', $problem->status) }}</p>
+                                                                </div>
+                                                                <div class="flex flex-wrap gap-2 lg:justify-end">
+                                                                    <button type="button" class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-100" @click="openProblemModal('{{ route('purchases.pre-purchase-problems.update', ['order' => $order->id, 'issue' => $problem->id]) }}', @js('Edit problem · ' . ($problem->item_name ?: 'Item')), {{ $problemEditMax }}, '{{ $problem->issue_type }}', {{ $problemQty }}, @js($problem->notes ?: ''), 'PATCH')">Edit</button>
+                                                                    <form method="POST" action="{{ route('purchases.pre-purchase-problems.resolve', ['order' => $order->id, 'issue' => $problem->id]) }}">
+                                                                        @csrf
+                                                                        <button type="submit" class="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">Resolve</button>
+                                                                    </form>
+                                                                    <form method="POST" action="{{ route('purchases.pre-purchase-problems.cancel', ['order' => $order->id, 'issue' => $problem->id]) }}">
+                                                                        @csrf
+                                                                        <button type="submit" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Cancel</button>
+                                                                    </form>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    @endforeach
+                                                </div>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @endif
+                            </div>
+                        </details>
+                    </section>
+
+                    <div x-show="problemModal" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+                        <div class="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-amber-100" @click.outside="problemModal = false">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="flex items-start gap-3">
+                                    <span class="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-700 ring-1 ring-amber-100">🚧</span>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-slate-950" x-text="problemTitle || 'Report pre-purchase problem'"></h3>
+                                        <p class="mt-1 text-sm text-slate-500">This removes the quantity from today’s buying list until the problem is resolved.</p>
+                                    </div>
+                                </div>
+                                <button type="button" class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600" @click="problemModal = false">Close</button>
+                            </div>
+
+                            <form x-ref="problemForm" method="POST" :action="problemAction" class="mt-5 space-y-4">
+                                @csrf
+                                <template x-if="problemMethod === 'PATCH'"><input type="hidden" name="_method" value="PATCH"></template>
+                                <div class="grid gap-3 sm:grid-cols-[1fr_130px]">
+                                    <div>
+                                        <label class="text-xs font-semibold uppercase tracking-wide text-amber-700">Problem type</label>
+                                        <select name="issue_type" x-model="problemType" class="mt-1 h-11 w-full rounded-xl border-amber-200 bg-white text-sm font-semibold text-slate-800" @change="problemError = ''">
+                                            @foreach ($prePurchaseIssueTypeOptions as $typeValue => $typeLabel)
+                                                <option value="{{ $typeValue }}">{{ $typeLabel }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-semibold uppercase tracking-wide text-amber-700">Qty</label>
+                                        <input type="number" name="affected_qty" min="1" :max="problemMaxQty" x-model.number="problemQty" class="mt-1 h-11 w-full rounded-xl border-amber-200 bg-white text-sm font-semibold text-slate-900" @input="problemError = ''">
+                                        <p class="mt-1 text-xs font-medium text-slate-500">Max <span x-text="problemMaxQty"></span></p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold uppercase tracking-wide text-amber-700">Internal note</label>
+                                    <textarea name="notes" rows="3" maxlength="2000" x-model="problemNote" class="mt-1 block w-full rounded-xl border-amber-200 bg-white text-sm text-slate-900" placeholder="Add context for staff. Required if using Other." @input="problemError = ''"></textarea>
+                                </div>
+                                <p x-show="problemError" x-cloak class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" x-text="problemError"></p>
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" @click="problemModal = false">Cancel</button>
+                                    <button type="button" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-amber-200 hover:bg-amber-700" @click="saveProblem()">Save problem</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div x-show="attentionModal" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+                        <div class="w-full max-w-xl rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-purple-100" @click.outside="attentionModal = false">
+                            <div class="flex items-start justify-between gap-4">
+                                <div class="flex items-start gap-3">
+                                    <span class="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-purple-50 text-purple-700 ring-1 ring-purple-100">🟣</span>
+                                    <div>
+                                        <h3 class="text-lg font-semibold text-slate-950" x-text="attentionTitle || 'Purple attention'"></h3>
+                                        <p class="mt-1 text-sm text-slate-500">Internal Dabba note only. This is never shown to the customer.</p>
+                                    </div>
+                                </div>
+                                <button type="button" class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-600" @click="attentionModal = false">Close</button>
+                            </div>
+
+                            <form x-ref="attentionForm" method="POST" :action="attentionAction" class="mt-5 space-y-4">
+                                @csrf
+                                <div>
+                                    <label class="text-xs font-semibold uppercase tracking-wide text-purple-700">Purple check</label>
+                                    <select name="attention_type" x-model="attentionType" class="mt-1 h-11 w-full rounded-xl border-purple-200 bg-white text-sm font-semibold text-slate-800" @change="attentionError = ''">
+                                        @foreach ($attentionTypeOptions as $typeValue => $typeLabel)
+                                            <option value="{{ $typeValue }}">{{ $typeLabel }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-semibold uppercase tracking-wide text-purple-700">Purple note</label>
+                                    <textarea name="note" rows="3" maxlength="2000" x-model="attentionNote" class="mt-1 block w-full rounded-xl border-purple-200 bg-white text-sm text-slate-900" placeholder="Optional internal note, unless using Other" @input="attentionError = ''"></textarea>
+                                    <p class="mt-1 text-xs font-medium text-slate-500">Use this for documentation checks, package warnings, inspection reminders, or staff-only context.</p>
+                                </div>
+                                <p x-show="attentionError" x-cloak class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700" x-text="attentionError"></p>
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" @click="attentionModal = false">Cancel</button>
+                                    <button type="button" class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-purple-200 hover:bg-purple-700" @click="saveAttention()">Save purple</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div x-show="clearAttentionModal" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
+                        <div class="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl ring-1 ring-purple-100" @click.outside="clearAttentionModal = false">
+                            <div class="flex items-start gap-3">
+                                <span class="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-purple-50 text-purple-700 ring-1 ring-purple-100">🟣</span>
+                                <div>
+                                    <h3 class="text-base font-semibold text-slate-950">Clear purple attention?</h3>
+                                    <p class="mt-1 text-sm text-slate-600">This clears the active purple flag but keeps the audit trail.</p>
+                                    <p class="mt-2 text-sm font-semibold text-purple-700" x-text="clearAttentionTitle"></p>
+                                </div>
+                            </div>
+                            <form method="POST" :action="clearAttentionAction" class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                @csrf
+                                <button type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" @click="clearAttentionModal = false">Keep purple</button>
+                                <button type="submit" class="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-purple-200 hover:bg-purple-700">Clear purple</button>
+                            </form>
+                        </div>
+                    </div>
+
                     <div x-show="supplierModal" x-cloak class="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4">
                         <div class="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl" @click.outside="supplierModal = false">
                             <div class="flex items-start justify-between gap-4">
@@ -676,9 +1025,8 @@
                         </div>
                     </div>
                 </article>
-            @empty
-                <div class="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500">No active purchasable items found for this order/filter.</div>
-            @endforelse
+                @endforeach
+            @endif
         </section>
     </div>
 </x-app-layout>

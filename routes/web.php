@@ -31,6 +31,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/purchases/orders/{order}/purchase-batches/undo', [PurchaseDeskV2Controller::class, 'undoBatch'])->name('purchases.batches.undo');
     Route::patch('/purchases/orders/{order}/purchase-lines/{purchase}', [PurchaseDeskV2Controller::class, 'updateLine'])->name('purchases.lines.update');
     Route::post('/purchases/orders/{order}/purchase-lines/{purchase}/undo', [PurchaseDeskV2Controller::class, 'undoLine'])->name('purchases.lines.undo');
+    Route::post('/purchases/orders/{order}/items/{item}/attention', [PurchaseDeskV2Controller::class, 'storeItemAttention'])->name('purchases.items.attention.store');
+    Route::post('/purchases/orders/{order}/purchase-lines/{purchase}/attention', [PurchaseDeskV2Controller::class, 'storeLineAttention'])->name('purchases.lines.attention.store');
+    Route::post('/purchases/orders/{order}/attention/{attention}/clear', [PurchaseDeskV2Controller::class, 'clearAttention'])->name('purchases.attention.clear');
+    Route::post('/purchases/orders/{order}/items/{item}/pre-purchase-problems', [PurchaseDeskV2Controller::class, 'storePrePurchaseProblem'])->name('purchases.pre-purchase-problems.store');
+    Route::patch('/purchases/orders/{order}/pre-purchase-problems/{issue}', [PurchaseDeskV2Controller::class, 'updatePrePurchaseProblem'])->name('purchases.pre-purchase-problems.update');
+    Route::post('/purchases/orders/{order}/pre-purchase-problems/{issue}/resolve', [PurchaseDeskV2Controller::class, 'resolvePrePurchaseProblem'])->name('purchases.pre-purchase-problems.resolve');
+    Route::post('/purchases/orders/{order}/pre-purchase-problems/{issue}/cancel', [PurchaseDeskV2Controller::class, 'cancelPrePurchaseProblem'])->name('purchases.pre-purchase-problems.cancel');
     Route::post('/purchases/orders/{order}/items/{item}/purchases', [PurchaseDeskV2Controller::class, 'storePurchase'])->name('purchases.purchases.store');
 
     // Temporary backwards-compatible aliases for any old bookmarks during the transition.

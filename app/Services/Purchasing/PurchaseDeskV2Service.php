@@ -5,14 +5,24 @@ namespace App\Services\Purchasing;
 use Illuminate\Support\Collection;
 use App\Services\Retailers\RetailerRegistrationService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class PurchaseDeskV2Service
 {
+    private ?ItemLifecycleService $itemLifecycleService = null;
+
+    private function itemLifecycle(): ItemLifecycleService
+    {
+        return $this->itemLifecycleService ??= new ItemLifecycleService();
+    }
+
     public function index(array $filters = []): array
     {
         $q = trim((string) ($filters['q'] ?? ''));
         $payment = (string) ($filters['payment'] ?? 'paid_or_part');
+        $myOnly = (bool) ($filters['my'] ?? false);
+        $userId = ! empty($filters['user_id']) ? (int) $filters['user_id'] : null;
 
         // Pass 2 speed rule:
         // 1) get a small set of candidate active orders first;
@@ -43,13 +53,13 @@ class PurchaseDeskV2Service
                 DB::raw('COALESCE(st.settled_amount, 0) as settled_amount'),
                 DB::raw('GREATEST(0, COALESCE(o.grand_total, 0) - COALESCE(st.settled_amount, 0)) as balance_due'),
             ])
-            ->whereNotIn('o.status', ['cancelled', 'refunded', 'superseded'])
-            ->whereNull('o.cancelled_at')
-            ->whereNotExists(function ($child) {
-                $child->from('orders as newer')
-                    ->whereColumn('newer.parent_order_id', 'o.id')
-                    ->whereNotIn('newer.status', ['cancelled', 'refunded', 'superseded']);
-            });
+;
+
+        $this->itemLifecycle()->applyLivePurchasingOrderConstraints($candidateQuery, 'o');
+
+        if ($myOnly && $userId) {
+            $candidateQuery->where('o.created_by_user_id', $userId);
+        }
 
         if ($payment === 'paid_or_part') {
             $candidateQuery->where(function ($where) {
@@ -96,7 +106,7 @@ class PurchaseDeskV2Service
         if (empty($candidateIds)) {
             return [
                 'orders' => collect(),
-                'filters' => ['q' => $q, 'payment' => $payment],
+                'filters' => ['q' => $q, 'payment' => $payment, 'my' => $myOnly],
                 'summary' => [
                     'orders_count' => 0,
                     'active_item_qty' => 0,
@@ -139,6 +149,7 @@ class PurchaseDeskV2Service
             'filters' => [
                 'q' => $q,
                 'payment' => $payment,
+                'my' => $myOnly,
             ],
             'summary' => [
                 'orders_count' => $orders->count(),
@@ -678,6 +689,355 @@ class PurchaseDeskV2Service
         return (int) $result['id'];
     }
 
+
+    private function ensurePurchaseAttentionTableExists(): void
+    {
+        if (! Schema::hasTable('purchase_attention_flags')) {
+            throw ValidationException::withMessages([
+                'purple_attention' => 'Purple attention storage is not installed yet. Please run the Pass 2.15 migration, then try again.',
+            ]);
+        }
+    }
+
+
+    public function addItemAttention(int $orderId, int $itemId, array $data, ?int $userId = null): array
+    {
+        $this->ensurePurchaseAttentionTableExists();
+
+        return DB::transaction(function () use ($orderId, $itemId, $data, $userId) {
+            $item = DB::table('order_items')
+                ->where('order_id', $orderId)
+                ->where('id', $itemId)
+                ->first();
+
+            if (! $item) {
+                throw ValidationException::withMessages([
+                    'item' => 'This item could not be found on the selected order.',
+                ]);
+            }
+
+            $type = $this->normaliseAttentionType((string) ($data['attention_type'] ?? ''));
+            $note = trim((string) ($data['note'] ?? '')) ?: null;
+
+            if ($type === 'other' && $note === null) {
+                throw ValidationException::withMessages([
+                    'note' => 'Please enter a purple note when using Other.',
+                ]);
+            }
+
+            $rootItemId = (int) ($item->root_item_id ?: $item->id);
+
+            $attentionId = DB::table('purchase_attention_flags')->insertGetId([
+                'order_id' => $orderId,
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'order_item_purchase_id' => null,
+                'attention_type' => $type,
+                'note' => $note,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $label = $this->attentionTypeLabel($type);
+
+            $this->writePurchaseDeskEvent('purchase_attention', $attentionId, 'purple_attention_added_v2', [
+                'order_id' => $orderId,
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'attention_type' => $type,
+                'note' => $note,
+            ], $userId);
+
+            $this->writeActivityLog('order_item', $itemId, 'Purple attention added', $label . ($note ? ': ' . $note : ''), $userId);
+
+            return ['attention_id' => $attentionId];
+        });
+    }
+
+    public function addPurchaseAttention(int $orderId, int $purchaseId, array $data, ?int $userId = null): array
+    {
+        $this->ensurePurchaseAttentionTableExists();
+
+        return DB::transaction(function () use ($orderId, $purchaseId, $data, $userId) {
+            $purchase = DB::table('order_item_purchases')
+                ->where('order_id', $orderId)
+                ->where('id', $purchaseId)
+                ->first();
+
+            if (! $purchase) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'This purchase line could not be found on the selected order.',
+                ]);
+            }
+
+            if ($purchase->cancelled_at !== null) {
+                throw ValidationException::withMessages([
+                    'purchase_line' => 'Purple attention cannot be added to an undone purchase line.',
+                ]);
+            }
+
+            $type = $this->normaliseAttentionType((string) ($data['attention_type'] ?? ''));
+            $note = trim((string) ($data['note'] ?? '')) ?: null;
+
+            if ($type === 'other' && $note === null) {
+                throw ValidationException::withMessages([
+                    'note' => 'Please enter a purple note when using Other.',
+                ]);
+            }
+
+            $attentionId = DB::table('purchase_attention_flags')->insertGetId([
+                'order_id' => $orderId,
+                'order_item_id' => (int) $purchase->order_item_id,
+                'root_item_id' => (int) $purchase->root_item_id,
+                'order_item_purchase_id' => $purchaseId,
+                'attention_type' => $type,
+                'note' => $note,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $label = $this->attentionTypeLabel($type);
+
+            $this->writePurchaseDeskEvent('purchase_attention', $attentionId, 'purple_attention_added_v2', [
+                'order_id' => $orderId,
+                'order_item_purchase_id' => $purchaseId,
+                'order_item_id' => (int) $purchase->order_item_id,
+                'root_item_id' => (int) $purchase->root_item_id,
+                'attention_type' => $type,
+                'note' => $note,
+            ], $userId);
+
+            $this->writeActivityLog('order_item_purchase', $purchaseId, 'Purple attention added', $label . ($note ? ': ' . $note : ''), $userId);
+
+            return ['attention_id' => $attentionId];
+        });
+    }
+
+    public function clearAttention(int $orderId, int $attentionId, ?int $userId = null): void
+    {
+        $this->ensurePurchaseAttentionTableExists();
+
+        DB::transaction(function () use ($orderId, $attentionId, $userId) {
+            $attention = DB::table('purchase_attention_flags')
+                ->where('order_id', $orderId)
+                ->where('id', $attentionId)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $attention) {
+                throw ValidationException::withMessages([
+                    'attention' => 'Purple attention could not be found for this order.',
+                ]);
+            }
+
+            if ($attention->cleared_at !== null) {
+                throw ValidationException::withMessages([
+                    'attention' => 'This purple attention has already been cleared.',
+                ]);
+            }
+
+            DB::table('purchase_attention_flags')
+                ->where('id', $attentionId)
+                ->update([
+                    'cleared_at' => now(),
+                    'cleared_by_user_id' => $userId,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $this->writePurchaseDeskEvent('purchase_attention', $attentionId, 'purple_attention_cleared_v2', [
+                'order_id' => $orderId,
+                'order_item_purchase_id' => $attention->order_item_purchase_id ? (int) $attention->order_item_purchase_id : null,
+                'order_item_id' => $attention->order_item_id ? (int) $attention->order_item_id : null,
+                'root_item_id' => (int) $attention->root_item_id,
+                'attention_type' => $attention->attention_type,
+            ], $userId);
+
+            $subjectType = $attention->order_item_purchase_id ? 'order_item_purchase' : 'order_item';
+            $subjectId = $attention->order_item_purchase_id ? (int) $attention->order_item_purchase_id : (int) $attention->order_item_id;
+            $this->writeActivityLog($subjectType, $subjectId, 'Purple attention cleared', $this->attentionTypeLabel((string) $attention->attention_type), $userId);
+        });
+    }
+
+
+    public function reportPrePurchaseProblem(int $orderId, int $itemId, array $data, ?int $userId = null): array
+    {
+        return DB::transaction(function () use ($orderId, $itemId, $data, $userId) {
+            $item = $this->itemRowsForOrder($orderId, '', 'all')
+                ->first(fn ($row) => (int) $row->item_id === $itemId);
+
+            if (! $item) {
+                throw ValidationException::withMessages(['item' => 'This item was not found on the selected order.']);
+            }
+
+            $remainingQty = max(0, (int) $item->remaining_to_buy_qty);
+            if ($remainingQty < 1) {
+                throw ValidationException::withMessages(['qty' => 'There is no remaining quantity available to move into a pre-purchase problem.']);
+            }
+
+            $affectedQty = (int) ($data['affected_qty'] ?? 0);
+            if ($affectedQty < 1 || $affectedQty > $remainingQty) {
+                throw ValidationException::withMessages(['affected_qty' => 'Problem quantity must be between 1 and ' . $remainingQty . '.']);
+            }
+
+            $type = $this->normalisePrePurchaseIssueType((string) ($data['issue_type'] ?? ''));
+            $note = trim((string) ($data['notes'] ?? ''));
+
+            if ($type === 'other' && mb_strlen($note) < 2) {
+                throw ValidationException::withMessages(['notes' => 'Please enter a note when using Other.']);
+            }
+
+            $rootItemId = (int) ($item->lineage_root_id ?: $item->item_id);
+            $status = $type === 'awaiting_customer_approval' ? 'awaiting_customer' : 'open';
+
+            $issueId = DB::table('purchase_issues')->insertGetId([
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'order_id' => $orderId,
+                'order_retailer_id' => $item->order_retailer_id,
+                'retailer_id' => $item->retailer_id,
+                'qty' => $affectedQty,
+                'affected_qty' => $affectedQty,
+                'issue_type' => $type,
+                'issue_stage' => 'pre_purchase',
+                'arrival_expectation' => 'expected',
+                'severity' => 'medium',
+                'status' => $status,
+                'notes' => $note ?: null,
+                'requires_customer_action' => $type === 'awaiting_customer_approval' ? 1 : 0,
+                'created_by_user_id' => $userId,
+                'updated_by_user_id' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $this->writePurchaseDeskEvent('purchase_issue', $issueId, 'pre_purchase_issue_reported_v2', [
+                'order_id' => $orderId,
+                'order_item_id' => $itemId,
+                'root_item_id' => $rootItemId,
+                'issue_type' => $type,
+                'affected_qty' => $affectedQty,
+            ], $userId);
+
+            $this->writeActivityLog('purchase_issue', $issueId, 'Pre-purchase problem reported', $this->prePurchaseIssueTypeLabel($type) . ($note ? ': ' . $note : ''), $userId);
+
+            return ['issue_id' => $issueId];
+        });
+    }
+
+    public function updatePrePurchaseProblem(int $orderId, int $issueId, array $data, ?int $userId = null): void
+    {
+        DB::transaction(function () use ($orderId, $issueId, $data, $userId) {
+            $issue = DB::table('purchase_issues')
+                ->where('id', $issueId)
+                ->where('order_id', $orderId)
+                ->where('issue_stage', 'pre_purchase')
+                ->whereIn('status', ['open', 'awaiting_customer'])
+                ->first();
+
+            if (! $issue) {
+                throw ValidationException::withMessages(['issue' => 'This active pre-purchase problem could not be found.']);
+            }
+
+            $item = $this->itemRowsForOrder($orderId, '', 'all')
+                ->first(fn ($row) => (int) $row->item_id === (int) $issue->order_item_id);
+
+            if (! $item) {
+                throw ValidationException::withMessages(['item' => 'The item for this problem could not be found.']);
+            }
+
+            $currentQty = (int) ($issue->affected_qty ?: $issue->qty ?: 1);
+            $maxQty = max(1, (int) $item->remaining_to_buy_qty + $currentQty);
+            $affectedQty = (int) ($data['affected_qty'] ?? 0);
+            if ($affectedQty < 1 || $affectedQty > $maxQty) {
+                throw ValidationException::withMessages(['affected_qty' => 'Problem quantity must be between 1 and ' . $maxQty . '.']);
+            }
+
+            $type = $this->normalisePrePurchaseIssueType((string) ($data['issue_type'] ?? ''));
+            $note = trim((string) ($data['notes'] ?? ''));
+
+            if ($type === 'other' && mb_strlen($note) < 2) {
+                throw ValidationException::withMessages(['notes' => 'Please enter a note when using Other.']);
+            }
+
+            DB::table('purchase_issues')
+                ->where('id', $issueId)
+                ->update([
+                    'issue_type' => $type,
+                    'qty' => $affectedQty,
+                    'affected_qty' => $affectedQty,
+                    'status' => $type === 'awaiting_customer_approval' ? 'awaiting_customer' : 'open',
+                    'notes' => $note ?: null,
+                    'requires_customer_action' => $type === 'awaiting_customer_approval' ? 1 : 0,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $this->writePurchaseDeskEvent('purchase_issue', $issueId, 'pre_purchase_issue_updated_v2', [
+                'order_id' => $orderId,
+                'order_item_id' => (int) $issue->order_item_id,
+                'root_item_id' => (int) $issue->root_item_id,
+                'issue_type' => $type,
+                'affected_qty' => $affectedQty,
+            ], $userId);
+
+            $this->writeActivityLog('purchase_issue', $issueId, 'Pre-purchase problem updated', $this->prePurchaseIssueTypeLabel($type) . ($note ? ': ' . $note : ''), $userId);
+        });
+    }
+
+    public function resolvePrePurchaseProblem(int $orderId, int $issueId, array $data = [], ?int $userId = null): void
+    {
+        $this->closePrePurchaseProblem($orderId, $issueId, 'resolved', 'return_to_buy', (string) ($data['resolution_notes'] ?? ''), $userId, 'Pre-purchase problem resolved', 'pre_purchase_issue_resolved_v2');
+    }
+
+    public function cancelPrePurchaseProblem(int $orderId, int $issueId, array $data = [], ?int $userId = null): void
+    {
+        $this->closePrePurchaseProblem($orderId, $issueId, 'cancelled', 'reported_in_error', (string) ($data['resolution_notes'] ?? ''), $userId, 'Pre-purchase problem cancelled', 'pre_purchase_issue_cancelled_v2');
+    }
+
+    private function closePrePurchaseProblem(int $orderId, int $issueId, string $status, string $resolutionType, string $note, ?int $userId, string $title, string $eventType): void
+    {
+        DB::transaction(function () use ($orderId, $issueId, $status, $resolutionType, $note, $userId, $title, $eventType) {
+            $issue = DB::table('purchase_issues')
+                ->where('id', $issueId)
+                ->where('order_id', $orderId)
+                ->where('issue_stage', 'pre_purchase')
+                ->whereIn('status', ['open', 'awaiting_customer'])
+                ->first();
+
+            if (! $issue) {
+                throw ValidationException::withMessages(['issue' => 'This active pre-purchase problem could not be found.']);
+            }
+
+            $resolutionNote = trim($note) ?: ($resolutionType === 'return_to_buy' ? 'Resolved manually and returned to the buying list.' : 'Cancelled because it was reported by mistake.');
+
+            DB::table('purchase_issues')
+                ->where('id', $issueId)
+                ->update([
+                    'status' => $status,
+                    'resolution_type' => $resolutionType,
+                    'resolution_notes' => $resolutionNote,
+                    'resolved_at' => now(),
+                    'resolved_by_user_id' => $userId,
+                    'updated_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+            $this->writePurchaseDeskEvent('purchase_issue', $issueId, $eventType, [
+                'order_id' => $orderId,
+                'order_item_id' => (int) $issue->order_item_id,
+                'root_item_id' => (int) $issue->root_item_id,
+                'resolution_type' => $resolutionType,
+            ], $userId);
+
+            $this->writeActivityLog('purchase_issue', $issueId, $title, $resolutionNote, $userId);
+        });
+    }
+
     public function orderWorkspace(int $orderId, array $filters = []): ?array
     {
         $order = DB::table('orders as o')
@@ -692,14 +1052,28 @@ class PurchaseDeskV2Service
 
         $q = trim((string) ($filters['q'] ?? ''));
         $view = (string) ($filters['view'] ?? 'all');
+        $isLivePurchasingOrder = $this->itemLifecycle()->isLivePurchasingOrder($orderId);
 
-        $allItems = $this->itemRowsForOrder($orderId, '', 'all');
-        $items = $this->itemRowsForOrder($orderId, $q, $view);
-        $issues = $this->prePurchaseIssuesForOrder($orderId);
-        $lineageOrderIds = $this->ancestorOrderIdsForOrderId($orderId);
-        $purchaseEvents = $this->purchaseEventsForOrderIds($lineageOrderIds);
+        $allItems = $isLivePurchasingOrder ? $this->itemRowsForOrder($orderId, '', 'all') : collect();
+        $items = $isLivePurchasingOrder ? $this->itemRowsForOrder($orderId, $q, $view) : collect();
+        $issues = $isLivePurchasingOrder ? $this->prePurchaseIssuesForOrder($orderId) : collect();
+        $lineageOrderIds = $isLivePurchasingOrder ? $this->ancestorOrderIdsForOrderId($orderId) : [$orderId];
+        $purchaseEvents = $isLivePurchasingOrder ? $this->purchaseEventsForOrderIds($lineageOrderIds) : collect();
+        $attentionFlags = $this->activeAttentionFlagsForOrderIds($lineageOrderIds);
+        $attentionByRoot = $attentionFlags->groupBy(fn ($flag) => (int) $flag->root_item_id);
+        $attentionByPurchase = $attentionFlags
+            ->filter(fn ($flag) => ! empty($flag->order_item_purchase_id))
+            ->groupBy(fn ($flag) => (int) $flag->order_item_purchase_id);
+
+        $purchaseEvents = $purchaseEvents->map(function ($event) use ($attentionByPurchase) {
+            $event->active_attention_flags = $attentionByPurchase->get((int) $event->id, collect())->values();
+            $event->active_attention_count = $event->active_attention_flags->count();
+            return $event;
+        });
+
         $purchaseEventsByRoot = $purchaseEvents->groupBy(fn ($event) => (int) $event->root_item_id);
         $issuesByRoot = $issues->groupBy(fn ($issue) => (int) $issue->root_item_id);
+        $issuesByRetailerKey = $issues->groupBy(fn ($issue) => (string) ($issue->retailer_id ?? 0) . '|' . ($issue->retailer_name ?: 'Unknown retailer'));
 
         $retailers = $items
             ->groupBy(fn ($item) => (string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer'))
@@ -717,17 +1091,29 @@ class PurchaseDeskV2Service
                     'arrived_qty' => (int) $rows->sum('arrived_qty'),
                     'pre_purchase_problem_qty' => (int) $rows->sum('active_pre_purchase_issue_qty'),
                     'items_cost' => (float) $rows->sum('line_subtotal'),
-                    'actionable_count' => (int) $rows->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0 || (int) $item->active_pre_purchase_issue_qty > 0)->count(),
+                    'actionable_count' => (int) $rows->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0)->count(),
                     'purchase_batches' => collect(),
                     'purchase_batches_count' => 0,
                     'purchase_batches_line_count' => 0,
                     'purchase_batches_total' => 0.0,
+                    'retailer_order_total' => 0.0,
+                    'outstanding_line_count' => 0,
+                    'outstanding_value' => 0.0,
                 ];
             })
             ->sortBy('retailer_name', SORT_NATURAL | SORT_FLAG_CASE)
             ->values();
 
         $retailers = $this->attachPurchaseBatchesToRetailers($retailers, $allItems, $purchaseEvents);
+
+        $retailers = $retailers->map(function (array $retailer) use ($issuesByRetailerKey) {
+            $key = (string) ($retailer['retailer_id'] ?? 0) . '|' . ($retailer['retailer_name'] ?: 'Unknown retailer');
+            $problems = $issuesByRetailerKey->get($key, collect())->values();
+            $retailer['pre_purchase_problems'] = $problems;
+            $retailer['pre_purchase_problem_count'] = $problems->count();
+            $retailer['pre_purchase_problem_qty'] = (int) $problems->sum(fn ($issue) => (int) ($issue->affected_qty ?: $issue->qty ?: 1));
+            return $retailer;
+        });
 
         $settlement = DB::query()->fromSub($this->settlementTotalsSubquery(), 'st')
             ->where('st.order_id', $orderId)
@@ -741,11 +1127,18 @@ class PurchaseDeskV2Service
             'purchaseEvents' => $purchaseEvents,
             'purchaseEventsByRoot' => $purchaseEventsByRoot,
             'issuesByRoot' => $issuesByRoot,
+            'attentionFlags' => $attentionFlags,
+            'attentionByRoot' => $attentionByRoot,
+            'attentionByPurchase' => $attentionByPurchase,
+            'attentionTypeOptions' => $this->attentionTypeOptions(),
+            'prePurchaseIssueTypeOptions' => $this->prePurchaseIssueTypeOptions(),
             'suppliers' => $this->activeSuppliers(),
             'filters' => [
                 'q' => $q,
                 'view' => $view,
             ],
+            'isLivePurchasingOrder' => $isLivePurchasingOrder,
+            'purchaseDisabledReason' => $isLivePurchasingOrder ? null : 'This order is not the current live purchasing version. Superseded, cancelled, refunded or replaced orders do not produce purchase requirements.',
             'summary' => [
                 'items_cost' => (float) $allItems->sum('line_subtotal'),
                 'active_item_qty' => (int) $allItems->sum('active_item_qty'),
@@ -794,13 +1187,15 @@ class PurchaseDeskV2Service
                 'oi.unit_price',
                 'oi.line_subtotal',
                 'oi.line_total',
+                'oi.item_retailer_delivery_fee',
+                'oi.retailer_delivery_allocated',
                 'oi.status as item_status',
                 'oi.requires_inspection',
                 'oi.inspection_note',
                 'ore.retailer_id',
                 DB::raw('COALESCE(r.name, ore.retailer_name, "Unknown retailer") as retailer_name'),
                 DB::raw('COALESCE(oi.root_item_id, oi.id) as lineage_root_id'),
-                DB::raw('CASE WHEN oi.status IN ("cancelled", "refunded", "deleted") THEN 0 ELSE oi.quantity END as active_item_qty'),
+                DB::raw($this->itemLifecycle()->activeItemQtyExpression('oi') . ' as active_item_qty'),
                 DB::raw('COALESCE(pt.gross_purchased_qty, 0) as gross_purchased_qty'),
                 DB::raw('GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) as purchased_qty'),
                 DB::raw('COALESCE(pt.terminal_problem_qty, 0) as terminal_problem_qty'),
@@ -808,11 +1203,12 @@ class PurchaseDeskV2Service
                 DB::raw('COALESCE(pit.active_pre_purchase_issue_qty, 0) as active_pre_purchase_issue_qty'),
                 DB::raw('COALESCE(pit.resolved_terminal_issue_qty, 0) as resolved_terminal_issue_qty'),
                 DB::raw('COALESCE(at.arrived_qty, 0) as arrived_qty'),
-                DB::raw('GREATEST(0, (CASE WHEN oi.status IN ("cancelled", "refunded", "deleted") THEN 0 ELSE oi.quantity END) - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0)) as remaining_to_buy_qty'),
+                DB::raw('GREATEST(0, (' . $this->itemLifecycle()->activeItemQtyExpression('oi') . ') - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0)) as remaining_to_buy_qty'),
                 DB::raw('GREATEST(0, GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(at.arrived_qty, 0)) as awaiting_arrival_qty'),
             ])
-            ->where('oi.order_id', $orderId)
-            ->whereNotIn('oi.status', ['cancelled', 'refunded', 'deleted']);
+            ->where('oi.order_id', $orderId);
+
+        $this->itemLifecycle()->applyPurchasableItemConstraints($query, 'oi');
 
         if ($q !== '') {
             $needle = '%' . mb_strtolower($q) . '%';
@@ -914,9 +1310,17 @@ class PurchaseDeskV2Service
             ->groupBy(fn ($item) => (string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer'))
             ->map(fn (Collection $rows) => $rows->map(fn ($row) => (int) $row->lineage_root_id)->unique()->values());
 
-        return $retailers->map(function (array $retailer) use ($rootsByRetailerKey, $purchaseEvents) {
+        return $retailers->map(function (array $retailer) use ($rootsByRetailerKey, $purchaseEvents, $allItems) {
             $key = (string) ($retailer['retailer_id'] ?? 0) . '|' . ($retailer['retailer_name'] ?: 'Unknown retailer');
+            $retailerRows = $allItems->filter(fn ($item) => ((string) ($item->retailer_id ?? 0) . '|' . ($item->retailer_name ?: 'Unknown retailer')) === $key)->values();
             $rootIds = $rootsByRetailerKey->get($key, collect())->all();
+
+            $retailer['retailer_order_total'] = (float) $retailerRows->sum(fn ($item) => (float) ($item->line_subtotal ?: $item->line_total));
+            $retailer['outstanding_line_count'] = (int) $retailerRows->filter(fn ($item) => (int) $item->remaining_to_buy_qty > 0)->count();
+            $retailer['outstanding_value'] = (float) $retailerRows->sum(function ($item) {
+                $remainingQty = max(0, (int) $item->remaining_to_buy_qty);
+                return $remainingQty * (float) $item->unit_price;
+            });
 
             $events = $purchaseEvents
                 ->filter(fn ($event) => in_array((int) $event->root_item_id, $rootIds, true))
@@ -1005,7 +1409,11 @@ class PurchaseDeskV2Service
             ->whereIn('pi.status', ['open', 'awaiting_customer'])
             ->orderByRaw("FIELD(pi.status, 'awaiting_customer', 'open')")
             ->orderByDesc('pi.created_at')
-            ->get();
+            ->get()
+            ->map(function ($issue) {
+                $issue->issue_label = $this->prePurchaseIssueTypeLabel((string) $issue->issue_type);
+                return $issue;
+            });
     }
 
     private function orderItemTotalsSubquery(array $orderIds = [], array $lineageOrderIds = [])
@@ -1027,13 +1435,14 @@ class PurchaseDeskV2Service
                 $join->on('pit.root_item_id', '=', DB::raw('COALESCE(oi.root_item_id, oi.id)'));
             })
             ->selectRaw('oi.order_id')
-            ->selectRaw('SUM(CASE WHEN oi.status IN ("cancelled", "refunded", "deleted") THEN 0 ELSE oi.quantity END) as active_item_qty')
+            ->selectRaw('SUM(' . $this->itemLifecycle()->activeItemQtyExpression('oi') . ') as active_item_qty')
             ->selectRaw('SUM(GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0))) as purchased_qty')
             ->selectRaw('SUM(COALESCE(at.arrived_qty, 0)) as arrived_qty')
             ->selectRaw('SUM(GREATEST(0, GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(at.arrived_qty, 0))) as awaiting_arrival_qty')
             ->selectRaw('SUM(COALESCE(pit.active_pre_purchase_issue_qty, 0)) as pre_purchase_problem_qty')
-            ->selectRaw('SUM(GREATEST(0, (CASE WHEN oi.status IN ("cancelled", "refunded", "deleted") THEN 0 ELSE oi.quantity END) - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0))) as remaining_to_buy_qty')
-            ->whereNotIn('oi.status', ['cancelled', 'refunded', 'deleted']);
+            ->selectRaw('SUM(GREATEST(0, (' . $this->itemLifecycle()->activeItemQtyExpression('oi') . ') - GREATEST(0, COALESCE(pt.gross_purchased_qty, 0) - COALESCE(pit.return_to_buy_issue_qty, 0)) - COALESCE(pt.terminal_problem_qty, 0) - COALESCE(pit.active_issue_qty, 0) - COALESCE(pit.resolved_terminal_issue_qty, 0))) as remaining_to_buy_qty');
+
+        $this->itemLifecycle()->applyPurchasableItemConstraints($query, 'oi');
 
         if (! empty($orderIds)) {
             $query->whereIn('oi.order_id', $orderIds);
@@ -1176,6 +1585,83 @@ class PurchaseDeskV2Service
         ]);
     }
 
+
+
+    private function activeAttentionFlagsForOrderIds(array $orderIds = []): Collection
+    {
+        if (! Schema::hasTable('purchase_attention_flags')) {
+            return collect();
+        }
+
+        $query = DB::table('purchase_attention_flags as paf')
+            ->leftJoin('users as u', 'u.id', '=', 'paf.created_by_user_id')
+            ->select([
+                'paf.*',
+                'u.name as created_by_name',
+            ])
+            ->whereNull('paf.cleared_at')
+            ->orderByDesc('paf.created_at')
+            ->orderByDesc('paf.id');
+
+        if (! empty($orderIds)) {
+            $query->whereIn('paf.order_id', $orderIds);
+        }
+
+        return $query->get()->map(function ($flag) {
+            $flag->attention_label = $this->attentionTypeLabel((string) $flag->attention_type);
+            return $flag;
+        });
+    }
+
+    private function normaliseAttentionType(string $type): string
+    {
+        $type = trim($type);
+        $allowed = array_keys($this->attentionTypeOptions());
+
+        return in_array($type, $allowed, true) ? $type : 'other';
+    }
+
+
+    private function prePurchaseIssueTypeOptions(): array
+    {
+        return [
+            'out_of_stock' => 'Out of stock',
+            'awaiting_customer_approval' => 'Awaiting customer approval',
+            'price_increased' => 'Price increased',
+            'supplier_unavailable' => 'Supplier unavailable',
+            'website_unavailable' => 'Website unavailable',
+            'other' => 'Other',
+        ];
+    }
+
+    private function normalisePrePurchaseIssueType(string $type): string
+    {
+        $type = trim($type);
+        return array_key_exists($type, $this->prePurchaseIssueTypeOptions()) ? $type : 'other';
+    }
+
+    private function prePurchaseIssueTypeLabel(string $type): string
+    {
+        return $this->prePurchaseIssueTypeOptions()[$type] ?? 'Other';
+    }
+
+    private function attentionTypeOptions(): array
+    {
+        return [
+            'documentation' => 'Check documentation',
+            'accessories' => 'Check accessories',
+            'damage_inspection' => 'Inspect package condition',
+            'colour' => 'Verify colour',
+            'serial_number' => 'Verify serial number',
+            'photograph' => 'Photograph contents',
+            'other' => 'Other purple note',
+        ];
+    }
+
+    private function attentionTypeLabel(string $type): string
+    {
+        return $this->attentionTypeOptions()[$type] ?? 'Other purple note';
+    }
 
     private function activeSuppliers(): Collection
     {
