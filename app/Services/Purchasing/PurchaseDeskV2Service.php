@@ -163,6 +163,208 @@ class PurchaseDeskV2Service
     }
 
 
+    public function purchaseHistory(array $filters = []): array
+    {
+        $q = trim((string) ($filters['q'] ?? ''));
+        $status = (string) ($filters['status'] ?? 'all');
+        $retailerId = ! empty($filters['retailer_id']) ? (int) $filters['retailer_id'] : null;
+        $dateFrom = trim((string) ($filters['date_from'] ?? ''));
+        $dateTo = trim((string) ($filters['date_to'] ?? ''));
+        $myOnly = (bool) ($filters['my'] ?? false);
+        $userId = ! empty($filters['user_id']) ? (int) $filters['user_id'] : null;
+
+        $arrivalTotals = DB::table('purchase_arrival_assignments as paa')
+            ->selectRaw('paa.order_item_purchase_id')
+            ->selectRaw('SUM(CASE WHEN paa.undone_at IS NULL THEN paa.qty ELSE 0 END) as arrived_qty')
+            ->selectRaw("SUM(CASE WHEN paa.undone_at IS NULL AND paa.status IN ('ready_for_collection','for_delivery') THEN paa.qty ELSE 0 END) as ready_qty")
+            ->selectRaw("SUM(CASE WHEN paa.undone_at IS NULL AND paa.status = 'collected' THEN paa.qty ELSE 0 END) as collected_qty")
+            ->selectRaw("SUM(CASE WHEN paa.undone_at IS NULL AND paa.status = 'delivered' THEN paa.qty ELSE 0 END) as delivered_qty")
+            ->selectRaw('MAX(paa.matched_at) as latest_arrival_at')
+            ->selectRaw('MAX(paa.status_updated_at) as latest_arrival_status_at')
+            ->selectRaw('MAX(paa.status) as latest_arrival_status')
+            ->whereNull('paa.undone_at')
+            ->groupBy('paa.order_item_purchase_id');
+
+        $informedTotals = DB::table('purchase_arrival_assignments as paa')
+            ->join('customer_release_notification_items as crni', 'crni.purchase_arrival_assignment_id', '=', 'paa.id')
+            ->join('customer_release_notifications as crn', function ($join) {
+                $join->on('crn.id', '=', 'crni.customer_release_notification_id')
+                    ->whereNotNull('crn.sent_at');
+            })
+            ->selectRaw('paa.order_item_purchase_id')
+            ->selectRaw('COUNT(DISTINCT crni.id) as informed_count')
+            ->selectRaw('MAX(crn.sent_at) as latest_informed_at')
+            ->whereNull('paa.undone_at')
+            ->groupBy('paa.order_item_purchase_id');
+
+        $query = DB::table('order_item_purchases as oip')
+            ->join('orders as o', 'o.id', '=', 'oip.order_id')
+            ->leftJoin('order_items as oi', 'oi.id', '=', 'oip.order_item_id')
+            ->leftJoin('retailers as r', 'r.id', '=', 'oip.retailer_id')
+            ->leftJoin('users as buyer', 'buyer.id', '=', 'oip.created_by_user_id')
+            ->leftJoinSub($arrivalTotals, 'at', fn ($join) => $join->on('at.order_item_purchase_id', '=', 'oip.id'))
+            ->leftJoinSub($informedTotals, 'it', fn ($join) => $join->on('it.order_item_purchase_id', '=', 'oip.id'))
+            ->whereIn('oip.status', ['purchased', 'ordered', 'received'])
+            ->whereNull('oip.cancelled_at')
+            ->select([
+                'oip.id',
+                'oip.order_id',
+                'oip.order_item_id',
+                'oip.root_item_id',
+                'oip.qty',
+                'oip.purchase_unit_price',
+                'oip.purchase_line_total',
+                'oip.currency',
+                'oip.retailer_id',
+                'oip.retailer_order_reference',
+                'oip.marketplace_seller',
+                'oip.ordered_at',
+                'oip.estimated_retailer_delivery_date',
+                'oip.note',
+                'oip.created_at',
+                'oip.created_by_user_id',
+                'o.order_number',
+                'o.bill_to_name',
+                'o.bill_to_company',
+                'o.status as order_status',
+                'oi.item_name',
+                'oi.description',
+                'oi.product_code',
+                'oi.product_url',
+                'oi.quantity as ordered_qty',
+                'oi.status as item_status',
+                DB::raw('COALESCE(r.name, "Unknown retailer") as retailer_name'),
+                'buyer.name as purchased_by_name',
+                DB::raw('COALESCE(at.arrived_qty, 0) as arrived_qty'),
+                DB::raw('COALESCE(at.ready_qty, 0) as ready_qty'),
+                DB::raw('COALESCE(at.collected_qty, 0) as collected_qty'),
+                DB::raw('COALESCE(at.delivered_qty, 0) as delivered_qty'),
+                DB::raw('COALESCE(it.informed_count, 0) as informed_count'),
+                'it.latest_informed_at',
+                'at.latest_arrival_at',
+                'at.latest_arrival_status_at',
+                'at.latest_arrival_status',
+            ]);
+
+        $this->itemLifecycle()->applyLivePurchasingOrderConstraints($query, 'o');
+
+        if ($myOnly && $userId) {
+            $query->where('oip.created_by_user_id', $userId);
+        }
+
+        if ($retailerId) {
+            $query->where('oip.retailer_id', $retailerId);
+        }
+
+        if ($dateFrom !== '') {
+            $query->whereDate(DB::raw('COALESCE(oip.ordered_at, oip.created_at)'), '>=', $dateFrom);
+        }
+
+        if ($dateTo !== '') {
+            $query->whereDate(DB::raw('COALESCE(oip.ordered_at, oip.created_at)'), '<=', $dateTo);
+        }
+
+        if ($q !== '') {
+            $needle = '%' . mb_strtolower($q) . '%';
+            $query->where(function ($search) use ($needle) {
+                $search->whereRaw('LOWER(COALESCE(o.order_number, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(o.bill_to_name, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(o.bill_to_company, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oi.item_name, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oi.description, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oi.product_code, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oi.product_url, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(r.name, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oip.retailer_order_reference, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oip.marketplace_seller, "")) LIKE ?', [$needle])
+                    ->orWhereRaw('LOWER(COALESCE(oip.note, "")) LIKE ?', [$needle]);
+            });
+        }
+
+        $rows = $query
+            ->orderByDesc(DB::raw('COALESCE(oip.ordered_at, oip.created_at)'))
+            ->orderByDesc('oip.id')
+            ->limit(400)
+            ->get()
+            ->map(fn ($row) => $this->decoratePurchasedHistoryRow($row));
+
+        if ($status !== 'all') {
+            $rows = $rows->filter(fn ($row) => (string) $row->lifecycle_key === $status)->values();
+        }
+
+        return [
+            'purchases' => $rows,
+            'filters' => [
+                'q' => $q,
+                'status' => $status,
+                'retailer_id' => $retailerId,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'my' => $myOnly,
+            ],
+            'retailers' => $this->activeSuppliers(),
+            'summary' => [
+                'lines_count' => $rows->count(),
+                'units_count' => (int) $rows->sum('qty'),
+                'purchase_total' => (float) $rows->sum(fn ($row) => (float) ($row->purchase_line_total ?? 0)),
+                'pending_arrival_count' => $rows->where('lifecycle_key', 'pending_arrival')->count(),
+                'arrived_count' => $rows->where('lifecycle_key', 'arrived')->count(),
+                'informed_count' => $rows->where('lifecycle_key', 'customer_informed')->count(),
+                'collected_count' => $rows->whereIn('lifecycle_key', ['collected', 'delivered'])->count(),
+            ],
+        ];
+    }
+
+    private function decoratePurchasedHistoryRow(object $row): object
+    {
+        $arrivedQty = max(0, (int) ($row->arrived_qty ?? 0));
+        $informedCount = max(0, (int) ($row->informed_count ?? 0));
+        $readyQty = max(0, (int) ($row->ready_qty ?? 0));
+        $collectedQty = max(0, (int) ($row->collected_qty ?? 0));
+        $deliveredQty = max(0, (int) ($row->delivered_qty ?? 0));
+        $qty = max(0, (int) ($row->qty ?? 0));
+        $status = strtolower((string) ($row->latest_arrival_status ?? ''));
+
+        $key = 'pending_arrival';
+        $label = 'Pending arrival';
+        $classes = 'bg-amber-50 text-amber-700 ring-amber-100';
+
+        if ($deliveredQty > 0 || $status === 'delivered') {
+            $key = 'delivered';
+            $label = ($qty > 0 && $deliveredQty > 0 && $deliveredQty < $qty) ? 'Partially delivered' : 'Delivered';
+            $classes = 'bg-slate-100 text-slate-700 ring-slate-200';
+        } elseif ($collectedQty > 0 || $status === 'collected') {
+            $key = 'collected';
+            $label = ($qty > 0 && $collectedQty > 0 && $collectedQty < $qty) ? 'Partially collected' : 'Collected';
+            $classes = 'bg-slate-100 text-slate-700 ring-slate-200';
+        } elseif ($informedCount > 0 || ! empty($row->latest_informed_at)) {
+            $key = 'customer_informed';
+            $label = 'Customer informed';
+            $classes = 'bg-indigo-50 text-indigo-700 ring-indigo-100';
+        } elseif ($readyQty > 0 || in_array($status, ['ready_for_collection', 'for_delivery'], true)) {
+            $key = 'ready_for_collection';
+            $label = 'Ready for collection';
+            $classes = 'bg-sky-50 text-sky-700 ring-sky-100';
+        } elseif ($arrivedQty > 0 || in_array($status, ['arrived', 'pending_customs_clearance'], true)) {
+            $key = 'arrived';
+            $label = ($qty > 0 && $arrivedQty > 0 && $arrivedQty < $qty) ? 'Partially arrived' : 'Arrived';
+            $classes = 'bg-emerald-50 text-emerald-700 ring-emerald-100';
+        }
+
+        $row->customer_display_name = trim((string) ($row->bill_to_name ?: $row->bill_to_company)) ?: 'Unknown customer';
+        $row->item_display_name = trim((string) ($row->item_name ?: $row->description)) ?: 'Unnamed item';
+        $row->lifecycle_key = $key;
+        $row->lifecycle_label = $label;
+        $row->lifecycle_badge_classes = $classes;
+        $row->purchased_at_display = $row->ordered_at ?: $row->created_at;
+        $row->arrival_remaining_qty = max(0, $qty - $arrivedQty);
+        $row->arrived_qty = $arrivedQty;
+        $row->collected_or_delivered_qty = $collectedQty + $deliveredQty;
+
+        return $row;
+    }
+
+
     public function recordPurchase(int $orderId, int $itemId, array $data, ?int $userId = null): array
     {
         return DB::transaction(function () use ($orderId, $itemId, $data, $userId) {

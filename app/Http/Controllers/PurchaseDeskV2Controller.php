@@ -18,6 +18,20 @@ class PurchaseDeskV2Controller extends Controller
         ]));
     }
 
+
+    public function history(Request $request, PurchaseDeskV2Service $service)
+    {
+        return view('purchase-desk-v2.history', $service->purchaseHistory([
+            'q' => $request->query('q', ''),
+            'status' => $request->query('status', 'all'),
+            'retailer_id' => $request->query('retailer_id'),
+            'date_from' => $request->query('date_from'),
+            'date_to' => $request->query('date_to'),
+            'my' => $request->boolean('my'),
+            'user_id' => optional($request->user())->id,
+        ]));
+    }
+
     public function show(Request $request, int $order, PurchaseDeskV2Service $service)
     {
         $workspace = $service->orderWorkspace($order, [

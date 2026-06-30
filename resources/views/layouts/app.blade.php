@@ -106,6 +106,7 @@
                     ['label' => 'Customer Desk', 'route' => 'customers.index', 'icon' => '👥'],
                     ['label' => 'Money Desk', 'route' => 'money-desk.index', 'icon' => '💷'],
                     ['label' => 'Purchases', 'route' => 'purchases.index', 'icon' => '🛒'],
+                    ['label' => 'Purchased History', 'route' => 'purchases.history', 'icon' => '📜'],
                     ['label' => 'Old Purchasing Desk', 'route' => 'purchasing.index', 'icon' => '🧰'],
                     ['label' => 'Marking', 'route' => null, 'icon' => '🏷️'],
                     ['label' => 'Collection', 'route' => null, 'icon' => '🚚'],

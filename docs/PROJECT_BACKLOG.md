@@ -65,3 +65,9 @@ Reuse:
 •	white backgrounds
 •	softer colour palette
 •	no browser popups
+
+Refactor attachment handling into a shared AttachmentService.
+
+Store the filesystem disk with each attachment.
+Eliminate path guessing.
+Reuse across all DabbaDesk modules.

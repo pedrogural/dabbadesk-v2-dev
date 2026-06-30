@@ -24,6 +24,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/orders', [OrdersController::class, 'index'])->name('orders.index');
     // New purchasing rebuild. Keep this separate from the old Purchasing Desk until Phase 2 is complete.
     Route::get('/purchases', [PurchaseDeskV2Controller::class, 'index'])->name('purchases.index');
+    Route::get('/purchases/history', [PurchaseDeskV2Controller::class, 'history'])->name('purchases.history');
     Route::get('/purchases/orders/{order}', [PurchaseDeskV2Controller::class, 'show'])->name('purchases.orders.show');
     Route::post('/purchases/orders/{order}/basket', [PurchaseDeskV2Controller::class, 'storeBasket'])->name('purchases.basket.store');
     Route::post('/purchases/orders/{order}/suppliers', [PurchaseDeskV2Controller::class, 'storeSupplier'])->name('purchases.suppliers.store');
